@@ -4,7 +4,7 @@ import { useState } from "react";
 
 const PAGE_SIZE = 50;
 
-const TransactionList = ({ transactions, onEdit, onDelete }) => {
+const TransactionList = ({ transactions, onEdit, onDelete, isFiltered }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [sortField, setSortField] = useState("date");
@@ -74,6 +74,11 @@ const TransactionList = ({ transactions, onEdit, onDelete }) => {
             История{" "}
             <span className="text-emerald-500">({sortedTransactions.length})</span>
           </h2>
+          {isFiltered && (
+            <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              <p className="text-sm font-bold text-red-600">⚠️ Активен филтър — показват се само филтрираните транзакции!</p>
+            </div>
+          )}
         </div>
 
         {/* Филтър по тип */}

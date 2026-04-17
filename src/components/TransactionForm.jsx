@@ -54,7 +54,7 @@ const TransactionForm = ({
   useEffect(() => {
     if (isLoaded && currency !== "EUR") {
       setShowCurrencyNotice(true);
-      setTimeout(() => setShowCurrencyNotice(false), 3000);
+      setTimeout(() => setShowCurrencyNotice(false), 1500);
     }
   }, [isLoaded]);
 

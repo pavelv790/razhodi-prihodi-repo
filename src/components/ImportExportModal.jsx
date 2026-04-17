@@ -23,8 +23,12 @@ const ImportExportModal = ({
 
   useEffect(() => {
     if (mode === "export") {
-      exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
-      onClose();
+      if (isFiltered) {
+        setStep("exportWarning");
+      } else {
+        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []);
+        onClose();
+      }
     } else if (mode === "import") {
       fileInputRef.current.click();
     }
@@ -79,7 +83,7 @@ const ImportExportModal = ({
       <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-700">
-            Импорт от Excel
+            {mode === "export" ? "Експорт към Excel" : "Импорт от Excel"}
           </h2>
           <button
             onClick={onClose}
@@ -90,6 +94,31 @@ const ImportExportModal = ({
         </div>
 
         <div className="px-5 py-5 space-y-3">
+          {step === "exportWarning" && (
+            <>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-700 font-bold mb-1">⚠️ Внимание — активен филтър!</p>
+                <p className="text-sm text-red-600">
+                  В момента е включен филтър. Excel файлът ще съдържа само филтрираните транзакции, не всички.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
+                  onClose();
+                }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
+              >
+                Разбирам, експортирай само филтрираните
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </>
+          )}
           {step === "confirm" && pendingTransactions && (
             <>
               <div className="bg-orange-50 rounded-xl p-4">

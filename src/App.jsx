@@ -185,8 +185,8 @@ const App = () => {
               <Search className="w-4 h-4 text-gray-400" />
               <span className="text-sm font-semibold text-gray-600">Филтриране</span>
               {isFiltered && (
-                <span className="text-xs bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-lg">
-                  Активен
+                <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-lg font-bold animate-pulse">
+                  ⚠️ АКТИВЕН ФИЛТЪР
                 </span>
               )}
             </div>
@@ -295,6 +295,7 @@ const App = () => {
         {/* Transaction List */}
         <TransactionList
           transactions={filteredTransactions}
+          isFiltered={isFiltered}
           onEdit={(t) => {
             setEditingTransaction(t);
             window.scrollTo({ top: 0, behavior: "smooth" });
@@ -338,6 +339,9 @@ const App = () => {
       {showMonthlyStats && (
         <MonthlyStats
           transactions={transactions}
+          filteredTransactions={filteredTransactions}
+          isFiltered={isFiltered}
+          activeFilters={activeFilters}
           onClose={() => setShowMonthlyStats(false)}
         />
       )}

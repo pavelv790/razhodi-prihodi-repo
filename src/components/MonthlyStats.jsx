@@ -69,7 +69,7 @@ const getCategoriesInWindow = (transactions, type, rollingMonths) => {
   return [...cats].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
 };
 
-const MonthlyStats = ({ transactions, onClose }) => {
+const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFilters, onClose }) => {
   const [activeTab, setActiveTab] = useState("expense");
   const [rollingMonths, setRollingMonths] = useState(12);
   const [inputMonths, setInputMonths] = useState("12");
@@ -81,12 +81,20 @@ const MonthlyStats = ({ transactions, onClose }) => {
     if (num >= 1) setRollingMonths(num);
   };
 
+  const data = isFiltered ? filteredTransactions : transactions;
+
+  const [showExportWarning, setShowExportWarning] = useState(false);
+
   const handleExport = () => {
-    exportMonthlyStatsToExcel(transactions, rollingMonths);
+    if (isFiltered) {
+      setShowExportWarning(true);
+    } else {
+      exportMonthlyStatsToExcel(data, rollingMonths);
+    }
   };
 
-  const categories = getCategoriesInWindow(transactions, activeTab, rollingMonths);
-  const totalAvg = getTotalRollingAverage(transactions, activeTab, rollingMonths);
+  const categories = getCategoriesInWindow(data, activeTab, rollingMonths);
+  const totalAvg = getTotalRollingAverage(data, activeTab, rollingMonths);
   const isExpense = activeTab === "expense";
 
   return (
@@ -95,9 +103,14 @@ const MonthlyStats = ({ transactions, onClose }) => {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-700">
-            Месечна статистика
-          </h2>
+          <div>
+            <h2 className="text-base font-semibold text-gray-700">
+              Месечна статистика
+            </h2>
+            {isFiltered && (
+              <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Показват се само филтрираните данни</p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
@@ -178,7 +191,7 @@ const MonthlyStats = ({ transactions, onClose }) => {
               </thead>
               <tbody>
                 {categories.map((cat) => {
-                  const avg = getRollingAverage(transactions, cat, activeTab, rollingMonths);
+                  const avg = getRollingAverage(data, cat, activeTab, rollingMonths);
                   return (
                     <tr key={cat} className="border-t border-gray-50 hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium text-gray-700">{cat}</td>
@@ -204,7 +217,29 @@ const MonthlyStats = ({ transactions, onClose }) => {
             </table>
           )}
         </div>
-      </div>
+        {showExportWarning && (
+          <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
+              <p className="text-sm font-bold text-red-600 mb-1">⚠️ Активен филтър!</p>
+              <p className="text-sm text-red-600">Excel файлът ще съдържа само филтрираните данни, не всички.</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { exportMonthlyStatsToExcel(data, rollingMonths); setShowExportWarning(false); }}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
+              >
+                Разбирам, експортирай
+              </button>
+              <button
+                onClick={() => setShowExportWarning(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </div>
+          </div>
+        )}
+      </div>      
     </div>
   );
 };
