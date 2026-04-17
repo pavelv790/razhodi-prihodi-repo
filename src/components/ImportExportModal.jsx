@@ -7,6 +7,7 @@ const ImportExportModal = ({
   transactions,
   filteredTransactions,
   isFiltered,
+  activeFilters,
   onImportAdd,
   onImportReplace,
   onCategoriesImported,
@@ -22,7 +23,7 @@ const ImportExportModal = ({
 
   useEffect(() => {
     if (mode === "export") {
-      exportToExcel(filteredTransactions, expenseCategories, incomeCategories);
+      exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
       onClose();
     } else if (mode === "import") {
       fileInputRef.current.click();

@@ -3,84 +3,108 @@ import { X, FileDown } from "lucide-react";
 import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";
 
-const MonthlyStats = ({ transactions, onClose }) => {
-  const handleExport = () => {
-    exportMonthlyStatsToExcel(transactions);
-  };
-  const [activeTab, setActiveTab] = useState("expense");
+// Връща последните rollingMonths ЗАВЪРШЕНИ месеца (текущият не се включва)
+const getWindowMonths = (rollingMonths) => {
+  const months = [];
+  const now = new Date();
+  // Започваме от миналия месец и вървим назад
+  for (let i = 1; i <= rollingMonths; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+    });
+  }
+  return months; // наредени от най-скорошен към най-стар
+};
 
-  // Генерираме последните 12 календарни месеца
-  const getLast12Months = () => {
-    const months = [];
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
-        label: date.toLocaleString("bg-BG", { month: "short", year: "numeric" }),
-      });
-    }
-    return months;
-  };
-
-  const months = getLast12Months();
-
-  const getAmountForCategoryAndMonth = (category, year, month, type) => {
-    return transactions
-      .filter((t) => {
-        if (t.type !== type || t.category !== category) return false;
-        const [day, m, y] = t.date.split("/").map(Number);
-        return y === year && m === month;
-      })
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-  };
-
-  const getCategories = (type) => {
-    const cats = new Set();
-    transactions
-      .filter((t) => {
-        const [day, m, y] = t.date.split("/").map(Number);
-        const date = new Date(y, m - 1, 1);
-        const twelveMonthsAgo = new Date();
-        twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11);
-        twelveMonthsAgo.setDate(1);
-        twelveMonthsAgo.setHours(0, 0, 0, 0);
-        return t.type === type && date >= twelveMonthsAgo;
-      })
-      .forEach((t) => cats.add(t.category));
-    return [...cats].sort((a, b) =>
-      a.localeCompare(b, "bg", { sensitivity: "base" })
+// Rolling average за категория: сумира последните rollingMonths завършени месеца и дели на rollingMonths
+const getRollingAverage = (transactions, category, type, rollingMonths) => {
+  const window = getWindowMonths(rollingMonths);
+  const total = window.reduce((sum, { year, month }) => {
+    return (
+      sum +
+      transactions
+        .filter((t) => {
+          if (t.type !== type || t.category !== category) return false;
+          const [, tm, ty] = t.date.split("/").map(Number);
+          return ty === year && tm === month;
+        })
+        .reduce((s, t) => s + Number(t.amount), 0)
     );
+  }, 0);
+  return total / rollingMonths;
+};
+
+// Rolling average за всички категории от даден тип
+const getTotalRollingAverage = (transactions, type, rollingMonths) => {
+  const window = getWindowMonths(rollingMonths);
+  const total = window.reduce((sum, { year, month }) => {
+    return (
+      sum +
+      transactions
+        .filter((t) => {
+          if (t.type !== type) return false;
+          const [, tm, ty] = t.date.split("/").map(Number);
+          return ty === year && tm === month;
+        })
+        .reduce((s, t) => s + Number(t.amount), 0)
+    );
+  }, 0);
+  return total / rollingMonths;
+};
+
+// Взима всички категории, които имат поне една транзакция в прозореца
+const getCategoriesInWindow = (transactions, type, rollingMonths) => {
+  const window = getWindowMonths(rollingMonths);
+  const windowSet = new Set(window.map(({ year, month }) => `${year}-${month}`));
+  const cats = new Set();
+  transactions
+    .filter((t) => {
+      if (t.type !== type) return false;
+      const [, tm, ty] = t.date.split("/").map(Number);
+      return windowSet.has(`${ty}-${tm}`);
+    })
+    .forEach((t) => cats.add(t.category));
+  return [...cats].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
+};
+
+const MonthlyStats = ({ transactions, onClose }) => {
+  const [activeTab, setActiveTab] = useState("expense");
+  const [rollingMonths, setRollingMonths] = useState(12);
+  const [inputMonths, setInputMonths] = useState("12");
+
+  const handleRollingMonthsChange = (e) => {
+    const val = e.target.value.replace(/\D/g, "");
+    setInputMonths(val);
+    const num = Number(val);
+    if (num >= 1) setRollingMonths(num);
   };
 
-  const getTotalForMonth = (year, month, type) => {
-    return transactions
-      .filter((t) => {
-        if (t.type !== type) return false;
-        const [day, m, y] = t.date.split("/").map(Number);
-        return y === year && m === month;
-      })
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+  const handleExport = () => {
+    exportMonthlyStatsToExcel(transactions, rollingMonths);
   };
 
-  const categories = getCategories(activeTab);
+  const categories = getCategoriesInWindow(transactions, activeTab, rollingMonths);
+  const totalAvg = getTotalRollingAverage(transactions, activeTab, rollingMonths);
+  const isExpense = activeTab === "expense";
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-700">
-            Месечна статистика — последните 12 месеца
+            Месечна статистика
           </h2>
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-50 text-green-600 hover:bg-green-100 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500 text-white hover:bg-green-600 transition"
             >
               <FileDown className="w-3.5 h-3.5" />
-              Експорт
+              Експорт в Excel
             </button>
             <button
               onClick={onClose}
@@ -89,6 +113,25 @@ const MonthlyStats = ({ transactions, onClose }) => {
               <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
+        </div>
+
+        {/* Период */}
+        <div className="px-5 pt-4 flex items-center gap-3 flex-shrink-0">
+          <label className="text-xs text-gray-500 font-medium">
+            Период за осредняване:
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={inputMonths}
+            onChange={handleRollingMonthsChange}
+            maxLength={3}
+            className="w-14 border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-emerald-300 bg-blue-50"
+          />
+          <span className="text-xs text-gray-500">месеца</span>
+          {Number(inputMonths) < 1 && inputMonths !== "" && (
+            <span className="text-xs text-red-500">Въведете число по-голямо от 0</span>
+          )}
         </div>
 
         {/* Tabs */}
@@ -115,87 +158,47 @@ const MonthlyStats = ({ transactions, onClose }) => {
           </button>
         </div>
 
-        {/* Table */}
+        {/* Таблица */}
         <div className="flex-1 overflow-auto px-5 py-4">
           {categories.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">
-              Няма данни за последните 12 месеца
+              Няма данни за последните {rollingMonths} месеца
             </p>
           ) : (
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-gray-50">
-                  <th className="text-left px-3 py-2 rounded-l-xl font-semibold text-gray-500 sticky left-0 bg-gray-50 min-w-32">
+                  <th className="text-left px-3 py-2 rounded-l-xl font-semibold text-gray-500">
                     Категория
                   </th>
-                  <th className="text-right px-3 py-2 font-semibold text-emerald-600 min-w-20 whitespace-nowrap">
-                    Средно/месец
+                  <th className="text-right px-3 py-2 rounded-r-xl font-semibold text-emerald-600 whitespace-nowrap">
+                    Средно / {rollingMonths} мес.
                   </th>
-                  {months.map((m) => (
-                    <th
-                      key={`${m.year}-${m.month}`}
-                      className="text-right px-3 py-2 font-semibold text-gray-500 min-w-20 whitespace-nowrap"
-                    >
-                      {m.label}
-                    </th>
-                  ))}
                 </tr>
               </thead>
               <tbody>
                 {categories.map((cat) => {
-                  const monthlyAmounts = months.map((m) =>
-                    getAmountForCategoryAndMonth(cat, m.year, m.month, activeTab)
-                  );
-                  const average = monthlyAmounts.reduce((s, a) => s + a, 0) / 12;
+                  const avg = getRollingAverage(transactions, cat, activeTab, rollingMonths);
                   return (
                     <tr key={cat} className="border-t border-gray-50 hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium text-gray-700 sticky left-0 bg-blue-50 hover:bg-gray-50">
-                        {cat}
-                      </td>
+                      <td className="px-3 py-2 font-medium text-gray-700">{cat}</td>
                       <td className={`px-3 py-2 text-right font-bold ${
-                        activeTab === "expense" ? "text-red-500" : "text-green-500"
+                        isExpense ? "text-red-500" : "text-green-500"
                       }`}>
-                        {formatAmount(average)}
+                        {formatAmount(avg)}
                       </td>
-                      {monthlyAmounts.map((amount, i) => (
-                        <td
-                          key={i}
-                          className={`px-3 py-2 text-right ${
-                            amount > 0 ? "text-gray-700" : "text-gray-300"
-                          }`}
-                        >
-                          {amount > 0 ? formatAmount(amount) : "—"}
-                        </td>
-                      ))}
                     </tr>
                   );
                 })}
 
-                {/* Общо ред */}
+                {/* Общо */}
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-3 py-2 font-bold text-gray-700 sticky left-0 bg-gray-50">
-                    ОБЩО
-                  </td>
+                  <td className="px-3 py-2 font-bold text-gray-700">ОБЩО</td>
                   <td className={`px-3 py-2 text-right font-bold ${
-                    activeTab === "expense" ? "text-red-500" : "text-green-500"
+                    isExpense ? "text-red-500" : "text-green-500"
                   }`}>
-                    {formatAmount(
-                      months.reduce((sum, m) => sum + getTotalForMonth(m.year, m.month, activeTab), 0) / 12
-                    )}
+                    {formatAmount(totalAvg)}
                   </td>
-                  {months.map((m) => {
-                    const total = getTotalForMonth(m.year, m.month, activeTab);
-                    return (
-                      <td
-                        key={`${m.year}-${m.month}`}
-                        className={`px-3 py-2 text-right font-bold ${
-                          total > 0 ? "text-gray-700" : "text-gray-300"
-                        }`}
-                      >
-                        {total > 0 ? formatAmount(total) : "—"}
-                      </td>
-                    );
-                  })}
                 </tr>
               </tbody>
             </table>

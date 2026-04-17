@@ -1,24 +1,65 @@
 import { useState, useEffect } from "react";
 import { parseDate } from "../utils/formatters";
 
-const STORAGE_KEY = "finance_transactions";
+// ============================================================
+// IndexedDB helpers — заместват localStorage.getItem/setItem
+// ============================================================
 
-const loadFromStorage = () => {
+const DB_NAME = "finance_db";
+const DB_VERSION = 5;
+const STORE = "transactions";
+
+const openDB = () =>
+  new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+  const db = e.target.result;
+  if (!db.objectStoreNames.contains("transactions"))
+    db.createObjectStore("transactions", { keyPath: "id" });
+  if (!db.objectStoreNames.contains("categories"))
+    db.createObjectStore("categories", { keyPath: "type" });
+  if (!db.objectStoreNames.contains("saved_filters"))
+    db.createObjectStore("saved_filters", { keyPath: "id" });
+  if (!db.objectStoreNames.contains("currency"))
+    db.createObjectStore("currency", { keyPath: "id" });
+};
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+
+const loadAllFromDB = async () => {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
   } catch {
     return [];
   }
 };
 
-const saveToStorage = (transactions) => {
+const saveAllToDB = async (transactions) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      store.clear();
+      transactions.forEach((t) => store.put(t));
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
-    console.error("Грешка при запис в localStorage");
+    console.error("Грешка при запис в IndexedDB");
   }
 };
+
+// ============================================================
+// Същите помощни функции като преди
+// ============================================================
 
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -31,28 +72,37 @@ const sortByDate = (transactions) =>
     return dateB - dateA;
   });
 
-export const useTransactions = () => {
-  const [transactions, setTransactions] = useState(() =>
-    sortByDate(loadFromStorage())
-  );
+// ============================================================
+// Hook — интерфейсът е абсолютно същият като преди
+// ============================================================
 
+export const useTransactions = () => {
+  const [transactions, setTransactions] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Зареждаме от IndexedDB при стартиране
   useEffect(() => {
-    saveToStorage(transactions);
-  }, [transactions]);
+    loadAllFromDB().then((data) => {
+      setTransactions(sortByDate(data));
+      setIsLoaded(true);
+    });
+  }, []);
+
+  // Записваме в IndexedDB при всяка промяна
+  useEffect(() => {
+    if (isLoaded) {
+      saveAllToDB(transactions);
+    }
+  }, [transactions, isLoaded]);
 
   const addTransaction = (transaction) => {
-    const newTransaction = {
-      ...transaction,
-      id: generateId(),
-    };
+    const newTransaction = { ...transaction, id: generateId() };
     setTransactions((prev) => sortByDate([...prev, newTransaction]));
   };
 
   const editTransaction = (id, updatedTransaction) => {
     setTransactions((prev) =>
-      sortByDate(
-        prev.map((t) => (t.id === id ? { ...updatedTransaction, id } : t))
-      )
+      sortByDate(prev.map((t) => (t.id === id ? { ...updatedTransaction, id } : t)))
     );
   };
 
@@ -61,9 +111,7 @@ export const useTransactions = () => {
   };
 
   const deleteTransactionsByCategory = (categoryName) => {
-    setTransactions((prev) =>
-      prev.filter((t) => t.category !== categoryName)
-    );
+    setTransactions((prev) => prev.filter((t) => t.category !== categoryName));
   };
 
   const reassignTransactionsCategory = (categoryName) => {
@@ -83,20 +131,18 @@ export const useTransactions = () => {
   };
 
   const getFilteredTransactions = (filters) => {
-    const { fromDate, toDate, category } = filters;
+    const { fromDate, toDate, categories } = filters;
     return transactions.filter((t) => {
       const date = parseDate(t.date);
       if (fromDate) {
         const from = parseDate(fromDate);
         if (from && date && date < from) return false;
       }
-      if (toDate) {
-        const to = parseDate(toDate);
-        if (to && date && date > to) return false;
-      }
-      if (category && category !== "") {
-        if (t.category !== category) return false;
-      }
+      const to = toDate ? parseDate(toDate) : new Date();
+      if (to && date && date > to) return false;
+      if (categories && categories.length > 0) {
+          if (!categories.includes(t.category)) return false;
+          }
       return true;
     });
   };
@@ -110,11 +156,7 @@ export const useTransactions = () => {
       .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-    return {
-      income,
-      expense,
-      balance: income - expense,
-    };
+    return { income, expense, balance: income - expense };
   };
 
   return {

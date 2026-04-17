@@ -1,53 +1,107 @@
 import { useState, useEffect } from "react";
-import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, sortCategories } from "../constants/categories";
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  DEFAULT_INCOME_CATEGORIES,
+  sortCategories,
+} from "../constants/categories";
 
-const STORAGE_KEYS = {
-  EXPENSE_CATEGORIES: "finance_expense_categories",
-  INCOME_CATEGORIES: "finance_income_categories",
-};
+// ============================================================
+// IndexedDB helpers — отделна база/store за категориите
+// ============================================================
 
-const loadFromStorage = (key, defaultValue) => {
+const DB_NAME = "finance_db";
+const DB_VERSION = 5;
+const STORE = "categories";
+
+const openDB = () =>
+  new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        // Пазим два записа: "expense" и "income"
+        db.createObjectStore(STORE, { keyPath: "type" });
+      }
+      if (!db.objectStoreNames.contains("currency"))
+        db.createObjectStore("currency", { keyPath: "id" });
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+
+const loadFromDB = async (type, defaultValue) => {
   try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).get(type);
+      req.onsuccess = () =>
+        resolve(req.result ? req.result.categories : defaultValue);
+      req.onerror = () => reject(req.error);
+    });
   } catch {
     return defaultValue;
   }
 };
 
-const saveToStorage = (key, value) => {
+const saveToDB = async (type, categories) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put({ type, categories });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
-    console.error("Грешка при запис в localStorage");
+    console.error("Грешка при запис на категории в IndexedDB");
   }
 };
 
+// ============================================================
+// Hook — интерфейсът е абсолютно същият като преди
+// ============================================================
+
 export const useCategories = () => {
-  const [expenseCategories, setExpenseCategories] = useState(() =>
-    sortCategories(loadFromStorage(STORAGE_KEYS.EXPENSE_CATEGORIES, DEFAULT_EXPENSE_CATEGORIES))
-  );
+  const [expenseCategories, setExpenseCategories] = useState([]);
+  const [incomeCategories, setIncomeCategories] = useState([]);
+  const [isLoaded, setIsLoaded] = useState({ expense: false, income: false });
 
-  const [incomeCategories, setIncomeCategories] = useState(() =>
-    sortCategories(loadFromStorage(STORAGE_KEYS.INCOME_CATEGORIES, DEFAULT_INCOME_CATEGORIES))
-  );
+  // Зареждаме от IndexedDB при стартиране
+  useEffect(() => {
+    loadFromDB("expense", DEFAULT_EXPENSE_CATEGORIES).then((data) => {
+      setExpenseCategories(sortCategories(data));
+      setIsLoaded((prev) => ({ ...prev, expense: true }));
+    });
+    loadFromDB("income", DEFAULT_INCOME_CATEGORIES).then((data) => {
+      setIncomeCategories(sortCategories(data));
+      setIsLoaded((prev) => ({ ...prev, income: true }));
+    });
+  }, []);
+
+  // Записваме при всяка промяна
+  useEffect(() => {
+    if (isLoaded.expense) {
+      saveToDB("expense", expenseCategories);
+    }
+  }, [expenseCategories, isLoaded.expense]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.EXPENSE_CATEGORIES, expenseCategories);
-  }, [expenseCategories]);
-
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.INCOME_CATEGORIES, incomeCategories);
-  }, [incomeCategories]);
+    if (isLoaded.income) {
+      saveToDB("income", incomeCategories);
+    }
+  }, [incomeCategories, isLoaded.income]);
 
   const addCategory = (type, name) => {
     const trimmed = name.trim();
     if (!trimmed) return false;
     if (type === "expense") {
-      if (expenseCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return false;
+      if (expenseCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase()))
+        return false;
       setExpenseCategories((prev) => sortCategories([...prev, trimmed]));
     } else {
-      if (incomeCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase())) return false;
+      if (incomeCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase()))
+        return false;
       setIncomeCategories((prev) => sortCategories([...prev, trimmed]));
     }
     return true;
@@ -57,11 +111,25 @@ export const useCategories = () => {
     const trimmed = newName.trim();
     if (!trimmed) return false;
     if (type === "expense") {
-      if (expenseCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName)) return false;
-      setExpenseCategories((prev) => sortCategories(prev.map((c) => (c === oldName ? trimmed : c))));
+      if (
+        expenseCategories.some(
+          (c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName
+        )
+      )
+        return false;
+      setExpenseCategories((prev) =>
+        sortCategories(prev.map((c) => (c === oldName ? trimmed : c)))
+      );
     } else {
-      if (incomeCategories.some((c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName)) return false;
-      setIncomeCategories((prev) => sortCategories(prev.map((c) => (c === oldName ? trimmed : c))));
+      if (
+        incomeCategories.some(
+          (c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName
+        )
+      )
+        return false;
+      setIncomeCategories((prev) =>
+        sortCategories(prev.map((c) => (c === oldName ? trimmed : c)))
+      );
     }
     return true;
   };

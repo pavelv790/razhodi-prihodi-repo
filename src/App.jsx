@@ -12,6 +12,8 @@ import CategoryManager from "./components/CategoryManager";
 import AboutModal from "./components/AboutModal";
 import ImportExportModal from "./components/ImportExportModal";
 import MonthlyStats from "./components/MonthlyStats";
+import { useSavedFilters } from "./hooks/useSavedFilters";
+import { useCurrency } from "./hooks/useCurrency";
 
 const App = () => {
   const {
@@ -37,10 +39,12 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories();
+  const { savedFilters, saveFilter, deleteFilter } = useSavedFilters();
+  const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded } = useCurrency();
 
   const [editingTransaction, setEditingTransaction] = useState(null);
-  const [filters, setFilters] = useState({ fromDate: "", toDate: "", category: "" });
-  const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", category: "" });
+  const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
+  const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", categories: [] });
   const [isFiltered, setIsFiltered] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -80,12 +84,12 @@ const App = () => {
   const handleFilter = (newFilters) => {
     setActiveFilters(newFilters);
     setIsFiltered(
-      !!(newFilters.fromDate || newFilters.toDate || newFilters.category)
-    );
-  };
-
+        !!(newFilters.fromDate || newFilters.toDate || (newFilters.categories && newFilters.categories.length > 0))
+        );
+          };
+          
   const handleClearFilter = () => {
-    const empty = { fromDate: "", toDate: "", category: "" };
+      const empty = { fromDate: "", toDate: "", categories: [] };
     setFilters(empty);
     setActiveFilters(empty);
     setIsFiltered(false);
@@ -160,6 +164,12 @@ const App = () => {
           expenseCategories={expenseCategories}
           incomeCategories={incomeCategories}
           transactions={transactions}
+          currency={currency}
+          rate={rate}
+          onUpdateCurrency={updateCurrency}
+          onResetToEur={resetToEur}
+          convert={convert}
+          isLoaded={currencyLoaded}
         />
 
         {/* Summary Cards */}
@@ -192,6 +202,9 @@ const App = () => {
                 isFiltered={isFiltered}
                 expenseCategories={expenseCategories}
                 incomeCategories={incomeCategories}
+                savedFilters={savedFilters}
+                onSaveFilter={saveFilter}
+                onDeleteFilter={deleteFilter}
               />
             </div>
           )}
@@ -199,45 +212,6 @@ const App = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-3 mb-6">
-
-          {/* Настройки */}
-          <div className="bg-blue-50 rounded-2xl shadow-md overflow-hidden">
-            <button
-              onClick={() => setShowSettingsPanel((prev) => !prev)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition"
-            >
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-semibold text-gray-600">Настройки</span>
-              </div>
-              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showSettingsPanel ? "rotate-180" : ""}`} />
-            </button>
-            {showSettingsPanel && (
-              <div className="px-4 pb-4 flex flex-col gap-2 border-t border-gray-100 pt-3">
-                <button
-                  onClick={() => setShowCategoryManager(true)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition"
-                >
-                  <Settings className="w-4 h-4" />
-                  Управление на категории
-                </button>
-                <button
-                  onClick={() => setShowAbout(true)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
-                >
-                  <Info className="w-4 h-4" />
-                  За приложението
-                </button>
-                <button
-                  onClick={() => setShowDeleteAll(true)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-500 hover:bg-red-100 transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Изтрий всички данни
-                </button>
-              </div>
-            )}
-          </div>
 
           {/* Данни */}
           <div className="bg-blue-50 rounded-2xl shadow-md overflow-hidden">
@@ -288,9 +262,34 @@ const App = () => {
                   <Upload className="w-4 h-4" />
                   Restore
                 </button>
+                <button
+                  onClick={() => setShowDeleteAll(true)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-500 hover:bg-red-100 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Изтрий всички данни
+                </button>
               </div>
             )}
           </div>
+        </div>
+
+        {/* Бутони над историята */}
+        <div className="flex flex-col gap-3 mb-3">
+          <button
+            onClick={() => setShowCategoryManager(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition shadow-sm"
+          >
+            <Settings className="w-4 h-4" />
+            Управление на категории
+          </button>
+          <button
+            onClick={() => setShowAbout(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition shadow-sm"
+          >
+            <Info className="w-4 h-4" />
+            За приложението
+          </button>
         </div>
 
         {/* Transaction List */}
@@ -326,6 +325,7 @@ const App = () => {
           transactions={transactions}
           filteredTransactions={filteredTransactions}
           isFiltered={isFiltered}
+          activeFilters={activeFilters}
           onImportAdd={addTransactions}
           onImportReplace={replaceAllTransactions}
           onCategoriesImported={handleCategoriesImported}
