@@ -4,23 +4,22 @@ import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";
 
 // Връща последните rollingMonths ЗАВЪРШЕНИ месеца (текущият не се включва)
-const getWindowMonths = (rollingMonths) => {
+const getWindowMonths = (rollingMonths, targetYear, targetMonth) => {
   const months = [];
-  const now = new Date();
-  // Започваме от миналия месец и вървим назад
   for (let i = 1; i <= rollingMonths; i++) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({
-      year: date.getFullYear(),
-      month: date.getMonth() + 1,
-    });
+    let m = targetMonth - i;
+    let y = targetYear;
+    while (m <= 0) { m += 12; y--; }
+    months.push({ year: y, month: m });
   }
-  return months; // наредени от най-скорошен към най-стар
+  return months;
 };
 
-// Rolling average за категория: сумира последните rollingMonths завършени месеца и дели на rollingMonths
 const getRollingAverage = (transactions, category, type, rollingMonths) => {
-  const window = getWindowMonths(rollingMonths);
+  const now = new Date();
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const total = window.reduce((sum, { year, month }) => {
     return (
       sum +
@@ -36,9 +35,11 @@ const getRollingAverage = (transactions, category, type, rollingMonths) => {
   return total / rollingMonths;
 };
 
-// Rolling average за всички категории от даден тип
 const getTotalRollingAverage = (transactions, type, rollingMonths) => {
-  const window = getWindowMonths(rollingMonths);
+  const now = new Date();
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const total = window.reduce((sum, { year, month }) => {
     return (
       sum +
@@ -56,7 +57,10 @@ const getTotalRollingAverage = (transactions, type, rollingMonths) => {
 
 // Взима всички категории, които имат поне една транзакция в прозореца
 const getCategoriesInWindow = (transactions, type, rollingMonths) => {
-  const window = getWindowMonths(rollingMonths);
+  const now = new Date();
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+  const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const windowSet = new Set(window.map(({ year, month }) => `${year}-${month}`));
   const cats = new Set();
   transactions

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
-import { importFromExcel, exportToExcel, findDuplicates } from "../utils/excel";
+import { importFromExcel, exportToExcel } from "../utils/excel";
 
 const ImportExportModal = ({
   onClose,
@@ -30,7 +30,7 @@ const ImportExportModal = ({
         onClose();
       }
     } else if (mode === "import") {
-      fileInputRef.current.click();
+      fileInputRef.current?.click();
     }
   }, []);
 

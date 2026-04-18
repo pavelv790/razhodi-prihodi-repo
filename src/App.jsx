@@ -63,7 +63,7 @@ const App = () => {
   const summary = getSummary(filteredTransactions);
 
   useEffect(() => {
-    if (transactions.length === 0) return;
+    if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
 
     const now = new Date();
     const monday = new Date(now);
@@ -73,11 +73,13 @@ const App = () => {
 
     const alreadyExported = localStorage.getItem(weekKey);
     if (!alreadyExported) {
-      const confirm = window.confirm("Искате ли да свалите седмичния Excel файл с всички транзакции?");
-      if (confirm) {
-        exportToExcel(transactions, expenseCategories, incomeCategories);
-      }
       localStorage.setItem(weekKey, "true");
+      setTimeout(() => {
+        const confirmed = window.confirm("Искате ли да свалите седмичния Excel файл с всички транзакции?");
+        if (confirmed) {
+          exportToExcel(transactions, expenseCategories, incomeCategories);
+        }
+      }, 500);
     }
   }, [transactions]);
 

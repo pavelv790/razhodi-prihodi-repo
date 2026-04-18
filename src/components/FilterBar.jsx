@@ -35,7 +35,7 @@ const FilterBar = ({
 
   useEffect(() => {
     onFilter(filters);
-  }, [filters]);
+  }, [filters, onFilter]);
 
   const toggleCategory = (cat) => {
     const current = filters.categories || [];

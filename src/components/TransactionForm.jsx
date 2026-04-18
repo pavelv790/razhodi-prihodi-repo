@@ -56,7 +56,7 @@ const TransactionForm = ({
       setShowCurrencyNotice(true);
       setTimeout(() => setShowCurrencyNotice(false), 1500);
     }
-  }, [isLoaded]);
+  }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (editingTransaction) {

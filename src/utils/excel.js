@@ -1,30 +1,5 @@
 import * as XLSX from "xlsx";
 
-const MONTH_NAMES = [
-  "януари", "февруари", "март", "април", "май", "юни",
-  "юли", "август", "септември", "октомври", "ноември", "декември",
-];
-
-// Буква на колона по индекс (0=A, 1=B, ...)
-const col = (i) => {
-  let s = "";
-  i++;
-  while (i > 0) {
-    s = String.fromCharCode(((i - 1) % 26) + 65) + s;
-    i = Math.floor((i - 1) / 26);
-  }
-  return s;
-};
-
-const getAmount = (transactions, year, month, type, category) =>
-  transactions
-    .filter((t) => {
-      if (t.type !== type) return false;
-      if (category !== null && t.category !== category) return false;
-      const [, tm, ty] = t.date.split("/").map(Number);
-      return ty === year && tm === month;
-    })
-    .reduce((sum, t) => sum + Number(t.amount), 0);
 
 export const exportToExcel = (transactions, expenseCategories, incomeCategories, isFiltered = false, filterCategories = []) => {
   const MONTH_NAMES = [

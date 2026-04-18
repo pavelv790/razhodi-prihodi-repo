@@ -138,8 +138,10 @@ export const useTransactions = () => {
         const from = parseDate(fromDate);
         if (from && date && date < from) return false;
       }
-      const to = toDate ? parseDate(toDate) : new Date();
-      if (to && date && date > to) return false;
+      if (toDate) {
+        const to = parseDate(toDate);
+        if (to && date && date > to) return false;
+      }
       if (categories && categories.length > 0) {
           if (!categories.includes(t.category)) return false;
           }
