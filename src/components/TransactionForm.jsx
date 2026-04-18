@@ -20,6 +20,7 @@ const TransactionForm = ({
 }) => {
   const [type, setType] = useState("expense");
   const [category, setCategory] = useState("");
+  const [stickyDate, setStickyDate] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(getTodayString());
@@ -112,7 +113,7 @@ const TransactionForm = ({
     setCategory("");
     setCategorySearch("");
     setAmount("");
-    setDate(getTodayString());
+    setDate(stickyDate ? date : getTodayString());
     setDescription("");
     setErrors({});
     setShowCategoryDropdown(false);
@@ -152,6 +153,11 @@ const TransactionForm = ({
       {showCurrencyNotice && (
         <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-2 text-sm text-orange-600 font-medium text-center">
           Избраната валута е {currency}
+        </div>
+      )}
+      {stickyDate && (
+        <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-2 text-sm text-orange-600 font-medium text-center animate-pulse">
+          📅 Всички транзакции се въвеждат за дата {date}
         </div>
       )}
 
@@ -252,7 +258,18 @@ const TransactionForm = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4 pb-4 border border-t-0 border-gray-200 rounded-b-2xl bg-blue-50">
           <div className="mt-3 md:col-span-2 border-t border-gray-200" />
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Дата</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs text-gray-500">Дата</label>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={stickyDate}
+                  onChange={(e) => setStickyDate(e.target.checked)}
+                  className="accent-orange-500 w-3.5 h-3.5"
+                />
+                <span className="text-xs text-gray-500">Запази датата</span>
+              </label>
+            </div>
             <DateInput
               value={date}
               onChange={(val) => { setDate(val); if (val.length === 10) descriptionRef.current?.focus(); }}
