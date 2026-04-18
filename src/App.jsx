@@ -74,9 +74,9 @@ const App = () => {
     if (!alreadyExported) {
       localStorage.setItem(weekKey, "true");
       setTimeout(() => {
-        const confirmed = window.confirm("Искате ли да свалите седмичния Excel файл с всички транзакции?");
+        const confirmed = window.confirm("Искате ли да свалите седмичния backup файл с всички данни?");
         if (confirmed) {
-          exportToExcel(transactions, expenseCategories, incomeCategories);
+          exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
         }
       }, 500);
     }
