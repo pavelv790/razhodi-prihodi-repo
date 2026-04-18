@@ -1,4 +1,4 @@
-import { X, Wallet, TrendingUp, TrendingDown, Filter, BarChart2, FileDown, Upload, Settings, Globe, Bookmark, Shield, List } from "lucide-react";
+import { X, Wallet, TrendingUp, TrendingDown, Filter, BarChart2, FileDown, Upload, Settings, Globe, Bookmark, Shield, List, Trash2 } from "lucide-react";
 
 const VERSION = "1.3.0";
 
@@ -130,13 +130,13 @@ const AboutModal = ({ onClose }) => {
             <Item label="Restore" desc="зарежда .json backup и възстановява напълно състоянието на приложението — транзакции, категории, запазени филтри и валута; излиза предупреждение преди потвърждение" />
           </Section>
 
-          <Section icon={FileDown} title="Автоматичен седмичен backup">
+          <Section icon={Trash2} title="Изтриване на всички данни">
             <Item label="Достъп" desc='Данни → „Изтрий всички данни"' />
             <Item label="Резултат" desc="изтрива всички транзакции; категориите остават непроменени" />
             <Item label="Необратимо" desc="действието не може да се отмени — направете Backup предварително" />
           </Section>
 
-          <Section icon={FileDown} title="Автоматичен седмичен експорт">
+          <Section icon={FileDown} title="Автоматичен седмичен backup">
             <Item label="При първото отваряне всяка седмица" desc="излиза въпрос дали да се свали седмичен backup (.json файл с всички данни — транзакции, категории, запазени филтри и валута)" />
             <Item label="Веднъж на седмица" desc="въпросът не се появява отново до следващата седмица" />
           </Section>
