@@ -80,5 +80,17 @@ export const useSavedFilters = () => {
     setSavedFilters((prev) => prev.filter((f) => f.id !== id));
   };
 
-  return { savedFilters, saveFilter, deleteFilter };
+  const restoreFilters = async (filters) => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      store.clear();
+      filters.forEach((f) => store.put(f));
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+
+  return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters };
 };

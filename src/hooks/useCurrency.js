@@ -75,10 +75,15 @@ export const useCurrency = () => {
     setRate(1);
   };
 
+  const restoreCurrency = (newCurrency, newRate) => {
+    setCurrency(newCurrency || "EUR");
+    setRate(newRate || 1);
+  };
+
   const convert = (amount) => {
     if (currency === "EUR") return parseFloat(Number(amount).toFixed(2));
     return parseFloat((Number(amount) / rate).toFixed(2));
   };
 
-  return { currency, rate, updateCurrency, resetToEur, convert, isLoaded };
+  return { currency, rate, updateCurrency, resetToEur, convert, isLoaded, restoreCurrency };
 };

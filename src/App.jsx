@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Wallet, Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
@@ -39,8 +39,8 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories();
-  const { savedFilters, saveFilter, deleteFilter } = useSavedFilters();
-  const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded } = useCurrency();
+  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters();
+  const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency();
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
@@ -54,7 +54,6 @@ const App = () => {
   const [pendingBackup, setPendingBackup] = useState(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const backupFileRef = useRef(null);
@@ -81,14 +80,14 @@ const App = () => {
         }
       }, 500);
     }
-  }, [transactions]);
+  }, [transactions, expenseCategories, incomeCategories]);
 
-  const handleFilter = (newFilters) => {
+  const handleFilter = useCallback((newFilters) => {
     setActiveFilters(newFilters);
     setIsFiltered(
-        !!(newFilters.fromDate || newFilters.toDate || (newFilters.categories && newFilters.categories.length > 0))
-        );
-          };
+      !!(newFilters.fromDate || newFilters.toDate || (newFilters.categories && newFilters.categories.length > 0))
+    );
+  }, []);
           
   const handleClearFilter = () => {
       const empty = { fromDate: "", toDate: "", categories: [] };
@@ -112,7 +111,7 @@ const App = () => {
   };
 
   const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories);
+    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -127,10 +126,17 @@ const App = () => {
     }
   };
 
-  const handleRestoreConfirm = () => {
+  const handleRestoreConfirm = async () => {
     replaceAllTransactions(pendingBackup.transactions);
     setExpenseCategoriesFromBackup(pendingBackup.expenseCategories);
     setIncomeCategoriesFromBackup(pendingBackup.incomeCategories);
+    if (pendingBackup.savedFilters) {
+      await restoreFilters(pendingBackup.savedFilters);
+      setSavedFilters(pendingBackup.savedFilters);
+    }
+    if (pendingBackup.currency) {
+      restoreCurrency(pendingBackup.currency, pendingBackup.rate);
+    }
     setPendingBackup(null);
     setShowRestoreConfirm(false);
   };

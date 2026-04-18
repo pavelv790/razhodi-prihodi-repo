@@ -1,10 +1,13 @@
-export const exportBackup = (transactions, expenseCategories, incomeCategories) => {
+export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate) => {
   const backup = {
-    version: "1.0",
+    version: "1.1",
     date: new Date().toISOString(),
     transactions,
     expenseCategories,
     incomeCategories,
+    savedFilters,
+    currency,
+    rate,
   };
 
   const blob = new Blob([JSON.stringify(backup, null, 2)], {
