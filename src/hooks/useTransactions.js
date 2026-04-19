@@ -143,8 +143,14 @@ export const useTransactions = () => {
         if (to && date && date > to) return false;
       }
       if (categories && categories.length > 0) {
-          if (!categories.includes(t.category)) return false;
+        const match = categories.some(
+          (key) => {
+            const [name, type] = key.split("::");
+            return t.category === name && t.type === type;
           }
+        );
+        if (!match) return false;
+      }
       return true;
     });
   };
