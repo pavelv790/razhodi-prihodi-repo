@@ -29,8 +29,6 @@ const ImportExportModal = ({
         exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []);
         onClose();
       }
-    } else if (mode === "import") {
-      fileInputRef.current?.click();
     }
   }, []);
 
@@ -164,10 +162,14 @@ const ImportExportModal = ({
         </div>
 
         <input
-          ref={fileInputRef}
+          ref={(el) => {
+            fileInputRef.current = el;
+            if (el && mode === "import" && step === "main") el.click();
+          }}
           type="file"
           accept=".xlsx"
           onChange={handleFileSelect}
+          onCancel={onClose}
           className="hidden"
         />
       </div>

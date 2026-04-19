@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Wallet, Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
@@ -58,8 +58,14 @@ const App = () => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const backupFileRef = useRef(null);
 
-  const filteredTransactions = getFilteredTransactions(activeFilters);
-  const summary = getSummary(filteredTransactions);
+  const filteredTransactions = useMemo(
+    () => getFilteredTransactions(activeFilters),
+    [transactions, activeFilters]
+  );
+  const summary = useMemo(
+    () => getSummary(filteredTransactions),
+    [filteredTransactions]
+  );
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -80,7 +86,7 @@ const App = () => {
         }
       }, 500);
     }
-  }, [transactions, expenseCategories, incomeCategories]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, currency, rate]);
 
   const handleFilter = useCallback((newFilters) => {
     setActiveFilters(newFilters);
@@ -130,6 +136,7 @@ const App = () => {
     replaceAllTransactions(pendingBackup.transactions);
     setExpenseCategoriesFromBackup(pendingBackup.expenseCategories);
     setIncomeCategoriesFromBackup(pendingBackup.incomeCategories);
+    handleClearFilter();
     if (pendingBackup.savedFilters) {
       await restoreFilters(pendingBackup.savedFilters);
       setSavedFilters(pendingBackup.savedFilters);

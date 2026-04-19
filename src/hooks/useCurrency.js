@@ -1,26 +1,8 @@
 import { useState, useEffect } from "react";
+import { openDB } from "../utils/db";
 
-const DB_NAME = "finance_db";
-const DB_VERSION = 5;
 const STORE = "currency";
 
-const openDB = () =>
-  new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("transactions"))
-        db.createObjectStore("transactions", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("categories"))
-        db.createObjectStore("categories", { keyPath: "type" });
-      if (!db.objectStoreNames.contains("saved_filters"))
-        db.createObjectStore("saved_filters", { keyPath: "id" });
-      if (!db.objectStoreNames.contains(STORE))
-        db.createObjectStore(STORE, { keyPath: "id" });
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
-  });
 
 const load = async () => {
   try {
@@ -76,8 +58,8 @@ export const useCurrency = () => {
   };
 
   const restoreCurrency = (newCurrency, newRate) => {
-    setCurrency(newCurrency || "EUR");
-    setRate(newRate || 1);
+    setCurrency(newCurrency ?? "EUR");
+    setRate(newRate ?? 1);
   };
 
   const convert = (amount) => {

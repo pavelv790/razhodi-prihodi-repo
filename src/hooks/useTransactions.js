@@ -1,31 +1,9 @@
 import { useState, useEffect } from "react";
 import { parseDate } from "../utils/formatters";
+import { openDB } from "../utils/db";
 
-// ============================================================
-// IndexedDB helpers — заместват localStorage.getItem/setItem
-// ============================================================
-
-const DB_NAME = "finance_db";
-const DB_VERSION = 5;
 const STORE = "transactions";
 
-const openDB = () =>
-  new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-  const db = e.target.result;
-  if (!db.objectStoreNames.contains("transactions"))
-    db.createObjectStore("transactions", { keyPath: "id" });
-  if (!db.objectStoreNames.contains("categories"))
-    db.createObjectStore("categories", { keyPath: "type" });
-  if (!db.objectStoreNames.contains("saved_filters"))
-    db.createObjectStore("saved_filters", { keyPath: "id" });
-  if (!db.objectStoreNames.contains("currency"))
-    db.createObjectStore("currency", { keyPath: "id" });
-};
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
-  });
 
 const loadAllFromDB = async () => {
   try {
@@ -88,11 +66,11 @@ export const useTransactions = () => {
     });
   }, []);
 
-  // Записваме в IndexedDB при всяка промяна
+  // Записваме в IndexedDB при всяка промяна (с debounce 300ms)
   useEffect(() => {
-    if (isLoaded) {
-      saveAllToDB(transactions);
-    }
+    if (!isLoaded) return;
+    const timer = setTimeout(() => saveAllToDB(transactions), 300);
+    return () => clearTimeout(timer);
   }, [transactions, isLoaded]);
 
   const addTransaction = (transaction) => {

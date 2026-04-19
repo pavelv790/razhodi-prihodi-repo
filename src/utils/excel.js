@@ -158,7 +158,7 @@ export const exportToExcel = (
     r++;
 
     ws["!ref"] = "A1:N" + r;
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 2, c: 0 }, e: { r: balanceHeaderRow - 1, c: 0 } }];
 
     const allCats = [...activeExpCats, ...activeIncCats, "ОБЩО ЗА МЕСЕЦА"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
@@ -385,7 +385,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
     ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
     r++;
 
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 2, c: 0 }, e: { r: balanceHeaderRow - 1, c: 0 } }];
     ws["!ref"] = "A1:" + colLetter(months.length + 1) + r;
 
     const allCats = [...new Set(transactions.map((t) => t.category)), "ОБЩО"];

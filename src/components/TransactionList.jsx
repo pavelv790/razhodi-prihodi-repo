@@ -33,9 +33,9 @@ const TransactionList = ({ transactions, onEdit, onDelete, isFiltered }) => {
     if (sortField === "date") {
       const dateA = parseDate(a.date);
       const dateB = parseDate(b.date);
-      comparison = (dateB || 0) - (dateA || 0);
+      comparison = (dateA || 0) - (dateB || 0);
     } else if (sortField === "amount") {
-      comparison = Number(b.amount) - Number(a.amount);
+      comparison = Number(a.amount) - Number(b.amount);
     } else if (sortField === "category") {
       comparison = a.category.localeCompare(b.category, "bg", { sensitivity: "base" });
     }

@@ -22,7 +22,7 @@ export const exportBackup = (transactions, expenseCategories, incomeCategories, 
   a.href = url;
   a.download = `Финанси_Backup_${day}.${month}.${year}.json`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 100);
 };
 
 export const importBackup = (file) => {

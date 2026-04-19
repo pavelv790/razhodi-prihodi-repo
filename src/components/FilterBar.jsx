@@ -3,92 +3,7 @@ import { Search, X, Calendar, ChevronDown, Bookmark, Trash2 } from "lucide-react
 import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 import DateInput from "./DateInput";
 
-const FilterBar = ({
-  filters,
-  setFilters,
-  onFilter,
-  onClear,
-  isFiltered,
-  expenseCategories,
-  incomeCategories,
-  savedFilters,
-  onSaveFilter,
-  onDeleteFilter,
-}) => {
-  const [expenseSearch, setExpenseSearch] = useState("");
-  const [incomeSearch, setIncomeSearch] = useState("");
-  const [showExpenseList, setShowExpenseList] = useState(false);
-  const [showIncomeList, setShowIncomeList] = useState(false);
-  const [filterName, setFilterName] = useState("");
-  const [showSaved, setShowSaved] = useState(false);
-
-  const selectedCategories = filters.categories || [];
-  const selectedExpenses = selectedCategories.filter((k) => k.endsWith("::expense"));
-  const selectedIncomes = selectedCategories.filter((k) => k.endsWith("::income"));
-
-  const visibleExpenses = expenseCategories.filter((c) =>
-    c.toLowerCase().startsWith(expenseSearch.toLowerCase())
-  );
-  const visibleIncomes = incomeCategories.filter((c) =>
-    c.toLowerCase().startsWith(incomeSearch.toLowerCase())
-  );
-
-  useEffect(() => {
-    onFilter(filters);
-  }, [filters, onFilter]);
-
-  const toggleCategory = (name, type) => {
-    const key = `${name}::${type}`;
-    const current = filters.categories || [];
-    const updated = current.includes(key)
-      ? current.filter((c) => c !== key)
-      : [...current, key];
-    setFilters((prev) => ({ ...prev, categories: updated }));
-  };
-
-  const toggleAllExpenses = () => {
-    const allKeys = expenseCategories.map((c) => `${c}::expense`);
-    const allSelected = allKeys.every((k) => selectedCategories.includes(k));
-    const rest = selectedCategories.filter((k) => !k.endsWith("::expense"));
-    setFilters((prev) => ({
-      ...prev,
-      categories: allSelected ? rest : [...rest, ...allKeys],
-    }));
-  };
-
-  const toggleAllIncomes = () => {
-    const allKeys = incomeCategories.map((c) => `${c}::income`);
-    const allSelected = allKeys.every((k) => selectedCategories.includes(k));
-    const rest = selectedCategories.filter((k) => !k.endsWith("::income"));
-    setFilters((prev) => ({
-      ...prev,
-      categories: allSelected ? rest : [...rest, ...allKeys],
-    }));
-  };
-
-  const handleThisMonth = () => {
-    const now = new Date();
-    setFilters((prev) => ({ ...prev, fromDate: getFirstDayOfMonth(now), toDate: getLastDayOfMonth(now) }));
-  };
-
-  const handleLastMonth = () => {
-    const now = new Date();
-    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    setFilters((prev) => ({ ...prev, fromDate: getFirstDayOfMonth(lastMonth), toDate: getLastDayOfMonth(lastMonth) }));
-  };
-
-  const handleSave = () => {
-    const name = filterName.trim();
-    if (!name) return;
-    onSaveFilter(name, { fromDate: filters.fromDate, toDate: filters.toDate, categories: filters.categories });
-    setFilterName("");
-  };
-
-  const handleLoad = (f) => {
-    setFilters({ fromDate: f.fromDate, toDate: f.toDate, categories: f.categories });
-  };
-
-  const CategoryDropdown = ({
+const CategoryDropdown = ({
     label,
     color,
     categories,
@@ -98,8 +13,11 @@ const FilterBar = ({
     show,
     setShow,
     selected,
+    selectedCategories,
     type,
     onToggleAll,
+    toggleCategory,
+    setFilters,
   }) => {
     const allSelected = categories.length > 0 && categories.every((c) => selectedCategories.includes(`${c}::${type}`));
 
@@ -204,6 +122,94 @@ const FilterBar = ({
     );
   };
 
+const FilterBar = ({
+  filters,
+  setFilters,
+  onFilter,
+  onClear,
+  isFiltered,
+  expenseCategories,
+  incomeCategories,
+  savedFilters,
+  onSaveFilter,
+  onDeleteFilter,
+}) => {
+  const [expenseSearch, setExpenseSearch] = useState("");
+  const [incomeSearch, setIncomeSearch] = useState("");
+  const [showExpenseList, setShowExpenseList] = useState(false);
+  const [showIncomeList, setShowIncomeList] = useState(false);
+  const [filterName, setFilterName] = useState("");
+  const [showSaved, setShowSaved] = useState(false);
+
+  const selectedCategories = filters.categories || [];
+  const selectedExpenses = selectedCategories.filter((k) => k.endsWith("::expense"));
+  const selectedIncomes = selectedCategories.filter((k) => k.endsWith("::income"));
+
+  const visibleExpenses = expenseCategories.filter((c) =>
+    c.toLowerCase().startsWith(expenseSearch.toLowerCase())
+  );
+  const visibleIncomes = incomeCategories.filter((c) =>
+    c.toLowerCase().startsWith(incomeSearch.toLowerCase())
+  );
+
+  useEffect(() => {
+    onFilter(filters);
+  }, [filters, onFilter]);
+
+  const toggleCategory = (name, type) => {
+    const key = `${name}::${type}`;
+    setFilters((prev) => {
+      const current = prev.categories || [];
+      const updated = current.includes(key)
+        ? current.filter((c) => c !== key)
+        : [...current, key];
+      return { ...prev, categories: updated };
+    });
+  };
+
+  const toggleAllExpenses = () => {
+    const allKeys = expenseCategories.map((c) => `${c}::expense`);
+    const allSelected = allKeys.every((k) => selectedCategories.includes(k));
+    const rest = selectedCategories.filter((k) => !k.endsWith("::expense"));
+    setFilters((prev) => ({
+      ...prev,
+      categories: allSelected ? rest : [...rest, ...allKeys],
+    }));
+  };
+
+  const toggleAllIncomes = () => {
+    const allKeys = incomeCategories.map((c) => `${c}::income`);
+    const allSelected = allKeys.every((k) => selectedCategories.includes(k));
+    const rest = selectedCategories.filter((k) => !k.endsWith("::income"));
+    setFilters((prev) => ({
+      ...prev,
+      categories: allSelected ? rest : [...rest, ...allKeys],
+    }));
+  };
+
+  const handleThisMonth = () => {
+    const now = new Date();
+    setFilters((prev) => ({ ...prev, fromDate: getFirstDayOfMonth(now), toDate: getLastDayOfMonth(now) }));
+  };
+
+  const handleLastMonth = () => {
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    setFilters((prev) => ({ ...prev, fromDate: getFirstDayOfMonth(lastMonth), toDate: getLastDayOfMonth(lastMonth) }));
+  };
+
+  const handleSave = () => {
+    const name = filterName.trim();
+    if (!name) return;
+    onSaveFilter(name, { fromDate: filters.fromDate, toDate: filters.toDate, categories: filters.categories });
+    setFilterName("");
+  };
+
+  const handleLoad = (f) => {
+    setFilters({ fromDate: f.fromDate, toDate: f.toDate, categories: f.categories });
+  };
+
+  
   return (
     <div className="p-5">
 
@@ -238,8 +244,11 @@ const FilterBar = ({
           show={showExpenseList}
           setShow={setShowExpenseList}
           selected={selectedExpenses}
+          selectedCategories={selectedCategories}
           type="expense"
           onToggleAll={toggleAllExpenses}
+          toggleCategory={toggleCategory}
+          setFilters={setFilters}
         />
         <CategoryDropdown
           label="Приходи"
@@ -251,8 +260,11 @@ const FilterBar = ({
           show={showIncomeList}
           setShow={setShowIncomeList}
           selected={selectedIncomes}
+          selectedCategories={selectedCategories}
           type="income"
           onToggleAll={toggleAllIncomes}
+          toggleCategory={toggleCategory}
+          setFilters={setFilters}
         />
       </div>
 

@@ -35,6 +35,7 @@ const TransactionForm = ({
   const [showCurrencyNotice, setShowCurrencyNotice] = useState(false);
   const amountRef = useRef(null);
   const descriptionRef = useRef(null);
+  const successTimerRef = useRef(null);
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
@@ -83,7 +84,7 @@ const TransactionForm = ({
     if (!category) newErrors.category = "Изберете категория";
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
       newErrors.amount = "Въведете валидна сума";
-    if (showExtra && !isValidDate(date))
+    if (!isValidDate(date))
       newErrors.date = "Въведете валидна дата (ДД/ММ/ГГГГ)";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -103,12 +104,16 @@ const TransactionForm = ({
     } else {
       onAdd(transaction);
     }
-    if (!editingTransaction) setShowSuccess(true);
+    if (!editingTransaction) {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      setShowSuccess(true);
+      successTimerRef.current = setTimeout(() => setShowSuccess(false), 1000);
+    }
     handleReset();
-    setTimeout(() => setShowSuccess(false), 1000);
   };
 
   const handleReset = () => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setType("expense");
     setCategory("");
     setCategorySearch("");

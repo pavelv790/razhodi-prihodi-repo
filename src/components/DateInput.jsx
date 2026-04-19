@@ -67,6 +67,11 @@ const DateInput = ({ value, onChange, className, hasError }) => {
 
   const handleDayChange = (e) => {
     let val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (val === "") {
+      setError("");
+      onChange(buildValue(val, month, year));
+      return;
+    }
     const maxDay = getMaxDay(month, year);
     if (Number(val) > maxDay) {
       setError(`Този месец има максимум ${maxDay} дни`);
@@ -80,6 +85,11 @@ const DateInput = ({ value, onChange, className, hasError }) => {
 
   const handleMonthChange = (e) => {
     let val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (val === "") {
+      setError("");
+      onChange(buildValue(day, val, year));
+      return;
+    }
     if (Number(val) > 12) {
       setError("Невалиден месец — максимум 12");
       val = "12";

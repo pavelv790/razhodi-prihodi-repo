@@ -17,7 +17,7 @@ const getWindowMonths = (rollingMonths, targetYear, targetMonth) => {
 
 const getRollingAverage = (transactions, category, type, rollingMonths) => {
   const now = new Date();
-  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth() + 1;
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
   const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const total = window.reduce((sum, { year, month }) => {
@@ -37,7 +37,7 @@ const getRollingAverage = (transactions, category, type, rollingMonths) => {
 
 const getTotalRollingAverage = (transactions, type, rollingMonths) => {
   const now = new Date();
-  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth() + 1;
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
   const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const total = window.reduce((sum, { year, month }) => {
@@ -58,7 +58,7 @@ const getTotalRollingAverage = (transactions, type, rollingMonths) => {
 // Взима всички категории, които имат поне една транзакция в прозореца
 const getCategoriesInWindow = (transactions, type, rollingMonths) => {
   const now = new Date();
-  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth() + 1;
+  const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
   const lastYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const window = getWindowMonths(rollingMonths, lastYear, lastMonth);
   const windowSet = new Set(window.map(({ year, month }) => `${year}-${month}`));

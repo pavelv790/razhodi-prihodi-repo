@@ -1,26 +1,8 @@
 import { useState, useEffect } from "react";
+import { openDB } from "../utils/db";
 
-const DB_NAME = "finance_db";
-const DB_VERSION = 5;
 const STORE = "saved_filters";
 
-const openDB = () =>
-  new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("transactions"))
-        db.createObjectStore("transactions", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("categories"))
-        db.createObjectStore("categories", { keyPath: "type" });
-      if (!db.objectStoreNames.contains(STORE))
-        db.createObjectStore(STORE, { keyPath: "id" });
-      if (!db.objectStoreNames.contains("currency"))
-        db.createObjectStore("currency", { keyPath: "id" });
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
-  });
 
 const loadAll = async () => {
   try {

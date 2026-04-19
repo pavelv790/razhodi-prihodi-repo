@@ -4,30 +4,10 @@ import {
   DEFAULT_INCOME_CATEGORIES,
   sortCategories,
 } from "../constants/categories";
+import { openDB } from "../utils/db";
 
-// ============================================================
-// IndexedDB helpers — отделна база/store за категориите
-// ============================================================
-
-const DB_NAME = "finance_db";
-const DB_VERSION = 5;
 const STORE = "categories";
 
-const openDB = () =>
-  new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        // Пазим два записа: "expense" и "income"
-        db.createObjectStore(STORE, { keyPath: "type" });
-      }
-      if (!db.objectStoreNames.contains("currency"))
-        db.createObjectStore("currency", { keyPath: "id" });
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
-  });
 
 const loadFromDB = async (type, defaultValue) => {
   try {
