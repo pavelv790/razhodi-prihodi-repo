@@ -87,7 +87,7 @@ export const exportToExcel = (
 
   const years = [...new Set(
     transactions.map((t) => Number(t.date.split("/")[2]))
-  )].sort();
+  )].sort((a, b) => b - a); // низходящ ред — последната година първа
 
   years.forEach((year) => {
     const ws = {};
@@ -137,7 +137,28 @@ export const exportToExcel = (
     const incEnd = r - 1;
     totalRow(incStart, incEnd);
 
+    r++;
+
+    const balanceHeaderRow = r;
+    ws["A" + r] = cell("БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
+    MONTH_NAMES.forEach((m, i) => {
+      ws[colLetter(i + 1) + r] = cell(m, COLOR.monthBg, { bold: true, align: "center" });
+    });
+    ws[colLetter(13) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+    r++;
+
+    ws["A" + r] = cell("", COLOR.titleBg);
+    for (let m = 1; m <= 12; m++) {
+      const inc = activeIncCats.reduce((s, cat) => s + getAmount(year, m, "income", cat), 0);
+      const exp = activeExpCats.reduce((s, cat) => s + getAmount(year, m, "expense", cat), 0);
+      const bal = inc - exp;
+      ws[colLetter(m) + r] = cell(bal, bal >= 0 ? "C6EFCE" : "FFC7CE", { align: "right" });
+    }
+    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
+    r++;
+
     ws["!ref"] = "A1:N" + r;
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
 
     const allCats = [...activeExpCats, ...activeIncCats, "ОБЩО ЗА МЕСЕЦА"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
@@ -150,6 +171,7 @@ export const exportToExcel = (
     XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
   });
 
+  // История на транзакциите — последен лист
   const wsH = {};
   ["Категория", "Сума", "Дата", "Описание"].forEach((h, i) => {
     wsH[colLetter(i) + "1"] = cell(h, COLOR.monthBg, { bold: true, align: "center" });
@@ -187,7 +209,6 @@ export const exportToExcel = (
   const d = String(today.getDate()).padStart(2, "0");
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
-
   XLSXStyle.writeFile(workbook, "Разходи-Приходи_" + d + "." + m + "." + y + ".xlsx");
 };
 
@@ -289,7 +310,8 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
     return total / rollingMonths;
   };
 
-  const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort();
+  const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort((a, b) => b - a); // низходящ ред
+
   const workbook = XLSXStyle.utils.book_new();
 
   years.forEach((year) => {
@@ -321,6 +343,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
       months.forEach((m, i) => {
         ws[colLetter(i + 1) + r] = cell(monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
       });
+      ws[colLetter(months.length + 1) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
       r++;
 
       cats.forEach((cat) => {
@@ -329,6 +352,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
           const avg = getRollingAverage(cat, type, year, m);
           ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.white, { align: "right" });
         });
+        ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
         r++;
       });
 
@@ -337,18 +361,39 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
         const avg = getTotalRollingAverage(type, year, m);
         ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.totalBg, { align: "right" });
       });
+      ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.totalBg);
       r++;
-
       r++;
     });
 
-    ws["!ref"] = "A1:" + colLetter(months.length) + r;
+    r++;
+    const balanceHeaderRow = r;
+    ws["A" + r] = cell("БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
+    months.forEach((m, i) => {
+      ws[colLetter(i + 1) + r] = cell(monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
+    });
+    ws[colLetter(months.length + 1) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+    r++;
+
+    ws["A" + r] = cell("", COLOR.titleBg);
+    months.forEach((m, i) => {
+      const incAvg = getTotalRollingAverage("income", year, m);
+      const expAvg = getTotalRollingAverage("expense", year, m);
+      const balance = Math.round((incAvg - expAvg) * 100) / 100;
+      ws[colLetter(i + 1) + r] = cell(balance, balance >= 0 ? "C6EFCE" : "FFC7CE", { align: "right" });
+    });
+    ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
+    r++;
+
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
+    ws["!ref"] = "A1:" + colLetter(months.length + 1) + r;
 
     const allCats = [...new Set(transactions.map((t) => t.category)), "ОБЩО"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
     ws["!cols"] = [
       { wch: Math.max(maxLen + 2, 20) },
       ...months.map((m) => ({ wch: Math.max(monthNames[m - 1].length + 3, 10) })),
+      { wch: 14 },
     ];
 
     XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
