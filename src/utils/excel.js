@@ -1,22 +1,71 @@
+import XLSXStyle from "xlsx-js-style";
 import * as XLSX from "xlsx";
 
+const COLOR = {
+  titleBg:  "FFFF00",
+  monthBg:  "D7E4BD",
+  sumColBg: "8EACDC",
+  expRowBg: "FCD5B5",
+  incRowBg: "F8CDAC",
+  sumNBg:   "DEEBF6",
+  totalBg:  "DEE7E5",
+  white:    "FFFFFF",
+};
 
-export const exportToExcel = (transactions, expenseCategories, incomeCategories, isFiltered = false, filterCategories = []) => {
+const border = {
+  top:    { style: "thin" },
+  bottom: { style: "thin" },
+  left:   { style: "thin" },
+  right:  { style: "thin" },
+};
+
+const numFmt = "0.00";
+
+const colLetter = (i) => {
+  let s = "";
+  i++;
+  while (i > 0) {
+    s = String.fromCharCode(((i - 1) % 26) + 65) + s;
+    i = Math.floor((i - 1) / 26);
+  }
+  return s;
+};
+
+const cell = (value, bgColor, opts = {}) => ({
+  v: value ?? "",
+  t: typeof value === "number" ? "n" : "s",
+  s: {
+    fill:      { fgColor: { rgb: bgColor } },
+    font:      { name: "Calibri", sz: opts.sz ?? 11, bold: opts.bold ?? false },
+    alignment: { horizontal: opts.align ?? "left", vertical: "center" },
+    border,
+    ...(typeof value === "number" ? { numFmt } : {}),
+  },
+});
+
+const fCell = (formula, bgColor) => ({
+  f: formula,
+  t: "n",
+  s: {
+    fill:      { fgColor: { rgb: bgColor } },
+    font:      { name: "Calibri", sz: 11, bold: false },
+    alignment: { horizontal: "right", vertical: "center" },
+    border,
+    numFmt,
+  },
+});
+
+export const exportToExcel = (
+  transactions,
+  expenseCategories,
+  incomeCategories,
+  isFiltered = false,
+  filterCategories = []
+) => {
   const MONTH_NAMES = [
-    "януари", "февруари", "март", "април", "май", "юни",
-    "юли", "август", "септември", "октомври", "ноември", "декември",
+    "януари","февруари","март","април","май","юни",
+    "юли","август","септември","октомври","ноември","декември",
   ];
-
-  // Буква на колона по индекс (0=A, 1=B, ...)
-  const col = (i) => {
-    let s = "";
-    i++;
-    while (i > 0) {
-      s = String.fromCharCode(((i - 1) % 26) + 65) + s;
-      i = Math.floor((i - 1) / 26);
-    }
-    return s;
-  };
 
   const getAmount = (year, month, type, category) =>
     transactions
@@ -27,145 +76,119 @@ export const exportToExcel = (transactions, expenseCategories, incomeCategories,
       })
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  // Филтриране на категории
-  const activeExpCats = (isFiltered && filterCategories.length > 0)
+  const activeExpCats = isFiltered && filterCategories.length > 0
     ? expenseCategories.filter((c) => filterCategories.includes(c))
     : expenseCategories;
-  const activeIncCats = (isFiltered && filterCategories.length > 0)
+  const activeIncCats = isFiltered && filterCategories.length > 0
     ? incomeCategories.filter((c) => filterCategories.includes(c))
     : incomeCategories;
 
-  const workbook = XLSX.utils.book_new();
+  const workbook = XLSXStyle.utils.book_new();
 
   const years = [...new Set(
     transactions.map((t) => Number(t.date.split("/")[2]))
   )].sort();
 
   years.forEach((year) => {
-    // Използваме aoa_to_sheet но формулите слагаме директно като обекти
-    // за да избегнем апострофа
+    const ws = {};
+    let r = 1;
 
-    const ws = XLSX.utils.book_new().Sheets; // само за да имаме референция
-    // Всъщност ще строим worksheet ръчно с обекти
-
-    const wsData = {};
-    let currentRow = 1;
-
-    const setCell = (r, c, value) => {
-      const cellRef = col(c) + r;
-      if (typeof value === "string" && value.startsWith("=")) {
-        wsData[cellRef] = { t: "n", f: value.slice(1) };
-      } else if (typeof value === "number") {
-        wsData[cellRef] = { t: "n", v: value };
-      } else if (value === null || value === undefined) {
-        // пропускаме
-      } else {
-        wsData[cellRef] = { t: "s", v: String(value) };
-      }
+    const titleRow = (label) => {
+      ws["A" + r] = cell(label, COLOR.titleBg, { bold: true, sz: 16 });
+      MONTH_NAMES.forEach((m, i) => {
+        ws[colLetter(i + 1) + r] = cell(m, COLOR.monthBg, { bold: true, align: "center" });
+      });
+      ws[colLetter(13) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+      r++;
     };
 
-    // ── РАЗХОДИ ──
-    // Ред 1: хедър
-    setCell(currentRow, 0, "");
-    MONTH_NAMES.forEach((m, i) => setCell(currentRow, i + 1, m));
-    setCell(currentRow, 13, "СУМАРНО");
-    currentRow++;
-
-    // Ред 2: РАЗХОДИ етикет
-    setCell(currentRow, 0, "РАЗХОДИ");
-    currentRow++;
-
-    const expStartRow = currentRow;
-
-    activeExpCats.forEach((cat) => {
-      setCell(currentRow, 0, cat);
+    const catRow = (cat, type) => {
+      const bg = type === "expense" ? COLOR.expRowBg : COLOR.incRowBg;
+      ws["A" + r] = cell(cat, bg);
       for (let m = 1; m <= 12; m++) {
-        const amount = getAmount(year, m, "expense", cat);
-        setCell(currentRow, m, amount || 0);
+        const amt = getAmount(year, m, type, cat);
+        ws[colLetter(m) + r] = cell(amt || 0, COLOR.white, { align: "right" });
       }
-      // СУМАРНО за реда
-      setCell(currentRow, 13, `=SUM(B${currentRow}:M${currentRow})`);
-      currentRow++;
-    });
+      ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
+      r++;
+    };
 
-    const expEndRow = currentRow - 1;
-
-    // ОБЩО ЗА МЕСЕЦА — диапазонът е точно expStartRow:expEndRow
-    setCell(currentRow, 0, "ОБЩО ЗА МЕСЕЦА");
-    for (let m = 1; m <= 12; m++) {
-      setCell(currentRow, m, `=SUM(${col(m)}${expStartRow}:${col(m)}${expEndRow})`);
-    }
-    setCell(currentRow, 13, `=SUM(B${currentRow}:M${currentRow})`);
-    currentRow++;
-
-    // Празен ред
-    currentRow++;
-
-    // ── ПРИХОДИ ──
-    // Хедър ред с месеците
-    setCell(currentRow, 0, "");
-    MONTH_NAMES.forEach((m, i) => setCell(currentRow, i + 1, m));
-    setCell(currentRow, 13, "СУМАРНО");
-    currentRow++;
-
-    // ПРИХОДИ етикет
-    setCell(currentRow, 0, "ПРИХОДИ");
-    currentRow++;
-
-    const incStartRow = currentRow;
-
-    activeIncCats.forEach((cat) => {
-      setCell(currentRow, 0, cat);
+    const totalRow = (startR, endR) => {
+      ws["A" + r] = cell("ОБЩО ЗА МЕСЕЦА", COLOR.totalBg);
       for (let m = 1; m <= 12; m++) {
-        const amount = getAmount(year, m, "income", cat);
-        setCell(currentRow, m, amount || 0);
+        const cl = colLetter(m);
+        ws[cl + r] = fCell("SUM(" + cl + startR + ":" + cl + endR + ")", COLOR.totalBg);
       }
-      setCell(currentRow, 13, `=SUM(B${currentRow}:M${currentRow})`);
-      currentRow++;
-    });
+      ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.totalBg);
+      r++;
+    };
 
-    const incEndRow = currentRow - 1;
+    titleRow("РАЗХОДИ");
+    const expStart = r;
+    activeExpCats.forEach((cat) => catRow(cat, "expense"));
+    const expEnd = r - 1;
+    totalRow(expStart, expEnd);
 
-    // ОБЩО ЗА МЕСЕЦА
-    setCell(currentRow, 0, "ОБЩО ЗА МЕСЕЦА");
-    for (let m = 1; m <= 12; m++) {
-      setCell(currentRow, m, `=SUM(${col(m)}${incStartRow}:${col(m)}${incEndRow})`);
-    }
-    setCell(currentRow, 13, `=SUM(B${currentRow}:M${currentRow})`);
-    currentRow++;
+    r++;
 
-    // Задаваме диапазона на worksheet-а
-    wsData["!ref"] = `A1:N${currentRow}`;
-    wsData["!cols"] = [
-      { wch: 42 },
-      ...Array(12).fill({ wch: 12 }),
+    titleRow("ПРИХОДИ");
+    const incStart = r;
+    activeIncCats.forEach((cat) => catRow(cat, "income"));
+    const incEnd = r - 1;
+    totalRow(incStart, incEnd);
+
+    ws["!ref"] = "A1:N" + r;
+
+    const allCats = [...activeExpCats, ...activeIncCats, "ОБЩО ЗА МЕСЕЦА"];
+    const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
+    ws["!cols"] = [
+      { wch: Math.max(maxLen + 2, 20) },
+      ...MONTH_NAMES.map((m) => ({ wch: Math.max(m.length + 3, 10) })),
       { wch: 14 },
     ];
 
-    XLSX.utils.book_append_sheet(workbook, wsData, String(year));
+    XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
   });
 
-  // Sheet: История на транзакциите
-  const historyRows = [["Категория", "Сума", "Дата", "Описание"]];
+  const wsH = {};
+  ["Категория", "Сума", "Дата", "Описание"].forEach((h, i) => {
+    wsH[colLetter(i) + "1"] = cell(h, COLOR.monthBg, { bold: true, align: "center" });
+  });
+
   const sorted = [...transactions].sort((a, b) => {
     const [da, ma, ya] = a.date.split("/").map(Number);
     const [db, mb, yb] = b.date.split("/").map(Number);
     return new Date(yb, mb - 1, db) - new Date(ya, ma - 1, da);
   });
-  sorted.forEach((t) => {
-    const amount = t.type === "expense" ? -Number(t.amount) : Number(t.amount);
-    historyRows.push([t.category, amount, t.date, t.description || ""]);
+
+  let maxCatLen = 10, maxDescLen = 10;
+  sorted.forEach((t, idx) => {
+    const rr = idx + 2;
+    const amt = t.type === "expense" ? -Number(t.amount) : Number(t.amount);
+    wsH["A" + rr] = cell(t.category, COLOR.white);
+    wsH["B" + rr] = cell(amt, COLOR.white, { align: "right" });
+    wsH["C" + rr] = cell(t.date, COLOR.white, { align: "center" });
+    wsH["D" + rr] = cell(t.description || "", COLOR.white);
+    if (t.category.length > maxCatLen) maxCatLen = t.category.length;
+    if ((t.description || "").length > maxDescLen) maxDescLen = (t.description || "").length;
   });
-  const wsHistory = XLSX.utils.aoa_to_sheet(historyRows);
-  wsHistory["!cols"] = [{ wch: 42 }, { wch: 14 }, { wch: 12 }, { wch: 40 }];
-  XLSX.utils.book_append_sheet(workbook, wsHistory, "История на транзакциите");
+
+  wsH["!ref"]  = "A1:D" + (sorted.length + 1);
+  wsH["!cols"] = [
+    { wch: maxCatLen + 2 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: maxDescLen + 2 },
+  ];
+
+  XLSXStyle.utils.book_append_sheet(workbook, wsH, "История на транзакциите");
 
   const today = new Date();
-  const day = String(today.getDate()).padStart(2, "0");
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const year = today.getFullYear();
+  const d = String(today.getDate()).padStart(2, "0");
+  const m = String(today.getMonth() + 1).padStart(2, "0");
+  const y = today.getFullYear();
 
-  XLSX.writeFile(workbook, `Разходи-Приходи_${day}.${month}.${year}.xlsx`);
+  XLSXStyle.writeFile(workbook, "Разходи-Приходи_" + d + "." + m + "." + y + ".xlsx");
 };
 
 export const importFromExcel = (file) => {
@@ -175,39 +198,28 @@ export const importFromExcel = (file) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: "array" });
-
-        const historySheetName = workbook.SheetNames.find((name) =>
-          name.includes("История")
-        );
-
+        const historySheetName = workbook.SheetNames.find((name) => name.includes("История"));
         if (!historySheetName) {
-          reject(new Error("Файлът не съдържа лист 'История на транзакциите'. Моля използвайте файл експортиран от това приложение."));
+          reject(new Error("Файлът не съдържа лист 'История на транзакциите'."));
           return;
         }
-
         const worksheet = workbook.Sheets[historySheetName];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         const transactions = [];
-
         rows.slice(1).forEach((row) => {
           if (!row || row.length === 0) return;
-          const category = String(row[0] || "").trim();
-          const amount = Number(row[1]);
-          const date = String(row[2] || "").trim();
+          const category    = String(row[0] || "").trim();
+          const amount      = Number(row[1]);
+          const date        = String(row[2] || "").trim();
           const description = String(row[3] || "").trim();
-
           if (!category || isNaN(amount) || amount === 0 || !date) return;
-
           transactions.push({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${transactions.length}`,
+            id: Date.now() + "-" + Math.random().toString(36).slice(2, 9) + "-" + transactions.length,
             type: amount < 0 ? "expense" : "income",
-            category,
-            date,
-            description,
+            category, date, description,
             amount: Math.abs(amount),
           });
         });
-
         resolve(transactions);
       } catch (err) {
         reject(new Error("Грешка при четене на файла: " + err.message));
@@ -221,7 +233,6 @@ export const importFromExcel = (file) => {
 export const findDuplicates = (existing, incoming) => {
   const duplicates = [];
   const unique = [];
-
   incoming.forEach((newT) => {
     const isDuplicate = existing.some(
       (existT) =>
@@ -234,33 +245,28 @@ export const findDuplicates = (existing, incoming) => {
     if (isDuplicate) duplicates.push(newT);
     else unique.push(newT);
   });
-
   return { duplicates, unique };
 };
 
 export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
-  const workbook = XLSX.utils.book_new();
-
   const monthNames = [
-    "Януари", "Февруари", "Март", "Април", "Май", "Юни",
-    "Юли", "Август", "Септември", "Октомври", "Ноември", "Декември",
+    "Януари","Февруари","Март","Април","Май","Юни",
+    "Юли","Август","Септември","Октомври","Ноември","Декември",
   ];
-
   const now = new Date();
-  const lastCompletedYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const lastCompletedYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const lastCompletedMonth = now.getMonth() === 0 ? 12 : now.getMonth();
 
   const getRollingAverage = (category, type, targetYear, targetMonth) => {
     let total = 0;
     for (let i = 0; i < rollingMonths; i++) {
-      let m = targetMonth - i;
-      let y = targetYear;
-      while (m <= 0) { m += 12; y--; }
+      let mo = targetMonth - i, yr = targetYear;
+      while (mo <= 0) { mo += 12; yr--; }
       total += transactions
         .filter((t) => {
           if (t.type !== type || t.category !== category) return false;
           const [, tm, ty] = t.date.split("/").map(Number);
-          return ty === y && tm === m;
+          return ty === yr && tm === mo;
         })
         .reduce((s, t) => s + Number(t.amount), 0);
     }
@@ -270,83 +276,87 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
   const getTotalRollingAverage = (type, targetYear, targetMonth) => {
     let total = 0;
     for (let i = 0; i < rollingMonths; i++) {
-      let m = targetMonth - i;
-      let y = targetYear;
-      while (m <= 0) { m += 12; y--; }
+      let mo = targetMonth - i, yr = targetYear;
+      while (mo <= 0) { mo += 12; yr--; }
       total += transactions
         .filter((t) => {
           if (t.type !== type) return false;
           const [, tm, ty] = t.date.split("/").map(Number);
-          return ty === y && tm === m;
+          return ty === yr && tm === mo;
         })
         .reduce((s, t) => s + Number(t.amount), 0);
     }
     return total / rollingMonths;
   };
 
-  const years = [...new Set(
-    transactions.map((t) => Number(t.date.split("/")[2]))
-  )].sort();
+  const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort();
+  const workbook = XLSXStyle.utils.book_new();
 
   years.forEach((year) => {
     const months = [];
     for (let m = 1; m <= 12; m++) {
-      if (
-        year < lastCompletedYear ||
-        (year === lastCompletedYear && m <= lastCompletedMonth)
-      ) {
+      if (year < lastCompletedYear || (year === lastCompletedYear && m <= lastCompletedMonth))
         months.push(m);
-      }
     }
     if (months.length === 0) return;
 
-    const rows = [];
+    const ws = {};
+    let r = 1;
 
     ["expense", "income"].forEach((type) => {
       const label = type === "expense" ? "РАЗХОДИ" : "ПРИХОДИ";
+      const rowBg = type === "expense" ? COLOR.expRowBg : COLOR.incRowBg;
 
       const cats = [...new Set(
         transactions
           .filter((t) => {
             if (t.type !== type) return false;
-            const [, , ty] = t.date.split("/").map(Number);
+            const [,,ty] = t.date.split("/").map(Number);
             return ty === year;
           })
           .map((t) => t.category)
       )].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
 
-      rows.push([label, "Категория", ...months.map((m) => monthNames[m - 1])]);
+      ws["A" + r] = cell(label, COLOR.titleBg, { bold: true, sz: 16 });
+      months.forEach((m, i) => {
+        ws[colLetter(i + 1) + r] = cell(monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
+      });
+      r++;
 
       cats.forEach((cat) => {
-        const values = months.map((m) => {
+        ws["A" + r] = cell(cat, rowBg);
+        months.forEach((m, i) => {
           const avg = getRollingAverage(cat, type, year, m);
-          return avg > 0 ? Math.round(avg * 100) / 100 : 0;
+          ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.white, { align: "right" });
         });
-        rows.push(["", cat, ...values]);
+        r++;
       });
 
-      const totalValues = months.map((m) => {
+      ws["A" + r] = cell("ОБЩО", COLOR.totalBg, { bold: true });
+      months.forEach((m, i) => {
         const avg = getTotalRollingAverage(type, year, m);
-        return avg > 0 ? Math.round(avg * 100) / 100 : 0;
+        ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.totalBg, { align: "right" });
       });
-      rows.push(["", "ОБЩО", ...totalValues]);
-      rows.push([]);
+      r++;
+
+      r++;
     });
 
-    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws["!ref"] = "A1:" + colLetter(months.length) + r;
+
+    const allCats = [...new Set(transactions.map((t) => t.category)), "ОБЩО"];
+    const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
     ws["!cols"] = [
-      { wch: 10 },
-      { wch: 38 },
-      ...Array(12).fill({ wch: 12 }),
+      { wch: Math.max(maxLen + 2, 20) },
+      ...months.map((m) => ({ wch: Math.max(monthNames[m - 1].length + 3, 10) })),
     ];
 
-    XLSX.utils.book_append_sheet(workbook, ws, String(year));
+    XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
   });
 
   const today = new Date();
-  const day = String(today.getDate()).padStart(2, "0");
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const year = today.getFullYear();
-
-  XLSX.writeFile(workbook, `Месечна_Статистика_${day}.${month}.${year}.xlsx`);
+  const d = String(today.getDate()).padStart(2, "0");
+  const m = String(today.getMonth() + 1).padStart(2, "0");
+  const y = today.getFullYear();
+  XLSXStyle.writeFile(workbook, "Месечна_Статистика_" + d + "." + m + "." + y + ".xlsx");
 };
