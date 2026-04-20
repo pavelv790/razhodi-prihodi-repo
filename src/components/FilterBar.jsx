@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, X, Calendar, ChevronDown, Bookmark, Trash2 } from "lucide-react";
 import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 import DateInput from "./DateInput";
@@ -152,7 +152,13 @@ const FilterBar = ({
     c.toLowerCase().startsWith(incomeSearch.toLowerCase())
   );
 
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     onFilter(filters);
   }, [filters, onFilter]);
 

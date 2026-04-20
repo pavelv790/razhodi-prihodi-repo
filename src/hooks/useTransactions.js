@@ -101,7 +101,9 @@ export const useTransactions = () => {
   };
 
   const replaceAllTransactions = (newTransactions) => {
-    setTransactions(sortByDate(newTransactions));
+    const sorted = sortByDate(newTransactions);
+    setTransactions(sorted);
+    saveAllToDB(sorted);
   };
 
   const addTransactions = (newTransactions) => {

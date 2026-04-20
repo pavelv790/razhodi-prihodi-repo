@@ -29,6 +29,8 @@ const ImportExportModal = ({
         exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []);
         onClose();
       }
+    } else if (mode === "import") {
+      setTimeout(() => fileInputRef.current?.click(), 50);
     }
   }, []);
 
@@ -71,6 +73,7 @@ const ImportExportModal = ({
         type="file"
         accept=".xlsx"
         onChange={handleFileSelect}
+        onClick={(e) => { e.target.value = ""; }}
         className="hidden"
       />
     );
@@ -162,13 +165,11 @@ const ImportExportModal = ({
         </div>
 
         <input
-          ref={(el) => {
-            fileInputRef.current = el;
-            if (el && mode === "import" && step === "main") el.click();
-          }}
+          ref={fileInputRef}
           type="file"
           accept=".xlsx"
           onChange={handleFileSelect}
+          onClick={(e) => { e.target.value = ""; }}
           onCancel={onClose}
           className="hidden"
         />

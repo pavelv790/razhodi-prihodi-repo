@@ -78,6 +78,11 @@ const TransactionForm = ({
     setCategorySearch("");
     setErrors({});
   }, [type]);
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   const validate = () => {
     const newErrors = {};
@@ -113,12 +118,11 @@ const TransactionForm = ({
   };
 
   const handleReset = () => {
-    if (successTimerRef.current) clearTimeout(successTimerRef.current);
     setType("expense");
     setCategory("");
     setCategorySearch("");
     setAmount("");
-    setDate(stickyDate ? date : getTodayString());
+    setDate(stickyDate ? (editingTransaction ? getTodayString() : date) : getTodayString());
     setDescription("");
     setErrors({});
     setShowCategoryDropdown(false);

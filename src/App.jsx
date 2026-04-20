@@ -56,11 +56,12 @@ const App = () => {
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const backupFileRef = useRef(null);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
-    [transactions, activeFilters]
+    [transactions, activeFilters, getFilteredTransactions]
   );
   const summary = useMemo(
     () => getSummary(filteredTransactions),
@@ -79,12 +80,7 @@ const App = () => {
     const alreadyExported = localStorage.getItem(weekKey);
     if (!alreadyExported) {
       localStorage.setItem(weekKey, "true");
-      setTimeout(() => {
-        const confirmed = window.confirm("Искате ли да свалите седмичния backup файл с всички данни?");
-        if (confirmed) {
-          exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
-        }
-      }, 500);
+      setTimeout(() => setShowWeeklyBackup(true), 500);
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, currency, rate]);
 
@@ -398,6 +394,38 @@ const App = () => {
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWeeklyBackup && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">
+                Седмичен backup
+              </h2>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <p className="text-sm text-gray-600">
+                Искате ли да свалите седмичния backup файл с всички данни?
+              </p>
+              <button
+                onClick={() => {
+                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
+                  setShowWeeklyBackup(false);
+                }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Да, свали backup
+              </button>
+              <button
+                onClick={() => setShowWeeklyBackup(false)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Не сега
               </button>
             </div>
           </div>
