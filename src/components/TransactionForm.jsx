@@ -248,6 +248,28 @@ const TransactionForm = ({
         </div>
       </div>
 
+      {/* Бутони */}
+      <div className="flex gap-3 mt-4">
+        <button
+          onClick={handleSubmit}
+          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium text-white transition shadow ${
+            editingTransaction ? "bg-blue-500 hover:bg-blue-600"
+            : showSuccess ? "bg-blue-600 hover:bg-blue-700"
+            : type === "expense" ? "bg-red-500 hover:bg-red-600"
+            : "bg-green-500 hover:bg-green-600"
+          }`}
+        >
+          {editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
+          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено!</>
+          : <><PlusCircle className="w-4 h-4" /> Добави</>}
+        </button>
+        {editingTransaction && (
+          <button onClick={handleReset} className="px-5 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+            Отказ
+          </button>
+        )}
+      </div>
+
       
       {/* Бутон за дата и описание */}
       <div className="mt-4 bg-blue-50 rounded-2xl shadow-sm overflow-hidden border border-gray-200">
@@ -355,27 +377,7 @@ const TransactionForm = ({
         </div>
       )}
 
-      {/* Бутони */}
-      <div className="flex gap-3 mt-4">
-        <button
-          onClick={handleSubmit}
-          className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-medium text-white transition shadow ${
-            editingTransaction ? "bg-blue-500 hover:bg-blue-600"
-            : showSuccess ? "bg-blue-600 hover:bg-blue-700"
-            : type === "expense" ? "bg-red-500 hover:bg-red-600"
-            : "bg-green-500 hover:bg-green-600"
-          }`}
-        >
-          {editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
-          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено!</>
-          : <><PlusCircle className="w-4 h-4" /> Добави</>}
-        </button>
-        {editingTransaction && (
-          <button onClick={handleReset} className="px-5 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
-            Отказ
-          </button>
-        )}
-      </div>
+      
     </div>
   );
 };
