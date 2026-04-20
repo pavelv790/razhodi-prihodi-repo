@@ -61,7 +61,7 @@ const App = () => {
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
-    [transactions, activeFilters, getFilteredTransactions]
+    [activeFilters, getFilteredTransactions]
   );
   const summary = useMemo(
     () => getSummary(filteredTransactions),
@@ -82,7 +82,7 @@ const App = () => {
       localStorage.setItem(weekKey, "true");
       setTimeout(() => setShowWeeklyBackup(true), 500);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, currency, rate]);
+  }, [transactions, expenseCategories, incomeCategories]);
 
   const handleFilter = useCallback((newFilters) => {
     setActiveFilters(newFilters);
@@ -91,12 +91,12 @@ const App = () => {
     );
   }, []);
           
-  const handleClearFilter = () => {
-      const empty = { fromDate: "", toDate: "", categories: [] };
+  const handleClearFilter = useCallback(() => {
+    const empty = { fromDate: "", toDate: "", categories: [] };
     setFilters(empty);
     setActiveFilters(empty);
     setIsFiltered(false);
-  };
+  }, []);
 
   const handleDeleteCategory = (type, name, choice) => {
     if (choice === "delete") {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { parseDate } from "../utils/formatters";
 import { openDB } from "../utils/db";
 
@@ -35,10 +35,6 @@ const saveAllToDB = async (transactions) => {
   }
 };
 
-// ============================================================
-// Същите помощни функции като преди
-// ============================================================
-
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -50,15 +46,10 @@ const sortByDate = (transactions) =>
     return dateB - dateA;
   });
 
-// ============================================================
-// Hook — интерфейсът е абсолютно същият като преди
-// ============================================================
-
 export const useTransactions = () => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Зареждаме от IndexedDB при стартиране
   useEffect(() => {
     loadAllFromDB().then((data) => {
       setTransactions(sortByDate(data));
@@ -66,7 +57,6 @@ export const useTransactions = () => {
     });
   }, []);
 
-  // Записваме в IndexedDB при всяка промяна (с debounce 300ms)
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => saveAllToDB(transactions), 300);
@@ -110,7 +100,7 @@ export const useTransactions = () => {
     setTransactions((prev) => sortByDate([...prev, ...newTransactions]));
   };
 
-  const getFilteredTransactions = (filters) => {
+  const getFilteredTransactions = useCallback((filters) => {
     const { fromDate, toDate, categories } = filters;
     return transactions.filter((t) => {
       const date = parseDate(t.date);
@@ -133,9 +123,9 @@ export const useTransactions = () => {
       }
       return true;
     });
-  };
+  }, [transactions]);
 
-  const getSummary = (filteredTransactions) => {
+  const getSummary = useCallback((filteredTransactions) => {
     const income = filteredTransactions
       .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + Number(t.amount), 0);
@@ -145,7 +135,7 @@ export const useTransactions = () => {
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
     return { income, expense, balance: income - expense };
-  };
+  }, []);
 
   return {
     transactions,

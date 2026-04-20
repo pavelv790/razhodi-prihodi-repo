@@ -21,6 +21,7 @@ const ImportExportModal = ({
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (mode === "export") {
       if (isFiltered) {

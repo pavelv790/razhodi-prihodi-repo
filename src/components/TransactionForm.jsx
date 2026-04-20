@@ -122,7 +122,7 @@ const TransactionForm = ({
     setCategory("");
     setCategorySearch("");
     setAmount("");
-    setDate(stickyDate ? (editingTransaction ? getTodayString() : date) : getTodayString());
+    setDate(stickyDate && !editingTransaction ? date : getTodayString());
     setDescription("");
     setErrors({});
     setShowCategoryDropdown(false);

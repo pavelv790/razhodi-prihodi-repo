@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { X, FileDown } from "lucide-react";
 import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";

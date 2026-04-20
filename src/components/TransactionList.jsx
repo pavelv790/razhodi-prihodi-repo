@@ -69,7 +69,7 @@ const TransactionList = ({ transactions, onEdit, onDelete, isFiltered }) => {
   return (
     <div className="bg-blue-50 rounded-2xl shadow-md overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3">
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
             История{" "}
             <span className="text-emerald-500">({sortedTransactions.length})</span>

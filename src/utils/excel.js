@@ -165,7 +165,7 @@ export const exportToExcel = (
         },
       };
     }
-    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);0
+    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
     r++;
 
     ws["!ref"] = "A1:N" + r;
