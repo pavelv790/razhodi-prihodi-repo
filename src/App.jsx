@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Wallet, Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search } from "lucide-react";
+import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
 import { exportBackup, importBackup } from "./utils/backup";
-import { exportToExcel } from "./utils/excel";
 import SummaryCards from "./components/SummaryCards";
 import FilterBar from "./components/FilterBar";
 import TransactionForm from "./components/TransactionForm";
@@ -147,24 +146,6 @@ const App = () => {
   return (
     <div className="min-h-screen bg-transparent">
       <div className="max-w-3xl mx-auto px-4 py-6">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <div className="bg-emerald-100 p-2 rounded-xl">
-              <Wallet className="w-5 h-5 text-emerald-500" />
-            </div>
-            <h1 className="text-lg font-bold text-gray-700">
-              Разходи-Приходи
-            </h1>
-          </div>
-          <button
-            onClick={() => setShowAbout(true)}
-            className="p-2 rounded-xl hover:bg-gray-100 transition"
-          >
-            <Info className="w-5 h-5 text-gray-400" />
-          </button>
-        </div>
 
         {/* Transaction Form */}
         <TransactionForm
