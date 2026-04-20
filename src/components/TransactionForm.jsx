@@ -41,7 +41,7 @@ const TransactionForm = ({
 
   const categoriesWithCount = categories.map((cat) => ({
     name: cat,
-    count: (transactions || []).filter((t) => t.category === cat).length,
+    count: (transactions || []).filter((t) => t.category === cat && t.type === type).length,
   }));
 
   const filteredCategories = categoriesWithCount

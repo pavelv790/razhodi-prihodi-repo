@@ -152,9 +152,20 @@ export const exportToExcel = (
       const inc = activeIncCats.reduce((s, cat) => s + getAmount(year, m, "income", cat), 0);
       const exp = activeExpCats.reduce((s, cat) => s + getAmount(year, m, "expense", cat), 0);
       const bal = inc - exp;
-      ws[colLetter(m) + r] = cell(bal, bal >= 0 ? "C6EFCE" : "FFC7CE", { align: "right" });
+      const cl = colLetter(m);
+      ws[cl + r] = {
+        f: cl + (incEnd + 2) + "-" + cl + (expEnd + 2),
+        t: "n",
+        s: {
+          fill: { fgColor: { rgb: bal >= 0 ? "C6EFCE" : "FFC7CE" } },
+          font: { name: "Calibri", sz: 11, bold: false },
+          alignment: { horizontal: "right", vertical: "center" },
+          border,
+          numFmt,
+        },
+      };
     }
-    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
+    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);0
     r++;
 
     ws["!ref"] = "A1:N" + r;

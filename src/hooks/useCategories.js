@@ -93,7 +93,7 @@ export const useCategories = () => {
     if (type === "expense") {
       if (
         expenseCategories.some(
-          (c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName
+          (c) => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== oldName.toLowerCase()
         )
       )
         return false;
@@ -103,7 +103,7 @@ export const useCategories = () => {
     } else {
       if (
         incomeCategories.some(
-          (c) => c.toLowerCase() === trimmed.toLowerCase() && c !== oldName
+          (c) => c.toLowerCase() === trimmed.toLowerCase() && c.toLowerCase() !== oldName.toLowerCase()
         )
       )
         return false;

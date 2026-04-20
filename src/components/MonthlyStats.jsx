@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { X, FileDown } from "lucide-react";
 import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";
@@ -101,6 +101,13 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
     () => getCategoriesInWindow(data, activeTab, rollingMonths),
     [data, activeTab, rollingMonths]
   );
+  const categoryAverages = useMemo(() => {
+    const result = {};
+    categories.forEach((cat) => {
+      result[cat] = getRollingAverage(data, cat, activeTab, rollingMonths);
+    });
+    return result;
+  }, [data, categories, activeTab, rollingMonths]);
   const totalAvg = useMemo(
     () => getTotalRollingAverage(data, activeTab, rollingMonths),
     [data, activeTab, rollingMonths]
@@ -201,7 +208,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
               </thead>
               <tbody>
                 {categories.map((cat) => {
-                  const avg = getRollingAverage(data, cat, activeTab, rollingMonths);
+                  const avg = categoryAverages[cat];
                   return (
                     <tr key={cat} className="border-t border-gray-50 hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium text-gray-700">{cat}</td>
