@@ -87,7 +87,7 @@ export const exportToExcel = (
 
   const years = [...new Set(
     transactions.map((t) => Number(t.date.split("/")[2]))
-  )].sort((a, b) => b - a); // низходящ ред — последната година първа
+  )].sort((a, b) => b - a);
 
   years.forEach((year) => {
     const ws = {};
@@ -154,7 +154,7 @@ export const exportToExcel = (
       const bal = inc - exp;
       const cl = colLetter(m);
       ws[cl + r] = {
-        f: cl + (incEnd + 2) + "-" + cl + (expEnd + 2),
+        f: cl + (incEnd + 1) + "-" + cl + (expEnd + 1),
         t: "n",
         s: {
           fill: { fgColor: { rgb: bal >= 0 ? "C6EFCE" : "FFC7CE" } },
@@ -169,7 +169,7 @@ export const exportToExcel = (
     r++;
 
     ws["!ref"] = "A1:N" + r;
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 2, c: 0 }, e: { r: balanceHeaderRow - 1, c: 0 } }];
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
 
     const allCats = [...activeExpCats, ...activeIncCats, "ОБЩО ЗА МЕСЕЦА"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
@@ -182,7 +182,6 @@ export const exportToExcel = (
     XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
   });
 
-  // История на транзакциите — последен лист
   const wsH = {};
   ["Категория", "Сума", "Дата", "Описание"].forEach((h, i) => {
     wsH[colLetter(i) + "1"] = cell(h, COLOR.monthBg, { bold: true, align: "center" });
@@ -321,7 +320,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
     return total / rollingMonths;
   };
 
-  const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort((a, b) => b - a); // низходящ ред
+  const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort((a, b) => b - a);
 
   const workbook = XLSXStyle.utils.book_new();
 
@@ -396,7 +395,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
     ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
     r++;
 
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 2, c: 0 }, e: { r: balanceHeaderRow - 1, c: 0 } }];
+    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
     ws["!ref"] = "A1:" + colLetter(months.length + 1) + r;
 
     const allCats = [...new Set(transactions.map((t) => t.category)), "ОБЩО"];
