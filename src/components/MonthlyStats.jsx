@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { X, FileDown } from "lucide-react";
+import { X, FileDown, BarChart2 } from "lucide-react";
 import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";
 
@@ -73,20 +73,22 @@ const getCategoriesInWindow = (transactions, type, rollingMonths) => {
   return [...cats].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
 };
 
-const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFilters, onClose }) => {
+const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFilters, onClose, rollingMonths: initialRollingMonths = 12, onRollingMonthsChange }) => {
   const [activeTab, setActiveTab] = useState("expense");
-  const [rollingMonths, setRollingMonths] = useState(12);
-  const [inputMonths, setInputMonths] = useState("12");
+  const [rollingMonths, setRollingMonths] = useState(initialRollingMonths);
+  const [inputMonths, setInputMonths] = useState(String(initialRollingMonths));
 
   const handleRollingMonthsChange = (e) => {
     const val = e.target.value.replace(/\D/g, "");
     setInputMonths(val);
     const num = Number(val);
-    if (num >= 1) setRollingMonths(num);
+    if (num >= 1) {
+      setRollingMonths(num);
+      if (onRollingMonthsChange) onRollingMonthsChange(num);
+    }
   };
 
   const data = isFiltered ? filteredTransactions : transactions;
-
   const [showExportWarning, setShowExportWarning] = useState(false);
 
   const handleExport = () => {
@@ -114,7 +116,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
   );
   const isExpense = activeTab === "expense";
 
-  return (
+  const modal = (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
 
@@ -129,6 +131,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
             )}
           </div>
           <div className="flex items-center gap-2">
+            
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500 text-white hover:bg-green-600 transition"
@@ -259,6 +262,8 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
       </div>      
     </div>
   );
+
+  return modal;
 };
 
 export default MonthlyStats;

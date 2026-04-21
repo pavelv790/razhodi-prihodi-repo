@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search } from "lucide-react";
+import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2 } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
 import { exportBackup, importBackup } from "./utils/backup";
@@ -11,6 +11,7 @@ import CategoryManager from "./components/CategoryManager";
 import AboutModal from "./components/AboutModal";
 import ImportExportModal from "./components/ImportExportModal";
 import MonthlyStats from "./components/MonthlyStats";
+import ChartsModal from "./components/ChartsModal";
 import { useSavedFilters } from "./hooks/useSavedFilters";
 import { useCurrency } from "./hooks/useCurrency";
 
@@ -53,6 +54,8 @@ const App = () => {
   const [pendingBackup, setPendingBackup] = useState(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
+  const [showCharts, setShowCharts] = useState(false);
+  const [rollingMonths, setRollingMonths] = useState(12);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
@@ -227,6 +230,13 @@ const App = () => {
                   Месечна статистика
                 </button>
                 <button
+                  onClick={() => setShowCharts(true)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-purple-50 text-purple-500 hover:bg-purple-100 transition"
+                >
+                  <BarChart2 className="w-4 h-4" />
+                  Графики
+                </button>
+                <button
                   onClick={() => { setImportExportMode("import"); setShowImportExport(true); }}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-orange-50 text-orange-500 hover:bg-orange-100 transition"
                 >
@@ -335,6 +345,19 @@ const App = () => {
           isFiltered={isFiltered}
           activeFilters={activeFilters}
           onClose={() => setShowMonthlyStats(false)}
+          rollingMonths={rollingMonths}
+          onRollingMonthsChange={setRollingMonths}
+        />
+      )}
+
+      {showCharts && (
+        <ChartsModal
+          transactions={transactions}
+          filteredTransactions={filteredTransactions}
+          isFiltered={isFiltered}
+          activeFilters={activeFilters}
+          onClose={() => setShowCharts(false)}
+          rollingMonths={rollingMonths}
         />
       )}
 
