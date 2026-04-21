@@ -204,6 +204,20 @@ const FilterBar = ({
     setFilters((prev) => ({ ...prev, fromDate: getFirstDayOfMonth(lastMonth), toDate: getLastDayOfMonth(lastMonth) }));
   };
 
+  const handleThisYear = () => {
+    const now = new Date();
+    const firstDay = `01/01/${now.getFullYear()}`;
+    const lastDay = `31/12/${now.getFullYear()}`;
+    setFilters((prev) => ({ ...prev, fromDate: firstDay, toDate: lastDay }));
+  };
+
+  const handleLastYear = () => {
+    const lastYear = new Date().getFullYear() - 1;
+    const firstDay = `01/01/${lastYear}`;
+    const lastDay = `31/12/${lastYear}`;
+    setFilters((prev) => ({ ...prev, fromDate: firstDay, toDate: lastDay }));
+  };
+
   const handleSave = () => {
     const name = filterName.trim();
     if (!name) return;
@@ -281,6 +295,12 @@ const FilterBar = ({
         </button>
         <button onClick={handleLastMonth} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition">
           <Calendar className="w-4 h-4" />Миналия месец
+        </button>
+        <button onClick={handleThisYear} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition">
+          <Calendar className="w-4 h-4" />Тази година
+        </button>
+        <button onClick={handleLastYear} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition">
+          <Calendar className="w-4 h-4" />Миналата година
         </button>
         {isFiltered && (
           <button onClick={onClear} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
