@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
 } from "recharts";
-import { parseDate, formatAmount } from "../utils/formatters";
+import { formatAmount } from "../utils/formatters";
 
 const COLORS = [
   "#ef4444","#3b82f6","#f59e0b","#10b981","#8b5cf6",
@@ -26,12 +26,10 @@ const sortMonthKeys = (keys) =>
 
 const buildChartData = (transactions, mode, rollingMonths) => {
   if (transactions.length === 0) return [];
-
   const months = sortMonthKeys([...new Set(transactions.map((t) => getMonthKey(t.date)))]);
 
   if (mode === "overall") {
     return months.map((mk) => {
-      const [m, y] = mk.split("/").map(Number);
       const income = transactions
         .filter((t) => t.type === "income" && getMonthKey(t.date) === mk)
         .reduce((s, t) => s + Number(t.amount), 0);
@@ -99,7 +97,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       <p className="font-semibold text-gray-600 mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.color }}>
-          {p.dataKey}: {formatAmount(p.value)}
+          {p.name}: {formatAmount(p.value)}
         </p>
       ))}
     </div>
@@ -114,10 +112,9 @@ const ChartsModal = ({
   onClose,
   rollingMonths = 12,
 }) => {
-  const [viewMode, setViewMode] = useState("overall"); // "overall" | "categories" | "rolling"
+  const [viewMode, setViewMode] = useState("overall");
 
   const data = isFiltered ? filteredTransactions : transactions;
-
   const hasCategories = isFiltered && activeFilters.categories && activeFilters.categories.length > 0;
 
   const chartData = useMemo(
@@ -148,7 +145,7 @@ const ChartsModal = ({
         </div>
 
         {/* Режим */}
-        <div className="px-5 pt-4 flex gap-2 flex-wrap flex-shrink-0">
+        <div className="px-5 pt-4 flex gap-2 flex-wrap flex-shrink-0 items-center">
           <button
             onClick={() => setViewMode("overall")}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
@@ -168,8 +165,8 @@ const ChartsModal = ({
           {viewMode === "rolling" && (
             <p className="text-xs text-red-500 self-center">
               Периодът се задава в Месечна статистика
-              </p>
-            )}
+            </p>
+          )}
           <button
             onClick={() => setViewMode("categories")}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
