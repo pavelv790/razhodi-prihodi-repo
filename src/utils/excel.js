@@ -355,6 +355,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
       });
       ws[colLetter(months.length + 1) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
       r++;
+      const catsStartR = r;
 
       cats.forEach((cat) => {
         ws["A" + r] = cell(cat, rowBg);
@@ -368,8 +369,8 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
 
       ws["A" + r] = cell("ОБЩО", COLOR.totalBg, { bold: true });
       months.forEach((m, i) => {
-        const avg = getTotalRollingAverage(type, year, m);
-        ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.totalBg, { align: "right" });
+        const cl = colLetter(i + 1);
+        ws[cl + r] = fCell("SUM(" + cl + catsStartR + ":" + cl + (r - 1) + ")", COLOR.totalBg);
       });
       ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.totalBg);
       r++;
