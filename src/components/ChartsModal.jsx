@@ -230,7 +230,9 @@ const ChartsModal = ({
       const effectiveMode = viewMode === "rolling" && rollingSubMode === "categories"
         ? "rolling-categories"
         : viewMode;
-      const cats = activeFilters?.categories || [];
+      const cats = (activeFilters?.categories && activeFilters.categories.length > 0)
+        ? activeFilters.categories
+        : [...new Set(data.map((t) => `${t.category}::${t.type}`))];
       const result = buildChartData(data, effectiveMode, rollingMonths, cats);
       setIsCalculating(false);
       return result;
@@ -321,7 +323,7 @@ const ChartsModal = ({
                   : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
               }`}
             >
-              Rolling average "Общо"
+              Rolling avg Общо
             </button>
             <button
               onClick={() => { setIsCalculating(true); setRollingSubMode("categories"); }}
@@ -331,19 +333,12 @@ const ChartsModal = ({
                   : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
               }`}
             >
-              Rolling average "По категории"
+              Rolling avg По категории
             </button>
           </div>
         )}
 
-        {((viewMode === "categories") || (viewMode === "rolling" && rollingSubMode === "categories")) && !hasCategories && (
-          <div className="px-5 pt-3 flex-shrink-0">
-            <p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-3 py-2">
-              💡 Изберете категории от филтъра за да видите отделните линии
-            </p>
-          </div>
-        )}
-
+        
         {/* Графика */}
         <div className="flex-1 overflow-auto px-5 py-4">
           {isCalculating ? (
