@@ -25,7 +25,7 @@ const sortMonthKeys = (keys) =>
     return new Date(ya, ma - 1) - new Date(yb, mb - 1);
   });
 
-const buildChartData = (transactions, mode, rollingMonths) => {
+const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
   if (transactions.length === 0) return [];
   const months = sortMonthKeys([...new Set(transactions.map((t) => getMonthKey(t.date)))]);
 
@@ -72,6 +72,30 @@ const buildChartData = (transactions, mode, rollingMonths) => {
         "Разходи (avg)": exp,
         "Баланс (avg)": Math.round((inc - exp) * 100) / 100,
       };
+    });
+  }
+
+  if (mode === "rolling-categories") {
+    return months.map((mk) => {
+      const [m, y] = mk.split("/").map(Number);
+      const point = { month: mk };
+      categories.forEach((ck) => {
+        const [cat, type] = ck.split("::");
+        let total = 0;
+        for (let i = 0; i < rollingMonths; i++) {
+          let mo = m - i, yr = y;
+          while (mo <= 0) { mo += 12; yr--; }
+          total += transactions
+            .filter((t) => {
+              if (t.type !== type || t.category !== cat) return false;
+              const [, tm, ty] = t.date.split("/").map(Number);
+              return ty === yr && tm === mo;
+            })
+            .reduce((s, t) => s + Number(t.amount), 0);
+        }
+        point[ck] = Math.round((total / rollingMonths) * 100) / 100;
+      });
+      return point;
     });
   }
 
@@ -176,6 +200,7 @@ const ChartsModal = ({
   rollingMonths = 12,
 }) => {
   const [viewMode, setViewMode] = useState("overall");
+  const [rollingSubMode, setRollingSubMode] = useState("overall");
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [pieType, setPieType] = useState("expense");
   const [pieThreshold, setPieThreshold] = useState(() => {
@@ -191,8 +216,14 @@ const ChartsModal = ({
   const hasCategories = isFiltered && activeFilters.categories && activeFilters.categories.length > 0;
 
   const chartData = useMemo(
-    () => buildChartData(data, viewMode, rollingMonths),
-    [data, viewMode, rollingMonths]
+    () => {
+      const effectiveMode = viewMode === "rolling" && rollingSubMode === "categories"
+        ? "rolling-categories"
+        : viewMode;
+      const cats = activeFilters?.categories || [];
+      return buildChartData(data, effectiveMode, rollingMonths, cats);
+    },
+    [data, viewMode, rollingMonths, rollingSubMode, activeFilters]
   );
   const pieData = useMemo(
     () => buildPieData(data, pieType, pieThreshold),
@@ -266,8 +297,33 @@ const ChartsModal = ({
             По категории
           </button>
         </div>
+        {viewMode === "rolling" && (
+          <div className="px-5 pt-2 flex items-center gap-2 flex-shrink-0">
+            <span className="text-xs text-gray-400 mr-1">↳ Покажи:</span>
+            <button
+              onClick={() => setRollingSubMode("overall")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                rollingSubMode === "overall"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
+              }`}
+            >
+              Приходи / Разходи
+            </button>
+            <button
+              onClick={() => setRollingSubMode("categories")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                rollingSubMode === "categories"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
+              }`}
+            >
+              По категории
+            </button>
+          </div>
+        )}
 
-        {viewMode === "categories" && !hasCategories && (
+        {((viewMode === "categories") || (viewMode === "rolling" && rollingSubMode === "categories")) && !hasCategories && (
           <div className="px-5 pt-3 flex-shrink-0">
             <p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-3 py-2">
               💡 Изберете категории от филтъра за да видите отделните линии

@@ -110,7 +110,7 @@ const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allT
       </div>
 
       {/* Предупреждения по категории */}
-      {exceededCategories.length > 0 && (
+      {(exceededCategories.length > 0 || totalExceeded) && (
         <div className="col-span-2 bg-orange-50 border border-orange-200 rounded-2xl shadow-md overflow-hidden">
           <button
             onClick={() => setWarningsOpen((prev) => !prev)}
