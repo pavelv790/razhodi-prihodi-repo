@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, BarChart2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -223,9 +223,8 @@ const ChartsModal = ({
   });
 
   const data = isFiltered ? filteredTransactions : transactions;
-  const hasCategories = isFiltered && activeFilters.categories && activeFilters.categories.length > 0;
-
-  const [chartData, setChartData] = useState([]);
+  
+  const [chartData, setChartData] = useState(null);
 
 useEffect(() => {
   setIsCalculating(true);
@@ -253,7 +252,7 @@ useEffect(() => {
   );
 
   const lineKeys = useMemo(() => {
-    if (chartData.length === 0) return [];
+    if (!chartData || chartData.length === 0) return [];
     return Object.keys(chartData[0]).filter((k) => k !== "month");
   }, [chartData]);
 
@@ -457,6 +456,8 @@ useEffect(() => {
                 </div>
               )}
             </div>
+          ) : chartData === null || isCalculating ? (
+            <p className="text-sm text-gray-400 text-center py-8 animate-pulse">⏳ Изчисляване...</p>
           ) : chartData.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">Няма данни за показване</p>
           ) : (
@@ -495,7 +496,7 @@ useEffect(() => {
               </LineChart>
             </ResponsiveContainer>
           )}
-          {!isCalculating && viewMode !== "pie" && chartData.length > 0 && (
+          {!isCalculating && viewMode !== "pie" && chartData && chartData.length > 0 && (
             <div className="mt-2">
               <p className="text-xs text-gray-400 mb-1 px-2">💡 Категории — скролвай за да видиш всички</p>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-2 py-2 max-h-32 overflow-y-auto">

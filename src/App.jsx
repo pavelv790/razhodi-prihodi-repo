@@ -71,7 +71,7 @@ const App = () => {
   );
   const summary = useMemo(
     () => getSummary(filteredTransactions),
-    [filteredTransactions]
+    [filteredTransactions, getSummary]
   );
 
   useEffect(() => {

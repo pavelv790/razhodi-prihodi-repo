@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { X, FileDown, BarChart2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, FileDown } from "lucide-react";
 import { formatAmount } from "../utils/formatters";
 import { exportMonthlyStatsToExcel } from "../utils/excel";
 
@@ -77,6 +77,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
   const [activeTab, setActiveTab] = useState("expense");
   const [rollingMonths, setRollingMonths] = useState(initialRollingMonths);
   const [inputMonths, setInputMonths] = useState(String(initialRollingMonths));
+  const [isCalculating, setIsCalculating] = useState(false);
 
   const handleRollingMonthsChange = (e) => {
     const val = e.target.value.replace(/\D/g, "");
@@ -102,21 +103,26 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
     }
   };
 
-  const categories = useMemo(
-    () => getCategoriesInWindow(data, activeTab, rollingMonths),
-    [data, activeTab, rollingMonths]
-  );
-  const categoryAverages = useMemo(() => {
-    const result = {};
-    categories.forEach((cat) => {
-      result[cat] = getRollingAverage(data, cat, activeTab, rollingMonths);
-    });
-    return result;
-  }, [data, categories, activeTab, rollingMonths]);
-  const totalAvg = useMemo(
-    () => getTotalRollingAverage(data, activeTab, rollingMonths),
-    [data, activeTab, rollingMonths]
-  );
+  const [categories, setCategories] = useState([]);
+  const [categoryAverages, setCategoryAverages] = useState({});
+  const [totalAvg, setTotalAvg] = useState(0);
+
+  useEffect(() => {
+    setIsCalculating(true);
+    const timer = setTimeout(() => {
+      const cats = getCategoriesInWindow(data, activeTab, rollingMonths);
+      const avgs = {};
+      cats.forEach((cat) => {
+        avgs[cat] = getRollingAverage(data, cat, activeTab, rollingMonths);
+      });
+      const total = getTotalRollingAverage(data, activeTab, rollingMonths);
+      setCategories(cats);
+      setCategoryAverages(avgs);
+      setTotalAvg(total);
+      setIsCalculating(false);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [data, activeTab, rollingMonths]);
   const isExpense = activeTab === "expense";
 
   const modal = (
@@ -200,7 +206,9 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
 
         {/* Таблица */}
         <div className="flex-1 overflow-auto px-5 py-4">
-          {categories.length === 0 ? (
+          {isCalculating ? (
+            <p className="text-sm text-gray-400 text-center py-8 animate-pulse">⏳ Изчисляване...</p>
+          ) : categories.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">
               Няма данни за последните {rollingMonths} месеца
             </p>
