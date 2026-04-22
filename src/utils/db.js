@@ -1,5 +1,5 @@
 const DB_NAME = "finance_db";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let dbPromise = null;
 
@@ -17,6 +17,8 @@ export const openDB = () => {
         db.createObjectStore("saved_filters", { keyPath: "id" });
       if (!db.objectStoreNames.contains("currency"))
         db.createObjectStore("currency", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("budgets"))
+        db.createObjectStore("budgets", { keyPath: "id" });
     };
     req.onsuccess = (e) => resolve(e.target.result);
     req.onerror = () => {

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2 } from "lucide-react";
+import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
 import { exportBackup, importBackup } from "./utils/backup";
@@ -14,6 +14,8 @@ import MonthlyStats from "./components/MonthlyStats";
 import ChartsModal from "./components/ChartsModal";
 import { useSavedFilters } from "./hooks/useSavedFilters";
 import { useCurrency } from "./hooks/useCurrency";
+import { useBudgets } from "./hooks/useBudgets";
+import BudgetModal from "./components/BudgetModal";
 
 const App = () => {
   const {
@@ -41,6 +43,7 @@ const App = () => {
   } = useCategories();
   const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters();
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency();
+  const { budgets, updateBudgets, restoreBudgets } = useBudgets();
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
@@ -56,6 +59,7 @@ const App = () => {
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
   const [rollingMonths, setRollingMonths] = useState(12);
+  const [showBudget, setShowBudget] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
@@ -168,7 +172,13 @@ const App = () => {
         />
 
         {/* Summary Cards */}
-        <SummaryCards summary={summary} isFiltered={isFiltered} />
+        <SummaryCards
+          summary={summary}
+          isFiltered={isFiltered}
+          budgets={budgets}
+          filteredTransactions={filteredTransactions}
+          allTransactions={transactions}
+        />
 
         {/* Filter Bar */}
         <div className="bg-blue-50 rounded-2xl shadow-md overflow-hidden mb-6">
@@ -278,6 +288,13 @@ const App = () => {
 
         {/* Бутони над историята */}
         <div className="flex flex-col gap-3 mb-3">
+          <button
+            onClick={() => setShowBudget(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-orange-50 text-orange-500 hover:bg-orange-100 transition shadow-sm"
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Бюджетни лимити
+          </button>
           <button
             onClick={() => setShowCategoryManager(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition shadow-sm"
@@ -434,6 +451,17 @@ const App = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showBudget && (
+        <BudgetModal
+          budgets={budgets}
+          onSave={updateBudgets}
+          onClose={() => setShowBudget(false)}
+          expenseCategories={expenseCategories}
+          activeFilterCategories={activeFilters.categories}
+          isFiltered={isFiltered}
+        />
       )}
 
       {showDeleteAll && (
