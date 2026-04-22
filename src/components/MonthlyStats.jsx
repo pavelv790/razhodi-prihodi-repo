@@ -90,12 +90,15 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
 
   const data = isFiltered ? filteredTransactions : transactions;
   const [showExportWarning, setShowExportWarning] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (isFiltered) {
       setShowExportWarning(true);
     } else {
-      exportMonthlyStatsToExcel(data, rollingMonths);
+      setExportLoading(true);
+      await exportMonthlyStatsToExcel(data, rollingMonths);
+      setExportLoading(false);
     }
   };
 
@@ -132,13 +135,17 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
           </div>
           <div className="flex items-center gap-2">
             
+            {exportLoading ? (
+              <p className="text-xs text-gray-400 animate-pulse">⏳ Генериране...</p>
+            ) : (
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-green-500 text-white hover:bg-green-600 transition"
             >
               <FileDown className="w-3.5 h-3.5" />
-              Експорт в Excel
+              Експорт към Excel
             </button>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-gray-100 transition"
@@ -244,12 +251,16 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
               <p className="text-sm text-red-600">Excel файлът ще съдържа само филтрираните данни, не всички.</p>
             </div>
             <div className="flex gap-2">
+              {exportLoading ? (
+                <p className="text-sm text-gray-400 animate-pulse flex-1 text-center py-2">⏳ Генериране...</p>
+              ) : (
               <button
-                onClick={() => { exportMonthlyStatsToExcel(data, rollingMonths); setShowExportWarning(false); }}
+                onClick={async () => { setExportLoading(true); await exportMonthlyStatsToExcel(data, rollingMonths); setExportLoading(false); setShowExportWarning(false); }}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
               >
                 Разбирам, експортирай
               </button>
+              )}
               <button
                 onClick={() => setShowExportWarning(false)}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"

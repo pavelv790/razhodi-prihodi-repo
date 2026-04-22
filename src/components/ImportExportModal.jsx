@@ -27,8 +27,8 @@ const ImportExportModal = ({
       if (isFiltered) {
         setStep("exportWarning");
       } else {
-        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []);
-        onClose();
+        setLoading(true);
+        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []).then(() => onClose());
       }
     } else if (mode === "import") {
       setTimeout(() => fileInputRef.current?.click(), 50);
@@ -80,6 +80,16 @@ const ImportExportModal = ({
     );
   }
 
+  if (step === "main" && mode === "export" && loading) {
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm px-5 py-8 flex flex-col items-center gap-3">
+          <p className="text-sm text-gray-400 animate-pulse">⏳ Генериране на файл...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
@@ -104,15 +114,20 @@ const ImportExportModal = ({
                   В момента е включен филтър. Excel файлът ще съдържа само филтрираните транзакции, не всички.
                 </p>
               </div>
+              {loading ? (
+                <p className="text-sm text-center text-gray-400 animate-pulse py-2">⏳ Генериране на файл...</p>
+              ) : (
               <button
-                onClick={() => {
-                  exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
+                onClick={async () => {
+                  setLoading(true);
+                  await exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
                   onClose();
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
               >
                 Разбирам, експортирай само филтрираните
               </button>
+              )}
               <button
                 onClick={onClose}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"

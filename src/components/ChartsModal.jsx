@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X, BarChart2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -27,16 +27,38 @@ const sortMonthKeys = (keys) =>
 
 const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
   if (transactions.length === 0) return [];
+
+  // Предварително групиране — един обход на всички транзакции
+  const grouped = {};
+  transactions.forEach((t) => {
+    const [, tm, ty] = t.date.split("/").map(Number);
+    const key = `${t.type}::${t.category}::${tm}::${ty}`;
+    grouped[key] = (grouped[key] || 0) + Number(t.amount);
+  });
+
+  const getSum = (type, category, month, year) =>
+    grouped[`${type}::${category}::${month}::${year}`] || 0;
+
+  const getSumAllCats = (type, month, year) => {
+    let total = 0;
+    const prefix = `${type}::`;
+    for (const key in grouped) {
+      if (!key.startsWith(prefix)) continue;
+      const parts = key.split("::");
+      if (Number(parts[2]) === month && Number(parts[3]) === year) {
+        total += grouped[key];
+      }
+    }
+    return total;
+  };
+
   const months = sortMonthKeys([...new Set(transactions.map((t) => getMonthKey(t.date)))]);
 
   if (mode === "overall") {
     return months.map((mk) => {
-      const income = transactions
-        .filter((t) => t.type === "income" && getMonthKey(t.date) === mk)
-        .reduce((s, t) => s + Number(t.amount), 0);
-      const expense = transactions
-        .filter((t) => t.type === "expense" && getMonthKey(t.date) === mk)
-        .reduce((s, t) => s + Number(t.amount), 0);
+      const [m, y] = mk.split("/").map(Number);
+      const income = getSumAllCats("income", m, y);
+      const expense = getSumAllCats("expense", m, y);
       return {
         month: mk,
         "Приходи": Math.round(income * 100) / 100,
@@ -54,13 +76,7 @@ const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
         for (let i = 0; i < rollingMonths; i++) {
           let mo = m - i, yr = y;
           while (mo <= 0) { mo += 12; yr--; }
-          total += transactions
-            .filter((t) => {
-              if (t.type !== type) return false;
-              const [, tm, ty] = t.date.split("/").map(Number);
-              return ty === yr && tm === mo;
-            })
-            .reduce((s, t) => s + Number(t.amount), 0);
+          total += getSumAllCats(type, mo, yr);
         }
         return Math.round((total / rollingMonths) * 100) / 100;
       };
@@ -85,13 +101,7 @@ const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
         for (let i = 0; i < rollingMonths; i++) {
           let mo = m - i, yr = y;
           while (mo <= 0) { mo += 12; yr--; }
-          total += transactions
-            .filter((t) => {
-              if (t.type !== type || t.category !== cat) return false;
-              const [, tm, ty] = t.date.split("/").map(Number);
-              return ty === yr && tm === mo;
-            })
-            .reduce((s, t) => s + Number(t.amount), 0);
+          total += getSum(type, cat, mo, yr);
         }
         point[ck] = Math.round((total / rollingMonths) * 100) / 100;
       });
@@ -102,18 +112,16 @@ const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
   // categories mode
   const cats = [...new Set(transactions.map((t) => `${t.category}::${t.type}`))];
   return months.map((mk) => {
+    const [m, y] = mk.split("/").map(Number);
     const point = { month: mk };
     cats.forEach((ck) => {
       const [cat, type] = ck.split("::");
-      point[ck] = Math.round(
-        transactions
-          .filter((t) => t.category === cat && t.type === type && getMonthKey(t.date) === mk)
-          .reduce((s, t) => s + Number(t.amount), 0) * 100
-      ) / 100;
+      point[ck] = Math.round((getSum(type, cat, m, y)) * 100) / 100;
     });
     return point;
   });
 };
+
 const buildPieData = (transactions, type, threshold) => {
   const filtered = transactions.filter((t) => t.type === type);
   const total = filtered.reduce((s, t) => s + Number(t.amount), 0);
@@ -177,6 +185,7 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
     </text>
   );
 };
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload || payload.length === 0) return null;
   return (
@@ -201,6 +210,7 @@ const ChartsModal = ({
 }) => {
   const [viewMode, setViewMode] = useState("overall");
   const [rollingSubMode, setRollingSubMode] = useState("overall");
+  const [isCalculating, setIsCalculating] = useState(false);
   const [activePieIndex, setActivePieIndex] = useState(null);
   const [pieType, setPieType] = useState("expense");
   const [pieThreshold, setPieThreshold] = useState(() => {
@@ -221,10 +231,13 @@ const ChartsModal = ({
         ? "rolling-categories"
         : viewMode;
       const cats = activeFilters?.categories || [];
-      return buildChartData(data, effectiveMode, rollingMonths, cats);
+      const result = buildChartData(data, effectiveMode, rollingMonths, cats);
+      setIsCalculating(false);
+      return result;
     },
     [data, viewMode, rollingMonths, rollingSubMode, activeFilters]
   );
+
   const pieData = useMemo(
     () => buildPieData(data, pieType, pieThreshold),
     [data, pieType, pieThreshold]
@@ -259,7 +272,7 @@ const ChartsModal = ({
         {/* Режим */}
         <div className="px-5 pt-4 flex gap-2 flex-wrap flex-shrink-0 items-center">
           <button
-            onClick={() => setViewMode("overall")}
+            onClick={() => { setIsCalculating(true); setViewMode("overall"); }}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
               viewMode === "overall" ? "bg-blue-500 text-white" : "bg-blue-50 text-blue-500 hover:bg-blue-100"
             }`}
@@ -267,7 +280,7 @@ const ChartsModal = ({
             Общо
           </button>
           <button
-            onClick={() => setViewMode("rolling")}
+            onClick={() => { setIsCalculating(true); setViewMode("rolling"); }}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
               viewMode === "rolling" ? "bg-emerald-500 text-white" : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
             }`}
@@ -279,9 +292,8 @@ const ChartsModal = ({
               Периодът се задава в Месечна статистика
             </p>
           )}
-
           <button
-            onClick={() => setViewMode("pie")}
+            onClick={() => { setIsCalculating(true); setViewMode("pie"); }}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
               viewMode === "pie" ? "bg-orange-500 text-white" : "bg-orange-50 text-orange-500 hover:bg-orange-100"
             }`}
@@ -289,7 +301,7 @@ const ChartsModal = ({
             Pie chart
           </button>
           <button
-            onClick={() => setViewMode("categories")}
+            onClick={() => { setIsCalculating(true); setViewMode("categories"); }}
             className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
               viewMode === "categories" ? "bg-purple-500 text-white" : "bg-purple-50 text-purple-500 hover:bg-purple-100"
             }`}
@@ -297,28 +309,29 @@ const ChartsModal = ({
             По категории
           </button>
         </div>
+
         {viewMode === "rolling" && (
           <div className="px-5 pt-2 flex items-center gap-2 flex-shrink-0">
             <span className="text-xs text-gray-400 mr-1">↳ Покажи:</span>
             <button
-              onClick={() => setRollingSubMode("overall")}
+              onClick={() => { setIsCalculating(true); setRollingSubMode("overall"); }}
               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
                 rollingSubMode === "overall"
                   ? "bg-emerald-600 text-white"
                   : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
               }`}
             >
-              Приходи / Разходи
+              Rolling average "Общо"
             </button>
             <button
-              onClick={() => setRollingSubMode("categories")}
+              onClick={() => { setIsCalculating(true); setRollingSubMode("categories"); }}
               className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
                 rollingSubMode === "categories"
                   ? "bg-emerald-600 text-white"
                   : "bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50"
               }`}
             >
-              По категории
+              Rolling average "По категории"
             </button>
           </div>
         )}
@@ -333,7 +346,9 @@ const ChartsModal = ({
 
         {/* Графика */}
         <div className="flex-1 overflow-auto px-5 py-4">
-          {viewMode === "pie" ? (
+          {isCalculating ? (
+            <p className="text-sm text-gray-400 text-center py-8 animate-pulse">⏳ Изчисляване...</p>
+          ) : viewMode === "pie" ? (
             <div>
               {/* Контроли за pie */}
               <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -482,25 +497,25 @@ const ChartsModal = ({
               </LineChart>
             </ResponsiveContainer>
           )}
-          {viewMode !== "pie" && chartData.length > 0 && (
+          {!isCalculating && viewMode !== "pie" && chartData.length > 0 && (
             <div className="mt-2">
               <p className="text-xs text-gray-400 mb-1 px-2">💡 Категории — скролвай за да видиш всички</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-2 py-2 max-h-32 overflow-y-auto">
-              {lineKeys.map((key, i) => {
-                let color = COLORS[i % COLORS.length];
-                if (key === "Приходи" || key === "Приходи (avg)") color = "#10b981";
-                if (key === "Разходи" || key === "Разходи (avg)") color = "#ef4444";
-                if (key === "Баланс" || key === "Баланс (avg)") color = "#3b82f6";
-                const isExpense = key.endsWith("::expense");
-                const displayName = key.includes("::") ? key.split("::")[0] + (isExpense ? " (разход)" : " (приход)") : key;
-                return (
-                  <div key={key} className="flex items-center gap-1.5 flex-shrink-0">
-                    <div className="flex-shrink-0 rounded-full" style={{ backgroundColor: color, width: "12px", height: "2px" }} />
-                    <span className="text-xs text-gray-600">{displayName}</span>
-                  </div>
-                );
-              })}
-            </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-2 py-2 max-h-32 overflow-y-auto">
+                {lineKeys.map((key, i) => {
+                  let color = COLORS[i % COLORS.length];
+                  if (key === "Приходи" || key === "Приходи (avg)") color = "#10b981";
+                  if (key === "Разходи" || key === "Разходи (avg)") color = "#ef4444";
+                  if (key === "Баланс" || key === "Баланс (avg)") color = "#3b82f6";
+                  const isExpense = key.endsWith("::expense");
+                  const displayName = key.includes("::") ? key.split("::")[0] + (isExpense ? " (разход)" : " (приход)") : key;
+                  return (
+                    <div key={key} className="flex items-center gap-1.5 flex-shrink-0">
+                      <div className="flex-shrink-0 rounded-full" style={{ backgroundColor: color, width: "12px", height: "2px" }} />
+                      <span className="text-xs text-gray-600">{displayName}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

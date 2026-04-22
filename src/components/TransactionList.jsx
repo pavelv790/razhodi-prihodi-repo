@@ -87,7 +87,7 @@ const TransactionList = ({ transactions, onEdit, onDelete, isFiltered }) => {
             onClick={() => { setTypeFilter("all"); setVisibleCount(PAGE_SIZE); }}
             className={`flex-1 py-1.5 rounded-xl text-xs font-medium transition ${
               typeFilter === "all"
-                ? "bg-gray-700 text-white"
+                ? "bg-blue-500 text-white"
                 : "bg-gray-100 text-gray-500 hover:bg-gray-200"
             }`}
           >

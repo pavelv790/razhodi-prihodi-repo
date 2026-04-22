@@ -61,7 +61,7 @@ export const exportToExcel = (
   incomeCategories,
   isFiltered = false,
   filterCategories = []
-) => {
+) => new Promise((resolve) => setTimeout(() => {
   const MONTH_NAMES = [
     "януари","февруари","март","април","май","юни",
     "юли","август","септември","октомври","ноември","декември",
@@ -220,7 +220,8 @@ export const exportToExcel = (
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
   XLSXStyle.writeFile(workbook, "Разходи-Приходи_" + d + "." + m + "." + y + ".xlsx");
-};
+  resolve();
+}, 50));
 
 export const importFromExcel = (file) => {
   return new Promise((resolve, reject) => {
@@ -279,7 +280,7 @@ export const findDuplicates = (existing, incoming) => {
   return { duplicates, unique };
 };
 
-export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
+export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => new Promise((resolve) => setTimeout(() => {
   const monthNames = [
     "Януари","Февруари","Март","Април","Май","Юни",
     "Юли","Август","Септември","Октомври","Ноември","Декември",
@@ -415,4 +416,5 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12) => {
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
   XLSXStyle.writeFile(workbook, "Месечна_Статистика_" + d + "." + m + "." + y + ".xlsx");
-};
+  resolve();
+}, 50));
