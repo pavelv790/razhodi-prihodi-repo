@@ -11,7 +11,7 @@ const parseDate = (s) => {
 const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allTransactions }) => {
   const { income, expense, balance } = summary;
   const isPositive = balance >= 0;
-  const [warningsOpen, setWarningsOpen] = useState(true);
+  const [warningsOpen, setWarningsOpen] = useState(false);
 
   const budgetFrom = budgets?.fromDate ? parseDate(budgets.fromDate) : null;
   const budgetTo = budgets?.toDate ? parseDate(budgets.toDate) : null;
