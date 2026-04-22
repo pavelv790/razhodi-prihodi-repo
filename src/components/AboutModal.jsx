@@ -1,6 +1,6 @@
 import { X, Wallet, TrendingUp, TrendingDown, Filter, BarChart2, FileDown, Upload, Settings, Globe, Bookmark, Shield, List, Trash2, AlertTriangle } from "lucide-react";
 
-const VERSION = "1.6.0";;
+const VERSION = "1.6.0";
 
 const Section = ({ icon: Icon, title, children }) => (
   <div className="mb-5">

@@ -119,7 +119,7 @@ const App = () => {
   };
 
   const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
+    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -145,6 +145,9 @@ const App = () => {
     }
     if (pendingBackup.currency) {
       restoreCurrency(pendingBackup.currency, pendingBackup.rate);
+    }
+    if (pendingBackup.budgets) {
+      restoreBudgets(pendingBackup.budgets);
     }
     setPendingBackup(null);
     setShowRestoreConfirm(false);
@@ -435,7 +438,7 @@ const App = () => {
               </p>
               <button
                 onClick={() => {
-                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate);
+                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"

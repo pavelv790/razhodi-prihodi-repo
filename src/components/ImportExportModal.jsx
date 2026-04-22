@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import { importFromExcel, exportToExcel } from "../utils/excel";
 
@@ -22,6 +22,15 @@ const ImportExportModal = ({
   const fileInputRef = useRef(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleFocusBack = useCallback(() => {
+    setTimeout(() => {
+      if (!fileInputRef.current?.files?.length) {
+        onClose();
+      }
+    }, 300);
+    window.removeEventListener("focus", handleFocusBack);
+  }, [onClose]);
+
   useEffect(() => {
     if (mode === "export") {
       if (isFiltered) {
@@ -31,13 +40,18 @@ const ImportExportModal = ({
         exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []).then(() => onClose());
       }
     } else if (mode === "import") {
-      setTimeout(() => fileInputRef.current?.click(), 50);
+      setTimeout(() => {
+        fileInputRef.current?.click();
+        window.addEventListener("focus", handleFocusBack);
+      }, 50);
     }
+    return () => window.removeEventListener("focus", handleFocusBack);
   }, []);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) { onClose(); return; }
+    window.removeEventListener("focus", handleFocusBack);
     setLoading(true);
     setError("");
     try {

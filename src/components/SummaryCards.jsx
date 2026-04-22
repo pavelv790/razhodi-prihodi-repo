@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { TrendingUp, TrendingDown, Wallet, AlertTriangle, ChevronDown } from "lucide-react";
-import { formatAmount } from "../utils/formatters";
-
-const parseDate = (s) => {
-  if (!s) return null;
-  const [d, m, y] = s.split("/");
-  return new Date(y, m - 1, d);
-};
+import { formatAmount, parseDate } from "../utils/formatters";
 
 const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allTransactions }) => {
   const { income, expense, balance } = summary;

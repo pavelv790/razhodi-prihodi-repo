@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { X, BarChart2 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -225,20 +225,23 @@ const ChartsModal = ({
   const data = isFiltered ? filteredTransactions : transactions;
   const hasCategories = isFiltered && activeFilters.categories && activeFilters.categories.length > 0;
 
-  const chartData = useMemo(
-    () => {
-      const effectiveMode = viewMode === "rolling" && rollingSubMode === "categories"
-        ? "rolling-categories"
-        : viewMode;
-      const cats = (activeFilters?.categories && activeFilters.categories.length > 0)
-        ? activeFilters.categories
-        : [...new Set(data.map((t) => `${t.category}::${t.type}`))];
-      const result = buildChartData(data, effectiveMode, rollingMonths, cats);
-      setIsCalculating(false);
-      return result;
-    },
-    [data, viewMode, rollingMonths, rollingSubMode, activeFilters]
-  );
+  const [chartData, setChartData] = useState([]);
+
+useEffect(() => {
+  setIsCalculating(true);
+  const timer = setTimeout(() => {
+    const effectiveMode = viewMode === "rolling" && rollingSubMode === "categories"
+      ? "rolling-categories"
+      : viewMode;
+    const cats = (activeFilters?.categories && activeFilters.categories.length > 0)
+      ? activeFilters.categories
+      : [...new Set(data.map((t) => `${t.category}::${t.type}`))];
+    const result = buildChartData(data, effectiveMode, rollingMonths, cats);
+    setChartData(result);
+    setIsCalculating(false);
+  }, 50);
+  return () => clearTimeout(timer);
+}, [data, viewMode, rollingMonths, rollingSubMode, activeFilters]);
 
   const pieData = useMemo(
     () => buildPieData(data, pieType, pieThreshold),
