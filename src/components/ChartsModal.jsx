@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { X } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
+  Tooltip, ResponsiveContainer, ReferenceLine,
   PieChart, Pie, Cell, Tooltip as ReTooltip
 } from "recharts";
 import { formatAmount } from "../utils/formatters";
@@ -473,6 +473,9 @@ useEffect(() => {
                 
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                {(viewMode === "overall" || (viewMode === "rolling" && rollingSubMode === "overall")) && (
+                  <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5} />
+                )}
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 11 }}
@@ -480,7 +483,7 @@ useEffect(() => {
                   textAnchor="end"
                   interval={0}
                 />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatAmount(v)} width={80} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatAmount(v)} width={80} label={{ value: "EUR", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#9ca3af" } }} />
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length > 0) {
