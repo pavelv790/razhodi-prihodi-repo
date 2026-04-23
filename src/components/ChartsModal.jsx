@@ -52,7 +52,14 @@ const buildChartData = (transactions, mode, rollingMonths, categories = []) => {
     return total;
   };
 
-  const months = sortMonthKeys([...new Set(transactions.map((t) => getMonthKey(t.date)))]);
+  const now = new Date();
+  const currentMonthKey = `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+  const allMonthKeys = [...new Set(transactions.map((t) => getMonthKey(t.date)))];
+  const months = sortMonthKeys(
+    (mode === "rolling" || mode === "rolling-categories")
+      ? allMonthKeys.filter((mk) => mk !== currentMonthKey)
+        : allMonthKeys
+  );
 
   if (mode === "overall") {
     return months.map((mk) => {
