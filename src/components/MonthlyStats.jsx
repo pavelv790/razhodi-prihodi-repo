@@ -136,7 +136,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
               Месечна статистика
             </h2>
             {isFiltered && (
-              <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Показват се само филтрираните данни</p>
+              <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Показват се само филтрираните данни • Периодът за осредняване се брои от днес</p>
             )}
           </div>
           <div className="flex items-center gap-2">
