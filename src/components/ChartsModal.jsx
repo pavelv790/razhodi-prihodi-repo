@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, BarChart2 } from "lucide-react";
+import { X } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, Sector, Tooltip as ReTooltip
+  Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Tooltip as ReTooltip
 } from "recharts";
 import { formatAmount } from "../utils/formatters";
 
@@ -186,19 +186,6 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
   );
 };
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-3 py-2 text-xs">
-      <p className="font-semibold text-gray-600 mb-1">{label}</p>
-      {payload.map((p) => (
-        <p key={p.dataKey} style={{ color: p.color }}>
-          {p.name}: {formatAmount(p.value)} EUR
-        </p>
-      ))}
-    </div>
-  );
-};
 
 const ChartsModal = ({
   transactions,
@@ -217,6 +204,7 @@ const ChartsModal = ({
     const saved = localStorage.getItem("pie_threshold");
     return saved !== null ? parseFloat(saved) : 3;
   });
+  const [tooltipData, setTooltipData] = useState(null);
   const [pieThresholdInput, setPieThresholdInput] = useState(() => {
     const saved = localStorage.getItem("pie_threshold");
     return saved !== null ? saved : "3";
@@ -251,6 +239,7 @@ useEffect(() => {
     [data, pieType]
   );
 
+  
   const lineKeys = useMemo(() => {
     if (!chartData || chartData.length === 0) return [];
     return Object.keys(chartData[0]).filter((k) => k !== "month");
@@ -461,8 +450,28 @@ useEffect(() => {
           ) : chartData.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">Няма данни за показване</p>
           ) : (
+            <>
+            {tooltipData && (
+              <div className="mb-3 bg-white border border-gray-200 rounded-xl shadow px-3 py-2 text-xs"
+                style={{ maxHeight: "150px", overflowY: "auto" }}>
+                <p className="font-semibold text-gray-600 mb-1">{tooltipData.label}</p>
+                {tooltipData.items.length === 0 ? (
+                  <p className="text-gray-400">Няма стойности</p>
+                ) : (
+                  tooltipData.items.map((p) => (
+                    <p key={p.dataKey} style={{ color: p.color }}>
+                      {p.name}: {formatAmount(p.value)} EUR
+                    </p>
+                  ))
+                )}
+              </div>
+            )}
             <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 60 }}>
+              <LineChart
+                data={chartData}
+                margin={{ top: 5, right: 20, left: 10, bottom: 60 }}
+                
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis
                   dataKey="month"
@@ -472,7 +481,19 @@ useEffect(() => {
                   interval={0}
                 />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatAmount(v)} width={80} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length > 0) {
+                      const visible = payload.filter((p) => p.value !== 0 && p.value !== null && p.value !== undefined);
+                      if (JSON.stringify(tooltipData) !== JSON.stringify({ label, items: visible })) {
+                        setTimeout(() => setTooltipData({ label, items: visible }), 0);
+                      }
+                    } else {
+                      if (tooltipData !== null) setTimeout(() => setTooltipData(null), 0);
+                    }
+                    return null;
+                  }}
+                />
                 {lineKeys.map((key, i) => {
                   let color = COLORS[i % COLORS.length];
                   if (key === "Приходи" || key === "Приходи (avg)") color = "#10b981";
@@ -495,6 +516,7 @@ useEffect(() => {
                 })}
               </LineChart>
             </ResponsiveContainer>
+            </>
           )}
           {!isCalculating && viewMode !== "pie" && chartData && chartData.length > 0 && (
             <div className="mt-2">

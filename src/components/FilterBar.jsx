@@ -18,6 +18,7 @@ const CategoryDropdown = ({
     onToggleAll,
     toggleCategory,
     setFilters,
+    otherSelected,
   }) => {
     const allSelected = categories.length > 0 && categories.every((c) => selectedCategories.includes(`${c}::${type}`));
 
@@ -35,7 +36,7 @@ const CategoryDropdown = ({
           }`}
         >
           <span className={selected.length > 0 ? (color === "red" ? "text-red-500" : "text-green-600") : "text-gray-500"}>
-            {selected.length === 0 ? "Всички" : `${selected.length} избрани`}
+            {selected.length === 0 ? (otherSelected > 0 ? "Няма избрани" : "Всички") : `${selected.length} избрани`}
           </span>
           <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${show ? "rotate-180" : ""}`} />
         </button>
@@ -269,6 +270,7 @@ const FilterBar = ({
           onToggleAll={toggleAllExpenses}
           toggleCategory={toggleCategory}
           setFilters={setFilters}
+          otherSelected={selectedIncomes.length}
         />
         <CategoryDropdown
           label="Приходи"
@@ -285,6 +287,7 @@ const FilterBar = ({
           onToggleAll={toggleAllIncomes}
           toggleCategory={toggleCategory}
           setFilters={setFilters}
+          otherSelected={selectedExpenses.length}
         />
       </div>
 
