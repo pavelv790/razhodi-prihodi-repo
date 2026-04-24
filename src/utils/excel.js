@@ -77,10 +77,10 @@ export const exportToExcel = (
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
   const activeExpCats = isFiltered && filterCategories.length > 0
-    ? expenseCategories.filter((c) => filterCategories.includes(c))
+    ? expenseCategories.filter((c) => filterCategories.includes(c + "::expense"))
     : expenseCategories;
   const activeIncCats = isFiltered && filterCategories.length > 0
-    ? incomeCategories.filter((c) => filterCategories.includes(c))
+    ? incomeCategories.filter((c) => filterCategories.includes(c + "::income"))
     : incomeCategories;
 
   const workbook = XLSXStyle.utils.book_new();
@@ -117,7 +117,8 @@ export const exportToExcel = (
       ws["A" + r] = cell("ОБЩО ЗА МЕСЕЦА", COLOR.totalBg);
       for (let m = 1; m <= 12; m++) {
         const cl = colLetter(m);
-        ws[cl + r] = fCell("SUM(" + cl + startR + ":" + cl + endR + ")", COLOR.totalBg);
+        const formula = startR <= endR ? "SUM(" + cl + startR + ":" + cl + endR + ")" : "0";
+        ws[cl + r] = fCell(formula, COLOR.totalBg);
       }
       ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.totalBg);
       r++;

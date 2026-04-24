@@ -18,8 +18,8 @@ const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allT
     return true;
   };
 
-  // Общ лимит — от filteredTransactions за бюджетния период
-  const filteredBudgetExpense = (filteredTransactions || [])
+  // Общ лимит — от allTransactions за бюджетния период
+  const filteredBudgetExpense = (allTransactions || [])
     .filter((t) => t.type === "expense" && isInBudgetPeriod(t))
     .reduce((sum, t) => sum + t.amount, 0);
 
