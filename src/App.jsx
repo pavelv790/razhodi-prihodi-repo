@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle } from "lucide-react";
+import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
+import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup } from "./utils/backup";
+import ProfileModal from "./components/ProfileModal";
+import MergeProfileModal from "./components/MergeProfileModal";
 import SummaryCards from "./components/SummaryCards";
 import FilterBar from "./components/FilterBar";
 import TransactionForm from "./components/TransactionForm";
@@ -19,6 +22,17 @@ import BudgetModal from "./components/BudgetModal";
 
 const App = () => {
   const {
+    profiles,
+    activeProfileId,
+    activeProfile,
+    isLoaded: profilesLoaded,
+    createProfile,
+    switchProfile,
+    deleteProfile,
+    renameProfile,
+    restoreProfiles,
+  } = useProfiles();
+  const {
     transactions,
     addTransaction,
     editTransaction,
@@ -29,7 +43,7 @@ const App = () => {
     addTransactions,
     getFilteredTransactions,
     getSummary,
-  } = useTransactions();
+  } = useTransactions(activeProfileId);
 
   const {
     expenseCategories,
@@ -41,9 +55,9 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories();
-  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters();
-  const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency();
-  const { budgets, updateBudgets, restoreBudgets } = useBudgets();
+  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters(activeProfileId);
+  const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
+  const { budgets, updateBudgets, restoreBudgets } = useBudgets(activeProfileId);
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
@@ -60,9 +74,17 @@ const App = () => {
   const [showCharts, setShowCharts] = useState(false);
   const [rollingMonths, setRollingMonths] = useState(12);
   const [showBudget, setShowBudget] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
+  useEffect(() => {
+    if (!profilesLoaded) return;
+    if (profiles.length === 0) {
+      setShowProfileModal(true);
+    }
+  }, [profilesLoaded, profiles.length]);
   const backupFileRef = useRef(null);
 
   const filteredTransactions = useMemo(
@@ -117,9 +139,14 @@ const App = () => {
     addCategoriesFromImport("expense", newCategories.expense);
     addCategoriesFromImport("income", newCategories.income);
   };
+  const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
+    addTransactions(transactions);
+    addCategoriesFromImport("expense", expenseCategories);
+    addCategoriesFromImport("income", incomeCategories);
+  };
 
   const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets);
+    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -135,13 +162,20 @@ const App = () => {
   };
 
   const handleRestoreConfirm = async () => {
-    replaceAllTransactions(pendingBackup.transactions);
+    if (pendingBackup.profiles) {
+      await restoreProfiles(pendingBackup.profiles, pendingBackup.activeProfileId);
+    }
+    replaceAllTransactions(pendingBackup.transactions.filter(
+      (t) => t.profileId === (pendingBackup.activeProfileId || activeProfileId)
+    ));
     setExpenseCategoriesFromBackup(pendingBackup.expenseCategories);
     setIncomeCategoriesFromBackup(pendingBackup.incomeCategories);
     handleClearFilter();
     if (pendingBackup.savedFilters) {
       await restoreFilters(pendingBackup.savedFilters);
-      setSavedFilters(pendingBackup.savedFilters);
+      setSavedFilters(pendingBackup.savedFilters.filter(
+        (f) => f.profileId === (pendingBackup.activeProfileId || activeProfileId)
+      ));
     }
     if (pendingBackup.currency) {
       restoreCurrency(pendingBackup.currency, pendingBackup.rate);
@@ -172,6 +206,8 @@ const App = () => {
           onResetToEur={resetToEur}
           convert={convert}
           isLoaded={currencyLoaded}
+          activeProfile={activeProfile}
+          onOpenProfileModal={() => setShowProfileModal(true)}
         />
 
         {/* Summary Cards */}
@@ -438,7 +474,7 @@ const App = () => {
               </p>
               <button
                 onClick={() => {
-                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets);
+                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
@@ -464,6 +500,28 @@ const App = () => {
           expenseCategories={expenseCategories}
           activeFilterCategories={activeFilters.categories}
           isFiltered={isFiltered}
+        />
+      )}
+
+      {showProfileModal && (
+        <ProfileModal
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          onSwitch={switchProfile}
+          onCreate={createProfile}
+          onDelete={deleteProfile}
+          onRename={renameProfile}
+          onClose={() => setShowProfileModal(false)}
+          onOpenMerge={() => setShowMergeModal(true)}
+        />
+      )}
+
+      {showMergeModal && (
+        <MergeProfileModal
+          onClose={() => setShowMergeModal(false)}
+          onMerge={handleMergeImport}
+          activeProfile={activeProfile}
+          existingTransactions={transactions}
         />
       )}
 

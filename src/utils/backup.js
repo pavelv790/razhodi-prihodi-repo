@@ -1,7 +1,9 @@
-export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets) => {
+export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId) => {
   const backup = {
-    version: "1.2",
+    version: "1.3",
     date: new Date().toISOString(),
+    profiles,
+    activeProfileId,
     transactions,
     expenseCategories,
     incomeCategories,
@@ -35,6 +37,27 @@ export const importBackup = (file) => {
         if (!data.transactions || !data.expenseCategories || !data.incomeCategories) {
           reject(new Error("Невалиден backup файл."));
           return;
+        }
+        // Ако backup-ът е стар (без профили), създаваме един профил "По подразбиране"
+        if (!data.profiles || data.profiles.length === 0) {
+          const defaultProfile = {
+            id: `profile_${Date.now()}`,
+            name: "По подразбиране",
+            createdAt: new Date().toISOString(),
+          };
+          data.profiles = [defaultProfile];
+          data.activeProfileId = defaultProfile.id;
+          // Добавяме profileId на всички транзакции и филтри
+          data.transactions = data.transactions.map((t) => ({
+            ...t,
+            profileId: defaultProfile.id,
+          }));
+          if (data.savedFilters) {
+            data.savedFilters = data.savedFilters.map((f) => ({
+              ...f,
+              profileId: defaultProfile.id,
+            }));
+          }
         }
         resolve(data);
       } catch {

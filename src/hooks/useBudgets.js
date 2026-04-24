@@ -4,12 +4,12 @@ import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 
 const STORE = "budgets";
 
-const loadFromDB = async () => {
+const loadFromDB = async (profileId) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).get("current");
+      const req = tx.objectStore(STORE).get(profileId);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
@@ -18,12 +18,12 @@ const loadFromDB = async () => {
   }
 };
 
-const saveToDB = async (data) => {
+const saveToDB = async (profileId, data) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put({ id: "current", ...data });
+      tx.objectStore(STORE).put({ id: profileId, ...data });
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
@@ -32,31 +32,35 @@ const saveToDB = async (data) => {
   }
 };
 
-export const useBudgets = () => {
+export const useBudgets = (profileId) => {
   const today = new Date();
-  const [budgets, setBudgets] = useState({
-    totalLimit: "",           // общ лимит за разходи (string, "" = няма)
-    categoryLimits: {},       // { "Супермаркет": "300", ... }
+  const defaultBudgets = {
+    totalLimit: "",
+    categoryLimits: {},
     fromDate: getFirstDayOfMonth(today),
     toDate: getLastDayOfMonth(today),
-  });
+  };
+  const [budgets, setBudgets] = useState(defaultBudgets);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    loadFromDB().then((data) => {
+    if (!profileId) return;
+    setIsLoaded(false);
+    setBudgets(defaultBudgets);
+    loadFromDB(profileId).then((data) => {
       if (data) {
         const { id, ...rest } = data;
         setBudgets(rest);
       }
       setIsLoaded(true);
     });
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
-    if (isLoaded) {
-      saveToDB(budgets);
+    if (isLoaded && profileId) {
+      saveToDB(profileId, budgets);
     }
-  }, [budgets, isLoaded]);
+  }, [budgets, isLoaded, profileId]);
 
   const updateBudgets = (newBudgets) => {
     setBudgets(newBudgets);
