@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User } from "lucide-react";
+import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories } from "./hooks/useCategories";
 import { useProfiles } from "./hooks/useProfiles";
@@ -19,6 +19,9 @@ import { useSavedFilters } from "./hooks/useSavedFilters";
 import { useCurrency } from "./hooks/useCurrency";
 import { useBudgets } from "./hooks/useBudgets";
 import BudgetModal from "./components/BudgetModal";
+import RecurringModal from "./components/RecurringModal";
+import PendingRecurringModal from "./components/PendingRecurringModal";
+import { useRecurring } from "./hooks/useRecurring";
 
 const App = () => {
   const {
@@ -59,6 +62,16 @@ const App = () => {
   const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
   const { budgets, updateBudgets, restoreBudgets } = useBudgets(activeProfileId);
+  const {
+    recurringItems,
+    addRecurring,
+    editRecurring,
+    deleteRecurring,
+    markAsAdded,
+    deleteAllByProfile: deleteAllRecurringByProfile,
+    restoreRecurring,
+    getPendingTransactions,
+  } = useRecurring(activeProfileId);
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
@@ -77,6 +90,9 @@ const App = () => {
   const [showBudget, setShowBudget] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const [pendingRecurring, setPendingRecurring] = useState([]);
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
@@ -86,6 +102,14 @@ const App = () => {
       setShowProfileModal(true);
     }
   }, [profilesLoaded, profiles.length]);
+  useEffect(() => {
+    if (!activeProfileId || recurringItems.length === 0) return;
+    const pending = getPendingTransactions();
+    if (pending.length > 0) {
+      setPendingRecurring(pending);
+      setShowPendingModal(true);
+    }
+  }, [activeProfileId, getPendingTransactions]);
   const backupFileRef = useRef(null);
 
   const filteredTransactions = useMemo(
@@ -137,12 +161,34 @@ const App = () => {
   };
   const handleDeleteProfile = async (id) => {
     await deleteAllTransactionsByProfile(id);
+    await deleteAllRecurringByProfile(id);
     deleteProfile(id);
   };
 
   const handleCategoriesImported = (newCategories) => {
     addCategoriesFromImport("expense", newCategories.expense);
     addCategoriesFromImport("income", newCategories.income);
+  };
+  const handleConfirmPending = async (toAdd) => {
+    for (const item of toAdd) {
+      await addTransaction({
+        type: item.type,
+        category: item.category,
+        amount: item.amount,
+        date: item.date,
+        description: item.description,
+      });
+    }
+    // Маркираме последната дата за ВСЕКИ recurringId независимо дали е добавен или пропуснат
+    const allIds = [...new Set(pendingRecurring.map((p) => p.recurringId))];
+    for (const id of allIds) {
+      const lastDate = pendingRecurring
+        .filter((p) => p.recurringId === id)
+        .at(-1)?.date;
+      if (lastDate) await markAsAdded(id, lastDate);
+    }
+    setShowPendingModal(false);
+    setPendingRecurring([]);
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
@@ -151,7 +197,7 @@ const App = () => {
   };
 
   const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId);
+    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -202,6 +248,9 @@ const App = () => {
     }
     if (pendingBackup.budgets) {
       restoreBudgets(pendingBackup.budgets);
+    }
+    if (pendingBackup.recurringItems) {
+      await restoreRecurring(pendingBackup.recurringItems);
     }
 
     setPendingBackup(null);
@@ -363,6 +412,13 @@ const App = () => {
             Управление на категории
           </button>
           <button
+            onClick={() => setShowRecurringModal(true)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-purple-50 text-purple-500 hover:bg-purple-100 transition shadow-sm"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Повтарящи се транзакции
+          </button>
+          <button
             onClick={() => setShowAbout(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition shadow-sm"
           >
@@ -495,7 +551,7 @@ const App = () => {
               </p>
               <button
                 onClick={() => {
-                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId);
+                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
@@ -534,6 +590,28 @@ const App = () => {
           onRename={renameProfile}
           onClose={() => setShowProfileModal(false)}
           onOpenMerge={() => setShowMergeModal(true)}
+        />
+      )}
+      {showRecurringModal && (
+        <RecurringModal
+          recurringItems={recurringItems}
+          expenseCategories={expenseCategories}
+          incomeCategories={incomeCategories}
+          onAdd={addRecurring}
+          onEdit={editRecurring}
+          onDelete={deleteRecurring}
+          onClose={() => setShowRecurringModal(false)}
+        />
+      )}
+
+      {showPendingModal && pendingRecurring.length > 0 && (
+        <PendingRecurringModal
+          pendingItems={pendingRecurring}
+          onConfirm={handleConfirmPending}
+          onClose={() => {
+            // При затваряне без потвърждение — маркираме всички като видяни
+            handleConfirmPending([]);
+          }}
         />
       )}
 
