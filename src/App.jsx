@@ -43,6 +43,7 @@ const App = () => {
     addTransactions,
     getFilteredTransactions,
     getSummary,
+    deleteAllTransactionsByProfile,
   } = useTransactions(activeProfileId);
 
   const {
@@ -133,6 +134,10 @@ const App = () => {
       reassignTransactionsCategory(name);
     }
     deleteCategory(type, name);
+  };
+  const handleDeleteProfile = async (id) => {
+    await deleteAllTransactionsByProfile(id);
+    deleteProfile(id);
   };
 
   const handleCategoriesImported = (newCategories) => {
@@ -525,7 +530,7 @@ const App = () => {
           activeProfileId={activeProfileId}
           onSwitch={switchProfile}
           onCreate={createProfile}
-          onDelete={deleteProfile}
+          onDelete={handleDeleteProfile}
           onRename={renameProfile}
           onClose={() => setShowProfileModal(false)}
           onOpenMerge={() => setShowMergeModal(true)}

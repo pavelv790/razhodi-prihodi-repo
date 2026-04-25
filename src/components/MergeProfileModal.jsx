@@ -176,11 +176,13 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
 
   const getFilteredTransactions = () => {
     if (!backupData) return [];
-    // Взимаме транзакциите само на избрания профил
-    let txs = backupData.transactions.filter((t) => t.profileId === selectedProfileId);
-    // Ако backup-ът е стар (без profileId), взимаме всички
-    if (backupData.profiles?.length === 0 || !backupData.profiles) {
+    let txs;
+    if (!backupData.profiles || backupData.profiles.length === 0) {
+      // Стар backup без профили — взимаме всички транзакции
       txs = backupData.transactions;
+    } else {
+      // Нов backup — взимаме само транзакциите на избрания профил
+      txs = backupData.transactions.filter((t) => t.profileId === selectedProfileId);
     }
     return txs.filter((t) => {
       const date = parseDate(t.date);

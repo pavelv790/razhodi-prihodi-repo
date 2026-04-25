@@ -20,19 +20,6 @@ const loadByProfile = async (profileId) => {
 };
 
 
-const loadAllFromDB = async () => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    return [];
-  }
-};
 
 const saveAllToDB = async (transactions) => {
   try {
@@ -149,6 +136,28 @@ export const useTransactions = (profileId) => {
     const withProfile = newTransactions.map((t) => ({ ...t, profileId }));
     setTransactions((prev) => sortByDate([...prev, ...withProfile]));
   };
+  const deleteAllTransactionsByProfile = async (targetProfileId) => {
+    try {
+      const db = await openDB();
+      const all = await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+      const remaining = all.filter((t) => t.profileId !== targetProfileId);
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        const store = tx.objectStore(STORE);
+        store.clear();
+        remaining.forEach((t) => store.put(t));
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch {
+      console.error("Грешка при изтриване на транзакции по профил");
+    }
+  };
 
   const getFilteredTransactions = useCallback((filters) => {
     const { fromDate, toDate, categories } = filters;
@@ -198,5 +207,6 @@ export const useTransactions = (profileId) => {
     addTransactions,
     getFilteredTransactions,
     getSummary,
+    deleteAllTransactionsByProfile,
   };
 };
