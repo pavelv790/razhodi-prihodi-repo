@@ -137,12 +137,12 @@ export const useTransactions = (profileId) => {
     );
   };
 
-  const replaceAllTransactions = (newTransactions) => {
+  const replaceAllTransactions = async (newTransactions) => {
     const withProfile = newTransactions.map((t) => ({ ...t, profileId }));
     const sorted = sortByDate(withProfile);
     setTransactions(sorted);
-    // Изтриваме старите на този профил и записваме новите
-    saveAllToDB_forProfile(profileId, sorted);
+    // Изтриваме старите на този профил и записваме новите — изчакваме записа
+    await saveAllToDB_forProfile(profileId, sorted);
   };
 
   const addTransactions = (newTransactions) => {

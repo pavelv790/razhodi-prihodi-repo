@@ -162,27 +162,43 @@ const App = () => {
   };
 
   const handleRestoreConfirm = async () => {
+    const targetProfileId = pendingBackup.activeProfileId || activeProfileId;
+
+    // 1. Първо записваме профилите и изчакваме
     if (pendingBackup.profiles) {
-      await restoreProfiles(pendingBackup.profiles, pendingBackup.activeProfileId);
+      await restoreProfiles(pendingBackup.profiles, targetProfileId);
     }
-    replaceAllTransactions(pendingBackup.transactions.filter(
-      (t) => t.profileId === (pendingBackup.activeProfileId || activeProfileId)
-    ));
+
+    // 2. Изчакваме React да обнови activeProfileId (малка пауза)
+    await new Promise((res) => setTimeout(res, 100));
+
+    // 3. Сега записваме транзакциите
+    const transactionsToRestore = pendingBackup.transactions.filter(
+      (t) => t.profileId === targetProfileId
+    );
+    await replaceAllTransactions(transactionsToRestore);
+
+    // 4. Категории
     setExpenseCategoriesFromBackup(pendingBackup.expenseCategories);
     setIncomeCategoriesFromBackup(pendingBackup.incomeCategories);
+
+    // 5. Филтри
     handleClearFilter();
     if (pendingBackup.savedFilters) {
       await restoreFilters(pendingBackup.savedFilters);
       setSavedFilters(pendingBackup.savedFilters.filter(
-        (f) => f.profileId === (pendingBackup.activeProfileId || activeProfileId)
+        (f) => f.profileId === targetProfileId
       ));
     }
+
+    // 6. Валута и бюджети
     if (pendingBackup.currency) {
       restoreCurrency(pendingBackup.currency, pendingBackup.rate);
     }
     if (pendingBackup.budgets) {
       restoreBudgets(pendingBackup.budgets);
     }
+
     setPendingBackup(null);
     setShowRestoreConfirm(false);
   };
