@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { parseDate } from "../utils/formatters";
 import { openDB } from "../utils/db";
 
@@ -77,6 +77,7 @@ const sortByDate = (transactions) =>
 export const useTransactions = (profileId) => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const skipAutoSave = useRef(false);
 
   useEffect(() => {
     if (!profileId) {
@@ -93,6 +94,7 @@ export const useTransactions = (profileId) => {
 
   useEffect(() => {
     if (!isLoaded || !profileId) return;
+    if (skipAutoSave.current) { skipAutoSave.current = false; return; }
     const timer = setTimeout(() => saveAllToDB_forProfile(profileId, transactions), 300);
     return () => clearTimeout(timer);
   }, [transactions, isLoaded, profileId]);
@@ -127,6 +129,7 @@ export const useTransactions = (profileId) => {
   const replaceAllTransactions = async (newTransactions) => {
     const withProfile = newTransactions.map((t) => ({ ...t, profileId }));
     const sorted = sortByDate(withProfile);
+    skipAutoSave.current = true;
     setTransactions(sorted);
     // Изтриваме старите на този профил и записваме новите — изчакваме записа
     await saveAllToDB_forProfile(profileId, sorted);
