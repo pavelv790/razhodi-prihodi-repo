@@ -1,4 +1,4 @@
-export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems) => {
+export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName) => {
   const backup = {
     version: "1.4",
     date: new Date().toISOString(),
@@ -24,7 +24,8 @@ export const exportBackup = (transactions, expenseCategories, incomeCategories, 
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const year = today.getFullYear();
   a.href = url;
-  a.download = `Финанси_Backup_${day}.${month}.${year}.json`;
+  const profileSuffix = profileName ? `_${profileName}` : "";
+  a.download = `Финанси_Backup${profileSuffix}_${day}.${month}.${year}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 100);
 };

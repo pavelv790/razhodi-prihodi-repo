@@ -73,7 +73,7 @@ const getCategoriesInWindow = (transactions, type, rollingMonths) => {
   return [...cats].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
 };
 
-const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFilters, onClose, rollingMonths: initialRollingMonths = 12, onRollingMonthsChange }) => {
+const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFilters, onClose, rollingMonths: initialRollingMonths = 12, onRollingMonthsChange, profileName }) => {
   const [activeTab, setActiveTab] = useState("expense");
   const [rollingMonths, setRollingMonths] = useState(initialRollingMonths);
   const [inputMonths, setInputMonths] = useState(String(initialRollingMonths));
@@ -90,15 +90,21 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
   };
 
   const data = isFiltered ? filteredTransactions : transactions;
+  const [noDataMessage, setNoDataMessage] = useState(false);
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
 
   const handleExport = async () => {
+    if (!data || data.length === 0) {
+      setNoDataMessage(true);
+      setTimeout(() => setNoDataMessage(false), 3000);
+      return;
+    }
     if (isFiltered) {
       setShowExportWarning(true);
     } else {
       setExportLoading(true);
-      await exportMonthlyStatsToExcel(data, rollingMonths);
+      await exportMonthlyStatsToExcel(data, rollingMonths, profileName);
       setExportLoading(false);
     }
   };
@@ -151,6 +157,9 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
               <FileDown className="w-3.5 h-3.5" />
               Експорт към Excel
             </button>
+            )}
+            {noDataMessage && (
+              <span className="text-xs text-red-500 font-medium">Няма данни за експорт</span>
             )}
             <button
               onClick={onClose}
@@ -263,7 +272,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
                 <p className="text-sm text-gray-400 animate-pulse flex-1 text-center py-2">⏳ Генериране...</p>
               ) : (
               <button
-                onClick={async () => { setExportLoading(true); await exportMonthlyStatsToExcel(data, rollingMonths); setExportLoading(false); setShowExportWarning(false); }}
+                onClick={async () => { setExportLoading(true); await exportMonthlyStatsToExcel(data, rollingMonths, profileName); setExportLoading(false); setShowExportWarning(false); }}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
               >
                 Разбирам, експортирай

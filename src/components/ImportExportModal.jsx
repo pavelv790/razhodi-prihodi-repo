@@ -14,6 +14,7 @@ const ImportExportModal = ({
   mode,
   expenseCategories,
   incomeCategories,
+  profileName,
 }) => {
   const [step, setStep] = useState("main");
   const [pendingTransactions, setPendingTransactions] = useState(null);
@@ -37,7 +38,7 @@ const ImportExportModal = ({
         setStep("exportWarning");
       } else {
         setLoading(true);
-        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, []).then(() => onClose());
+        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, [], profileName).then(() => onClose());
       }
     } else if (mode === "import") {
       setTimeout(() => {
@@ -134,7 +135,7 @@ const ImportExportModal = ({
               <button
                 onClick={async () => {
                   setLoading(true);
-                  await exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || []);
+                  await exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || [], profileName);
                   onClose();
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"

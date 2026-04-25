@@ -197,7 +197,7 @@ const App = () => {
   };
 
   const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems);
+    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, activeProfile?.name);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -468,6 +468,7 @@ const App = () => {
           mode={importExportMode}
           expenseCategories={expenseCategories}
           incomeCategories={incomeCategories}
+          profileName={activeProfile?.name}
         />
       )}
 
@@ -480,6 +481,7 @@ const App = () => {
           onClose={() => setShowMonthlyStats(false)}
           rollingMonths={rollingMonths}
           onRollingMonthsChange={setRollingMonths}
+          profileName={activeProfile?.name}
         />
       )}
 
@@ -551,7 +553,7 @@ const App = () => {
               </p>
               <button
                 onClick={() => {
-                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems);
+                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, activeProfile?.name);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
