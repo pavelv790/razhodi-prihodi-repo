@@ -222,8 +222,7 @@ const App = () => {
     }
 
     // 2. Изчакваме React да обнови activeProfileId (малка пауза)
-    await new Promise((res) => setTimeout(res, 100));
-
+    
     // 3. Сега записваме транзакциите
     const transactionsToRestore = pendingBackup.transactions.filter(
       (t) => t.profileId === targetProfileId

@@ -9,6 +9,7 @@ export const openDB = () => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
+      try {
       if (!db.objectStoreNames.contains("transactions"))
         db.createObjectStore("transactions", { keyPath: "id" });
       if (!db.objectStoreNames.contains("categories"))
@@ -22,8 +23,12 @@ export const openDB = () => {
       if (!db.objectStoreNames.contains("profiles"))
         db.createObjectStore("profiles", { keyPath: "id" });
       if (!db.objectStoreNames.contains("recurring"))
-        db.createObjectStore("recurring", { keyPath: "id" });
-    };
+         db.createObjectStore("recurring", { keyPath: "id" });
+    } catch (err) {
+      dbPromise = null;
+      reject(err);
+    }
+  };
     req.onsuccess = (e) => resolve(e.target.result);
     req.onerror = () => {
       dbPromise = null; // позволява retry при грешка
