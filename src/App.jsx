@@ -11,7 +11,6 @@ import FilterBar from "./components/FilterBar";
 import TransactionForm from "./components/TransactionForm";
 import TransactionList from "./components/TransactionList";
 import CategoryManager from "./components/CategoryManager";
-import AboutModal from "./components/AboutModal";
 import ImportExportModal from "./components/ImportExportModal";
 import MonthlyStats from "./components/MonthlyStats";
 import ChartsModal from "./components/ChartsModal";
@@ -22,6 +21,7 @@ import BudgetModal from "./components/BudgetModal";
 import RecurringModal from "./components/RecurringModal";
 import PendingRecurringModal from "./components/PendingRecurringModal";
 import { useRecurring } from "./hooks/useRecurring";
+import UserGuideModal from "./components/UserGuideModal";
 
 const App = () => {
   const {
@@ -78,7 +78,6 @@ const App = () => {
   const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", categories: [] });
   const [isFiltered, setIsFiltered] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
   const [importExportMode, setImportExportMode] = useState(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
@@ -96,6 +95,8 @@ const App = () => {
   const [showDataPanel, setShowDataPanel] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
+  const [showUserGuide, setShowUserGuide] = useState(false);
+  
   useEffect(() => {
     if (!profilesLoaded) return;
     if (profiles.length === 0) {
@@ -418,12 +419,13 @@ const App = () => {
             <RefreshCw className="w-4 h-4" />
             Повтарящи се транзакции
           </button>
+          
           <button
-            onClick={() => setShowAbout(true)}
+            onClick={() => setShowUserGuide(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition shadow-sm"
           >
             <Info className="w-4 h-4" />
-            За приложението
+            Ръководство за потребителя
           </button>
         </div>
 
@@ -451,10 +453,7 @@ const App = () => {
         />
       )}
 
-      {showAbout && (
-        <AboutModal onClose={() => setShowAbout(false)} />
-      )}
-
+      
       {showImportExport && (
         <ImportExportModal
           onClose={() => setShowImportExport(false)}
@@ -615,6 +614,9 @@ const App = () => {
             handleConfirmPending([]);
           }}
         />
+      )}
+      {showUserGuide && (
+        <UserGuideModal onClose={() => setShowUserGuide(false)} />
       )}
 
       {showMergeModal && (
