@@ -19,24 +19,6 @@ const loadByProfile = async (profileId) => {
   } catch { return []; }
 };
 
-
-
-const saveAllToDB = async (transactions) => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      store.clear();
-      transactions.forEach((t) => store.put(t));
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
-    console.error("Грешка при запис в IndexedDB");
-  }
-};
-
 const saveAllToDB_forProfile = async (profileId, newTransactions) => {
   try {
     const db = await openDB();

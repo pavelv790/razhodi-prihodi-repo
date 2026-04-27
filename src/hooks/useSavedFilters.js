@@ -70,26 +70,26 @@ export const useSavedFilters = (profileId) => {
   };
 
   const restoreFilters = async (filters) => {
-    const db = await openDB();
-    // Зареждаме всички филтри от всички профили
-    const all = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-    // Запазваме филтрите на другите профили непокътнати
-    const otherProfiles = all.filter((f) => f.profileId !== profileId);
-    const withProfile = filters.map((f) => ({ ...f, profileId }));
-    const merged = [...otherProfiles, ...withProfile];
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      store.clear();
-      merged.forEach((f) => store.put(f));
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
+    try {
+      const db = await openDB();
+      const all = await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+      const otherProfiles = all.filter((f) => f.profileId !== profileId);
+      const withProfile = filters.map((f) => ({ ...f, profileId }));
+      const merged = [...otherProfiles, ...withProfile];
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        const store = tx.objectStore(STORE);
+        store.clear();
+        merged.forEach((f) => store.put(f));
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch { console.error("Грешка при restore на филтри"); }
   };
 
   return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters };

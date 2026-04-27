@@ -221,12 +221,10 @@ const App = () => {
       await restoreProfiles(pendingBackup.profiles, targetProfileId);
     }
 
-    // 2. Изчакваме React да обнови activeProfileId (малка пауза)
-    
-    // 3. Сега записваме транзакциите
-    const transactionsToRestore = pendingBackup.transactions.filter(
-      (t) => t.profileId === targetProfileId
-    );
+    // 2. Транзакциите се записват директно с targetProfileId — не разчитаме на React state
+    const transactionsToRestore = pendingBackup.transactions
+      .filter((t) => t.profileId === targetProfileId)
+      .map((t) => ({ ...t, profileId: targetProfileId }));
     await replaceAllTransactions(transactionsToRestore);
 
     // 4. Категории
