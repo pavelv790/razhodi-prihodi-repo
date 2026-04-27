@@ -136,7 +136,8 @@ const App = () => {
   useEffect(() => {
     if (!driveAutoSync || !driveConnected) return;
     if (transactions.length === 0) return;
-    driveUploadBackup(buildBackupData(), activeProfile?.name);
+    if (!activeProfile?.name) return;
+    driveUploadBackup(buildBackupData(), activeProfile.name);
   }, [transactions]);
 
   useEffect(() => {
