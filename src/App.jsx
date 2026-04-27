@@ -22,6 +22,7 @@ import RecurringModal from "./components/RecurringModal";
 import PendingRecurringModal from "./components/PendingRecurringModal";
 import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
+import { useGoogleDrive } from "./hooks/useGoogleDrive";
 
 const App = () => {
   const {
@@ -96,6 +97,17 @@ const App = () => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const {
+    connected: driveConnected,
+    autoSync: driveAutoSync,
+    loading: driveLoading,
+    message: driveMessage,
+    connect: driveConnect,
+    disconnect: driveDisconnect,
+    toggleAutoSync: driveToggleAutoSync,
+    uploadBackup: driveUploadBackup,
+    downloadBackup: driveDownloadBackup,
+  } = useGoogleDrive();
   
   useEffect(() => {
     if (!profilesLoaded) return;
@@ -121,6 +133,11 @@ const App = () => {
     () => getSummary(filteredTransactions),
     [filteredTransactions, getSummary]
   );
+  useEffect(() => {
+    if (!driveAutoSync || !driveConnected) return;
+    if (transactions.length === 0) return;
+    driveUploadBackup(buildBackupData(), activeProfile?.name);
+  }, [transactions]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -196,6 +213,25 @@ const App = () => {
     addTransactions(transactions);
     addCategoriesFromImport("expense", expenseCategories);
     addCategoriesFromImport("income", incomeCategories);
+  };
+  const buildBackupData = () => ({
+    version: "1.5",
+    date: new Date().toISOString(),
+    profiles,
+    activeProfileId,
+    transactions,
+    expenseCategories,
+    incomeCategories,
+    profileCategories: { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } },
+    savedFilters,
+    currency,
+    rate,
+    budgets,
+    recurringItems,
+  });
+  
+  const handleDriveUpload = async () => {
+    await driveUploadBackup(buildBackupData(), activeProfile?.name);
   };
 
   const handleBackupExport = () => {
@@ -395,6 +431,56 @@ const App = () => {
                   <Trash2 className="w-4 h-4" />
                   Изтрий всички данни
                 </button>
+                <div className="border-t border-gray-200 pt-2 mt-1">
+                  <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Google Drive</p>
+                  {!driveConnected ? (
+                    <button
+                      onClick={driveConnect}
+                      disabled={driveLoading}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
+                    >
+                      🔗 {driveLoading ? "Свързване..." : "Свържи с Google Drive"}
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between px-1 py-1 mb-1">
+                        <span className="text-xs text-gray-500">Авто при всяка промяна</span>
+                        <button
+                          onClick={() => driveToggleAutoSync(!driveAutoSync)}
+                          className={`w-10 h-5 rounded-full transition-colors ${driveAutoSync ? "bg-blue-400" : "bg-gray-300"}`}
+                        >
+                          <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${driveAutoSync ? "translate-x-5" : "translate-x-0"}`} />
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleDriveUpload}
+                        disabled={driveLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
+                      >
+                        ☁️ {driveLoading ? "Качване..." : "Запази в Drive"}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const data = await driveDownloadBackup(activeProfile?.name);
+                          if (data) { setPendingBackup(data); setShowRestoreConfirm(true); }
+                        }}
+                        disabled={driveLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
+                      >
+                        ⬇️ {driveLoading ? "Изтегляне..." : "Възстанови от Drive"}
+                      </button>
+                      <button
+                        onClick={driveDisconnect}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
+                      >
+                        🔌 Изключи Google Drive
+                      </button>
+                    </>
+                  )}
+                  {driveMessage && (
+                    <p className="text-xs text-gray-500 mt-2 px-1">{driveMessage}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
