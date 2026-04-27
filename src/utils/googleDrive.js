@@ -67,6 +67,14 @@ async function findExistingFile(fileName, folderId) {
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
+async function findExistingFileByProfile(prefix, folderId) {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
 
 export async function uploadBackupToDrive(backupData, profileName) {
   if (!accessToken) throw new Error("Не сте влезли в Google акаунт.");
@@ -79,7 +87,8 @@ export async function uploadBackupToDrive(backupData, profileName) {
   const fileName = `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
 
   const folderId = await getOrCreateFolder();
-  const existingFileId = await findExistingFile(fileName, folderId);
+  const profileSuffix2 = profileName ? `_${profileName}` : "";
+  const existingFileId = await findExistingFileByProfile(`Finances_Backup${profileSuffix2}`, folderId);
 
   const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
 

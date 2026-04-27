@@ -54,7 +54,10 @@ export function useGoogleDrive() {
   };
 
   const uploadBackup = useCallback(async (backupData, profileName) => {
-    if (!isSignedIn()) return false;
+    if (!isSignedIn()) {
+      setMessage("❌ Сесията е изтекла. Свържете се отново с Google Drive.");
+      return false;
+    }
     setLoading(true);
     setMessage("");
     try {
