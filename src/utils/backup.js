@@ -1,12 +1,13 @@
 export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName) => {
   const backup = {
-    version: "1.4",
+    version: "1.5",
     date: new Date().toISOString(),
     profiles,
     activeProfileId,
     transactions,
     expenseCategories,
     incomeCategories,
+    profileCategories: { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } },
     savedFilters,
     currency,
     rate,
@@ -49,7 +50,6 @@ export const importBackup = (file) => {
           };
           data.profiles = [defaultProfile];
           data.activeProfileId = defaultProfile.id;
-          // Добавяме profileId на всички транзакции и филтри
           data.transactions = data.transactions.map((t) => ({
             ...t,
             profileId: defaultProfile.id,

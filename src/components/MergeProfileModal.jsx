@@ -135,9 +135,11 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     }
   };
 
-  // Категориите на избрания профил от backup файла
-  const backupExpenseCategories = backupData?.expenseCategories || [];
-  const backupIncomeCategories = backupData?.incomeCategories || [];
+  // Категориите на избрания профил от backup файла — per-profile ако има, иначе стар формат
+  const backupExpenseCategories = backupData?.profileCategories?.[selectedProfileId]?.expense
+    || backupData?.expenseCategories || [];
+  const backupIncomeCategories = backupData?.profileCategories?.[selectedProfileId]?.income
+    || backupData?.incomeCategories || [];
 
   const selectedExpenses = selectedCategories.filter((k) => k.endsWith("::expense"));
   const selectedIncomes = selectedCategories.filter((k) => k.endsWith("::income"));
@@ -228,7 +230,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
       setSelectedDuplicates([]);
       setStep(3);
     } else {
-      onMerge(txs, backupData.expenseCategories, backupData.incomeCategories);
+      onMerge(txs, backupExpenseCategories, backupIncomeCategories);
       onClose();
     }
   };
@@ -239,7 +241,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
       ...duplicates.filter((t) => selectedDuplicates.includes(t.id)),
     ];
     if (toImport.length === 0) { setError("Няма избрани транзакции за импорт."); setStep(2); return; }
-    onMerge(toImport, backupData.expenseCategories, backupData.incomeCategories);
+    onMerge(toImport, backupExpenseCategories, backupIncomeCategories);
     onClose();
   };
 

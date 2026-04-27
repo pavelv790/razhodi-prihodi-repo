@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
-import { useCategories } from "./hooks/useCategories";
+import { useCategories, deleteProfileCategories } from "./hooks/useCategories";
 import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
@@ -58,7 +58,7 @@ const App = () => {
     addCategoriesFromImport,
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
-  } = useCategories();
+  } = useCategories(activeProfileId);
   const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
   const { budgets, updateBudgets, restoreBudgets } = useBudgets(activeProfileId);
@@ -163,6 +163,7 @@ const App = () => {
   const handleDeleteProfile = async (id) => {
     await deleteAllTransactionsByProfile(id);
     await deleteAllRecurringByProfile(id);
+    await deleteProfileCategories(id);
     deleteProfile(id);
   };
 
@@ -227,9 +228,15 @@ const App = () => {
       .map((t) => ({ ...t, profileId: targetProfileId }));
     await replaceAllTransactions(transactionsToRestore);
 
-    // 4. Категории
-    setExpenseCategoriesFromBackup(pendingBackup.expenseCategories);
-    setIncomeCategoriesFromBackup(pendingBackup.incomeCategories);
+    // 4. Категории — per-profile ако има, иначе стар формат
+    if (pendingBackup.profileCategories?.[targetProfileId]) {
+      const cats = pendingBackup.profileCategories[targetProfileId];
+      setExpenseCategoriesFromBackup(cats.expense || []);
+      setIncomeCategoriesFromBackup(cats.income || []);
+    } else {
+      setExpenseCategoriesFromBackup(pendingBackup.expenseCategories || []);
+      setIncomeCategoriesFromBackup(pendingBackup.incomeCategories || []);
+    }
 
     // 5. Филтри
     handleClearFilter();
