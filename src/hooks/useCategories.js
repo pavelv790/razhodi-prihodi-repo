@@ -22,7 +22,7 @@ const loadFromDB = async (profileId) => {
   }
 };
 
-const saveToDB = async (profileId, expenseCategories, incomeCategories) => {
+export const saveToDB = async (profileId, expenseCategories, incomeCategories) => {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {

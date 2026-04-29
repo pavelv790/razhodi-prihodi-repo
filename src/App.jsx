@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
-import { useCategories, deleteProfileCategories } from "./hooks/useCategories";
+import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirectly } from "./hooks/useCategories";
 import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
@@ -264,6 +264,10 @@ const App = () => {
 
     // 2. СЛЕД това записваме профилите — смяната на activeProfileId
     // ще предизвика презареждане, но транзакциите вече са в IndexedDB
+    const catsToRestore = pendingBackup.profileCategories?.[targetProfileId] 
+      ? pendingBackup.profileCategories[targetProfileId]
+      : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
+    await saveCategoriesDirectly(targetProfileId, catsToRestore.expense, catsToRestore.income);
     if (pendingBackup.profiles) {
       await restoreProfiles(pendingBackup.profiles, targetProfileId);
     }
