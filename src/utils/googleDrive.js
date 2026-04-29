@@ -83,8 +83,8 @@ export async function uploadBackupToDrive(backupData, profileName) {
   const profileSuffix = profileName ? `_${profileName}` : "";
   const fileName = `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
 
-  const existingFileId = await 
-  findExistingFileByProfile(`Finances_Backup${profileSuffix}`, folderId);
+  const folderId = await getOrCreateFolder();
+  const existingFileId = await findExistingFileByProfile(`Finances_Backup${profileSuffix}`, folderId);
 
   const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
 
