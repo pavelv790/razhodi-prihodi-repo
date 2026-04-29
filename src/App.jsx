@@ -35,6 +35,7 @@ const App = () => {
     deleteProfile,
     renameProfile,
     restoreProfiles,
+    addOrUpdateProfile,
   } = useProfiles();
   const {
     transactions,
@@ -98,6 +99,9 @@ const App = () => {
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [showRestoreDone, setShowRestoreDone] = useState(false);
+  const [conflictProfiles, setConflictProfiles] = useState([]);
+  const [conflictChoices, setConflictChoices] = useState({});
+  const [showConflictModal, setShowConflictModal] = useState(false);
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
@@ -247,7 +251,23 @@ const App = () => {
     try {
       const data = await importBackup(file);
       setPendingBackup(data);
-      setShowRestoreConfirm(true);
+
+      // Намери профили които съществуват и в приложението, и в backup файла
+      const conflicts = (data.profiles || []).filter((bp) =>
+        profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+      );
+
+      if (conflicts.length > 0) {
+        // Има съвпадения — покажи прозорец за избор
+        const initialChoices = {};
+        conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
+        setConflictProfiles(conflicts);
+        setConflictChoices(initialChoices);
+        setShowConflictModal(true);
+      } else {
+        // Няма съвпадения — продължи директно към стария прозорец
+        setShowRestoreConfirm(true);
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -256,54 +276,72 @@ const App = () => {
   const handleRestoreConfirm = async () => {
     const targetProfileId = pendingBackup.activeProfileId || activeProfileId;
 
-    // 1. ПЪРВО записваме транзакциите в IndexedDB — ПРЕДИ да сменяме профила
-    const transactionsToRestore = pendingBackup.transactions
-      .filter((t) => t.profileId === targetProfileId)
-      .map((t) => ({ ...t, profileId: targetProfileId }));
-    await replaceAllTransactions(transactionsToRestore, targetProfileId);
+    // Определи кои профили от backup-а да се запишат
+    const profilesToWrite = (pendingBackup.profiles || []).filter((bp) => {
+      const isConflict = conflictProfiles.some((cp) => cp.id === bp.id);
+      if (!isConflict) return true; // няма конфликт — винаги добавяме
+      return conflictChoices[bp.id] !== "local"; // "local" = пази само локалните данни
+    });
 
-    // 2. СЛЕД това записваме профилите — смяната на activeProfileId
-    // ще предизвика презареждане, но транзакциите вече са в IndexedDB
-    const catsToRestore = pendingBackup.profileCategories?.[targetProfileId] 
+    // Запиши профилите един по един (без да трием останалите)
+    for (const p of profilesToWrite) {
+      await addOrUpdateProfile(p);
+    }
+
+    // Запиши транзакциите само за активния профил от backup-а
+    const choice = conflictChoices[targetProfileId];
+    let transactionsToRestore;
+
+    if (choice === "merge") {
+      // Обедини — добави транзакциите от backup-а към съществуващите
+      const backupTxs = pendingBackup.transactions
+        .filter((t) => t.profileId === targetProfileId)
+        .map((t) => ({ ...t, profileId: targetProfileId }));
+      await addTransactions(backupTxs);
+    } else if (choice === "local") {
+      // Запази само локалните — не правим нищо с транзакциите
+    } else {
+      // "backup" (по подразбиране) — замести с данните от backup-а
+      transactionsToRestore = pendingBackup.transactions
+        .filter((t) => t.profileId === targetProfileId)
+        .map((t) => ({ ...t, profileId: targetProfileId }));
+      await replaceAllTransactions(transactionsToRestore, targetProfileId);
+    }
+
+    // Категории
+    const catsToRestore = pendingBackup.profileCategories?.[targetProfileId]
       ? pendingBackup.profileCategories[targetProfileId]
       : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
-    await saveCategoriesDirectly(targetProfileId, catsToRestore.expense, catsToRestore.income);
-    if (pendingBackup.profiles) {
-      await restoreProfiles(pendingBackup.profiles, targetProfileId);
+
+    if (choice !== "local") {
+      await saveCategoriesDirectly(targetProfileId, catsToRestore.expense, catsToRestore.income);
+      setExpenseCategoriesFromBackup(catsToRestore.expense || []);
+      setIncomeCategoriesFromBackup(catsToRestore.income || []);
     }
 
-    // 4. Категории — per-profile ако има, иначе стар формат
-    if (pendingBackup.profileCategories?.[targetProfileId]) {
-      const cats = pendingBackup.profileCategories[targetProfileId];
-      setExpenseCategoriesFromBackup(cats.expense || []);
-      setIncomeCategoriesFromBackup(cats.income || []);
-    } else {
-      setExpenseCategoriesFromBackup(pendingBackup.expenseCategories || []);
-      setIncomeCategoriesFromBackup(pendingBackup.incomeCategories || []);
-    }
-
-    // 5. Филтри
+    // Филтри
     handleClearFilter();
     if (pendingBackup.savedFilters) {
       await restoreFilters(pendingBackup.savedFilters);
-      setSavedFilters(pendingBackup.savedFilters.filter(
-        (f) => f.profileId === targetProfileId
-      ));
+      setSavedFilters(pendingBackup.savedFilters.filter((f) => f.profileId === targetProfileId));
     }
 
-    // 6. Валута и бюджети
-    if (pendingBackup.currency) {
+    // Валута и бюджети
+    if (pendingBackup.currency && choice !== "local") {
       restoreCurrency(pendingBackup.currency, pendingBackup.rate);
     }
-    if (pendingBackup.budgets) {
+    if (pendingBackup.budgets && choice !== "local") {
       restoreBudgets(pendingBackup.budgets);
     }
     if (pendingBackup.recurringItems) {
       await restoreRecurring(pendingBackup.recurringItems);
     }
 
+    setConflictProfiles([]);
+    setConflictChoices({});
     setPendingBackup(null);
     setShowRestoreConfirm(false);
+    setShowConflictModal(false);
     setShowRestoreDone(true);
   };
 
@@ -617,6 +655,71 @@ const App = () => {
         onChange={handleBackupFileSelect}
         className="hidden"
       />
+      {showConflictModal && conflictProfiles.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">Съвпадащи профили</h2>
+            </div>
+            <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              <p className="text-sm text-gray-600">
+                Следните профили съществуват и в приложението, и в backup файла. Изберете какво да се направи за всеки:
+              </p>
+              {conflictProfiles.map((p) => (
+                <div key={p.id} className="bg-white rounded-xl p-3 border border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">👤 {p.name}</p>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`conflict_${p.id}`}
+                        value="backup"
+                        checked={conflictChoices[p.id] === "backup"}
+                        onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "backup" }))}
+                      />
+                      Зареди данните от backup файла (замести локалните)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`conflict_${p.id}`}
+                        value="local"
+                        checked={conflictChoices[p.id] === "local"}
+                        onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "local" }))}
+                      />
+                      Запази само локалните данни (игнорирай backup-а)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`conflict_${p.id}`}
+                        value="merge"
+                        checked={conflictChoices[p.id] === "merge"}
+                        onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "merge" }))}
+                      />
+                      Обедини (добави транзакциите от backup-а към съществуващите)
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex flex-col gap-2">
+              <button
+                onClick={() => { setShowConflictModal(false); setShowRestoreConfirm(true); }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Продължи
+              </button>
+              <button
+                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRestoreConfirm && pendingBackup && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

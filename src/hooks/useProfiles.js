@@ -110,6 +110,14 @@ export const useProfiles = () => {
     setProfiles(updated);
     return true;
   };
+  const addOrUpdateProfile = async (profile) => {
+    await saveOne(profile);
+    setProfiles((prev) => {
+      const exists = prev.some((p) => p.id === profile.id);
+      if (exists) return prev.map((p) => p.id === profile.id ? profile : p);
+      return [...prev, profile];
+    });
+  };
 
   const restoreProfiles = async (newProfiles, newActiveId) => {
     try {
@@ -143,5 +151,6 @@ export const useProfiles = () => {
     deleteProfile,
     renameProfile,
     restoreProfiles,
+    addOrUpdateProfile,
   };
 };
