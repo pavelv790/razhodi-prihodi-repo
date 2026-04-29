@@ -97,11 +97,13 @@ const App = () => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [showRestoreDone, setShowRestoreDone] = useState(false);
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
     loading: driveLoading,
     message: driveMessage,
+    setMessage: driveSetMessage,
     connect: driveConnect,
     disconnect: driveDisconnect,
     toggleAutoSync: driveToggleAutoSync,
@@ -138,7 +140,7 @@ const App = () => {
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
     driveUploadBackup(buildBackupData(), activeProfile.name);
-  }, [transactions]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -254,16 +256,17 @@ const App = () => {
   const handleRestoreConfirm = async () => {
     const targetProfileId = pendingBackup.activeProfileId || activeProfileId;
 
-    // 1. Първо записваме профилите и изчакваме
-    if (pendingBackup.profiles) {
-      await restoreProfiles(pendingBackup.profiles, targetProfileId);
-    }
-
-    // 2. Транзакциите се записват директно с targetProfileId — не разчитаме на React state
+    // 1. ПЪРВО записваме транзакциите в IndexedDB — ПРЕДИ да сменяме профила
     const transactionsToRestore = pendingBackup.transactions
       .filter((t) => t.profileId === targetProfileId)
       .map((t) => ({ ...t, profileId: targetProfileId }));
     await replaceAllTransactions(transactionsToRestore);
+
+    // 2. СЛЕД това записваме профилите — смяната на activeProfileId
+    // ще предизвика презареждане, но транзакциите вече са в IndexedDB
+    if (pendingBackup.profiles) {
+      await restoreProfiles(pendingBackup.profiles, targetProfileId);
+    }
 
     // 4. Категории — per-profile ако има, иначе стар формат
     if (pendingBackup.profileCategories?.[targetProfileId]) {
@@ -297,10 +300,24 @@ const App = () => {
 
     setPendingBackup(null);
     setShowRestoreConfirm(false);
+    setShowRestoreDone(true);
   };
 
   return (
     <div className="min-h-screen bg-transparent">
+      {driveMessage === "blocked" && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-white border border-orange-200 rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4">
+          <div className="flex justify-between items-start gap-2">
+            <p className="text-sm text-orange-700">⚠️ Свързването е отменено. Натиснете <strong>'Свържи с Google Drive'</strong> за да опитате отново.</p>
+            <button onClick={() => driveSetMessage("")} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+          </div>
+        </div>
+      )}
+      {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4">
+          <p className="text-sm text-gray-700 text-center">{driveMessage}</p>
+        </div>
+      )}
       <div className="max-w-3xl mx-auto px-4 py-6">
 
         {/* Transaction Form */}
@@ -435,13 +452,18 @@ const App = () => {
                 <div className="border-t border-gray-200 pt-2 mt-1">
                   <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Google Drive</p>
                   {!driveConnected ? (
-                    <button
-                      onClick={driveConnect}
-                      disabled={driveLoading}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
-                    >
-                      🔗 {driveLoading ? "Свързване..." : "Свържи с Google Drive"}
-                    </button>
+                    <>
+                      <div className="text-xs text-orange-500 font-medium px-1 mb-2 bg-orange-50 rounded-lg py-1">
+                        ⚠️ ако браузърът поиска разрешение за cookies - разрешете и натиснете бутона "Свържи с Google Drive" отново
+                      </div>
+                      <button
+                        onClick={() => { setShowDataPanel(true); driveConnect(); }}
+                        disabled={driveLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
+                      >
+                        🔗 {driveLoading ? "Свързване..." : "Свържи с Google Drive"}
+                      </button>
+                    </>
                   ) : (
                     <>
                       <div className="flex items-center justify-between px-1 py-1 mb-1">
@@ -478,7 +500,7 @@ const App = () => {
                       </button>
                     </>
                   )}
-                  {driveMessage && (
+                  {driveMessage && driveMessage !== "blocked" && (
                     <p className="text-xs text-gray-500 mt-2 px-1">{driveMessage}</p>
                   )}
                 </div>
@@ -606,7 +628,7 @@ const App = () => {
               <div className="bg-orange-50 rounded-xl p-4">
                 <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
                 <p className="text-sm text-orange-600">
-                  Всички съществуващи данни ({transactions.length} транзакции) ще бъдат заменени с данните от backup файла ({pendingBackup.transactions.length} транзакции).
+                  Всички съществуващи данни ({transactions.length} транзакции) ще бъдат заменени с данните от backup файла ({pendingBackup.transactions.filter(t => t.profileId === (pendingBackup.activeProfileId || activeProfileId)).length} транзакции).
                 </p>
                 <p className="text-sm text-orange-600 mt-2">
                   Това действие не може да бъде отменено.
@@ -708,6 +730,32 @@ const App = () => {
       )}
       {showUserGuide && (
         <UserGuideModal onClose={() => setShowUserGuide(false)} />
+      )}
+
+      {showRestoreDone && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">
+                Restore завършен
+              </h2>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <div className="bg-green-50 rounded-xl p-4">
+                <p className="text-sm text-green-700 font-medium mb-1">✅ Данните са възстановени успешно.</p>
+                <p className="text-sm text-green-600">
+                  Ако backup файлът съдържа и други профили, влезте в съответния профил и направете Restore отново за да възстановите и неговите данни.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowRestoreDone(false)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Разбрах
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showMergeModal && (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
   signInWithGoogle,
   signOutFromGoogle,
@@ -11,17 +11,12 @@ const STORAGE_KEY = "google_drive_settings";
 
 export function useGoogleDrive() {
   const [connected, setConnected] = useState(false);
-  const [autoSync, setAutoSync] = useState(false);
+  const [autoSync, setAutoSync] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved).autoSync || false : false;
+  });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setAutoSync(parsed.autoSync || false);
-    }
-  }, []);
 
   const saveSettings = (newAutoSync) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ autoSync: newAutoSync }));
@@ -34,8 +29,8 @@ export function useGoogleDrive() {
       await signInWithGoogle();
       setConnected(true);
       setMessage("✅ Свързано с Google Drive.");
-    } catch {
-      setMessage("❌ Грешка при свързване с Google.");
+    } catch (err) {
+      setMessage("blocked");
     }
     setLoading(false);
   };
@@ -96,6 +91,7 @@ export function useGoogleDrive() {
     autoSync,
     loading,
     message,
+    setMessage,
     connect,
     disconnect,
     toggleAutoSync,

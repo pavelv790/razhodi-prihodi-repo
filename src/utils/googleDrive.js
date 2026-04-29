@@ -18,16 +18,27 @@ function loadGsiScript() {
 export async function signInWithGoogle() {
   await loadGsiScript();
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("timeout"));
+      }
+    }, 15000);
+
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
       callback: (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
         if (response.error) { reject(new Error(response.error)); return; }
         accessToken = response.access_token;
         resolve(accessToken);
       },
     });
-    tokenClient.requestAccessToken({ prompt: "consent" });
+    tokenClient.requestAccessToken({ prompt: "" });
   });
 }
 
@@ -86,9 +97,8 @@ export async function uploadBackupToDrive(backupData, profileName) {
   const profileSuffix = profileName ? `_${profileName}` : "";
   const fileName = `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
 
-  const folderId = await getOrCreateFolder();
-  const profileSuffix2 = profileName ? `_${profileName}` : "";
-  const existingFileId = await findExistingFileByProfile(`Finances_Backup${profileSuffix2}`, folderId);
+  const existingFileId = await 
+  findExistingFileByProfile(`Finances_Backup${profileSuffix}`, folderId);
 
   const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
 
