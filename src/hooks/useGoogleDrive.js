@@ -1,11 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   signInWithGoogle,
   signOutFromGoogle,
   isSignedIn,
   uploadBackupToDrive,
   downloadLatestBackupFromDrive,
+  restoreSessionFromSupabase,
+  setAccessToken,
 } from "../utils/googleDrive";
+import { supabase } from "../utils/supabase";
 
 const STORAGE_KEY = "google_drive_settings";
 
@@ -18,6 +21,25 @@ export function useGoogleDrive() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    const restore = async () => {
+      const restored = await restoreSessionFromSupabase();
+      if (restored) setConnected(true);
+    };
+    restore();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.provider_token) {
+        setAccessToken(session.provider_token);
+        setConnected(true);
+      } else {
+        setConnected(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const saveSettings = (newAutoSync) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ autoSync: newAutoSync }));
   };
@@ -27,12 +49,12 @@ export function useGoogleDrive() {
     setMessage("");
     try {
       await signInWithGoogle();
-      setConnected(true);
-      setMessage("✅ Свързано с Google Drive.");
+      // Supabase ще пренасочи към Google и после обратно
+      // setConnected се вика от onAuthStateChange
     } catch (err) {
       setMessage("blocked");
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const disconnect = () => {

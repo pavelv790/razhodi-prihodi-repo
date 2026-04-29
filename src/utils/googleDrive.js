@@ -1,56 +1,42 @@
-const CLIENT_ID = "156365764014-npm7qje47b4n5b9lr4v9du7q38nti2sc.apps.googleusercontent.com";
+import { supabase } from "./supabase";
+
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_NAME = "Finances_Backup";
 
-let tokenClient = null;
 let accessToken = null;
 
-function loadGsiScript() {
-  return new Promise((resolve) => {
-    if (window.google?.accounts?.oauth2) { resolve(); return; }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.onload = resolve;
-    document.head.appendChild(script);
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      scopes: SCOPES,
+      redirectTo: window.location.origin,
+    },
   });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
-export async function signInWithGoogle() {
-  await loadGsiScript();
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        reject(new Error("timeout"));
-      }
-    }, 15000);
-
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: (response) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        if (response.error) { reject(new Error(response.error)); return; }
-        accessToken = response.access_token;
-        resolve(accessToken);
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: "" });
-  });
+export async function restoreSessionFromSupabase() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.provider_token) {
+    accessToken = session.provider_token;
+    return true;
+  }
+  return false;
 }
 
 export function signOutFromGoogle() {
-  if (accessToken) {
-    window.google?.accounts?.oauth2?.revoke(accessToken);
-    accessToken = null;
-  }
+  accessToken = null;
+  supabase.auth.signOut();
 }
 
 export function isSignedIn() {
   return !!accessToken;
+}
+
+export function setAccessToken(token) {
+  accessToken = token;
 }
 
 async function getOrCreateFolder() {
