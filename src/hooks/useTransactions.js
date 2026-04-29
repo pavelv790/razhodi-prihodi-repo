@@ -108,13 +108,13 @@ export const useTransactions = (profileId) => {
     );
   };
 
-  const replaceAllTransactions = async (newTransactions) => {
-    const withProfile = newTransactions.map((t) => ({ ...t, profileId }));
+  const replaceAllTransactions = async (newTransactions, overrideProfileId) => {
+    const targetId = overrideProfileId || profileId;
+    const withProfile = newTransactions.map((t) => ({ ...t, profileId: targetId }));
     const sorted = sortByDate(withProfile);
     skipAutoSave.current = true;
-    setTransactions(sorted);
-    // Изтриваме старите на този профил и записваме новите — изчакваме записа
-    await saveAllToDB_forProfile(profileId, sorted);
+    if (targetId === profileId) setTransactions(sorted);
+    await saveAllToDB_forProfile(targetId, sorted);
   };
 
   const addTransactions = (newTransactions) => {

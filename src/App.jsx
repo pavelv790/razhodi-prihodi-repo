@@ -260,7 +260,7 @@ const App = () => {
     const transactionsToRestore = pendingBackup.transactions
       .filter((t) => t.profileId === targetProfileId)
       .map((t) => ({ ...t, profileId: targetProfileId }));
-    await replaceAllTransactions(transactionsToRestore);
+    await replaceAllTransactions(transactionsToRestore, targetProfileId);
 
     // 2. СЛЕД това записваме профилите — смяната на activeProfileId
     // ще предизвика презареждане, но транзакциите вече са в IndexedDB
