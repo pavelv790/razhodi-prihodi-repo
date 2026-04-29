@@ -500,9 +500,7 @@ const App = () => {
                       </button>
                     </>
                   )}
-                  {driveMessage && driveMessage !== "blocked" && (
-                    <p className="text-xs text-gray-500 mt-2 px-1">{driveMessage}</p>
-                  )}
+                  {null}
                 </div>
               </div>
             )}

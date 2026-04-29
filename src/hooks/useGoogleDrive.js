@@ -21,6 +21,11 @@ export function useGoogleDrive() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
+  const showMessage = (msg) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(""), 3000);
+  };
+
   useEffect(() => {
     const restore = async () => {
       const restored = await restoreSessionFromSupabase();
@@ -49,10 +54,8 @@ export function useGoogleDrive() {
     setMessage("");
     try {
       await signInWithGoogle();
-      // Supabase ще пренасочи към Google и после обратно
-      // setConnected се вика от onAuthStateChange
     } catch (err) {
-      setMessage("blocked");
+      showMessage("blocked");
       setLoading(false);
     }
   };
@@ -62,7 +65,7 @@ export function useGoogleDrive() {
     setConnected(false);
     setAutoSync(false);
     saveSettings(false);
-    setMessage("🔌 Изключено от Google Drive.");
+    showMessage("🔌 Изключено от Google Drive.");
   };
 
   const toggleAutoSync = (val) => {
@@ -72,17 +75,17 @@ export function useGoogleDrive() {
 
   const uploadBackup = useCallback(async (backupData, profileName) => {
     if (!isSignedIn()) {
-      setMessage("❌ Сесията е изтекла. Свържете се отново с Google Drive.");
+      showMessage("❌ Сесията е изтекла. Свържете се отново с Google Drive.");
       return false;
     }
     setLoading(true);
     setMessage("");
     try {
       await uploadBackupToDrive(backupData, profileName);
-      setMessage("✅ Backup качен в Google Drive.");
+      showMessage("✅ Backup качен в Google Drive.");
       return true;
     } catch (err) {
-      setMessage("❌ " + err.message);
+      showMessage("❌ " + err.message);
       return false;
     } finally {
       setLoading(false);
@@ -91,17 +94,17 @@ export function useGoogleDrive() {
 
   const downloadBackup = useCallback(async (profileName) => {
     if (!isSignedIn()) {
-      setMessage("❌ Първо се свържете с Google Drive.");
+      showMessage("❌ Първо се свържете с Google Drive.");
       return null;
     }
     setLoading(true);
     setMessage("");
     try {
       const data = await downloadLatestBackupFromDrive(profileName);
-      setMessage("✅ Backup изтеглен успешно.");
+      showMessage("✅ Backup изтеглен успешно.");
       return data;
     } catch (err) {
-      setMessage("❌ " + err.message);
+      showMessage("❌ " + err.message);
       return null;
     } finally {
       setLoading(false);
