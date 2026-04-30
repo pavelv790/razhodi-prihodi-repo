@@ -154,8 +154,8 @@ const App = () => {
     if (!driveAutoSync || !driveConnected) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
-    const timer = setTimeout(() => {
-      driveUploadBackup(buildBackupData(), activeProfile.name);
+    const timer = setTimeout(async () => {
+      driveUploadBackup(await buildBackupData(), activeProfile.name);
     }, 1500);
     return () => clearTimeout(timer);
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles]);
@@ -291,28 +291,48 @@ const App = () => {
     addCategoriesFromImport("expense", expenseCategories);
     addCategoriesFromImport("income", incomeCategories);
   };
-  const buildBackupData = () => ({
-    version: "1.5",
-    date: new Date().toISOString(),
-    profiles,
-    activeProfileId,
-    transactions,
-    expenseCategories,
-    incomeCategories,
-    profileCategories: { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } },
-    savedFilters,
-    currency,
-    rate,
-    budgets,
-    recurringItems,
-  });
+  const buildBackupData = async () => {
+    const { openDB } = await import("./utils/db");
+    const db = await openDB();
+    const allCats = await new Promise((resolve) => {
+      const tx = db.transaction("categories", "readonly");
+      const req = tx.objectStore("categories").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+    const allProfileCategories = {};
+    allCats.forEach((entry) => {
+      allProfileCategories[entry.type] = {
+        expense: entry.categories?.expense || [],
+        income: entry.categories?.income || [],
+      };
+    });
+    // Категориите на активния профил се вземат от state за да са най-актуални
+    allProfileCategories[activeProfileId] = { expense: expenseCategories, income: incomeCategories };
+    return {
+      version: "1.5",
+      date: new Date().toISOString(),
+      profiles,
+      activeProfileId,
+      transactions,
+      expenseCategories,
+      incomeCategories,
+      profileCategories: allProfileCategories,
+      savedFilters,
+      currency,
+      rate,
+      budgets,
+      recurringItems,
+    };
+  };
   
   const handleDriveUpload = async () => {
-    await driveUploadBackup(buildBackupData(), activeProfile?.name);
+    await driveUploadBackup(await buildBackupData(), activeProfile?.name);
   };
 
-  const handleBackupExport = () => {
-    exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, activeProfile?.name);
+  const handleBackupExport = async () => {
+    const data = await buildBackupData();
+    exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -1006,8 +1026,9 @@ const App = () => {
                 Искате ли да свалите седмичния backup файл с всички данни?
               </p>
               <button
-                onClick={() => {
-                  exportBackup(transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, activeProfile?.name);
+                onClick={async () => {
+                  const data = await buildBackupData();
+                  exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"

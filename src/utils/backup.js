@@ -1,4 +1,5 @@
-export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName) => {
+export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName, allProfileCategories) => {
+  const profileCategories = allProfileCategories || { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } };
   const backup = {
     version: "1.5",
     date: new Date().toISOString(),
@@ -7,7 +8,7 @@ export const exportBackup = (transactions, expenseCategories, incomeCategories, 
     transactions,
     expenseCategories,
     incomeCategories,
-    profileCategories: { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } },
+    profileCategories,
     savedFilters,
     currency,
     rate,
