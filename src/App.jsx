@@ -102,6 +102,10 @@ const App = () => {
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
+  const [showRestoreDuplicates, setShowRestoreDuplicates] = useState(false);
+  const [restoreDuplicates, setRestoreDuplicates] = useState([]);
+  const [restoreUniqueTransactions, setRestoreUniqueTransactions] = useState([]);
+  const [restoreSelectedDuplicates, setRestoreSelectedDuplicates] = useState([]);
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
@@ -143,7 +147,10 @@ const App = () => {
     if (!driveAutoSync || !driveConnected) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
-    driveUploadBackup(buildBackupData(), activeProfile.name);
+    const timer = setTimeout(() => {
+      driveUploadBackup(buildBackupData(), activeProfile.name);
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles]);
 
   useEffect(() => {
@@ -216,6 +223,18 @@ const App = () => {
     setShowPendingModal(false);
     setPendingRecurring([]);
   };
+  const handleRestoreDuplicatesConfirm = async () => {
+    const toAdd = [
+      ...restoreUniqueTransactions,
+      ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
+    ];
+    if (toAdd.length > 0) await addTransactions(toAdd);
+    setRestoreDuplicates([]);
+    setRestoreUniqueTransactions([]);
+    setRestoreSelectedDuplicates([]);
+    setShowRestoreDuplicates(false);
+    setShowRestoreDone(true);
+  };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
     addCategoriesFromImport("expense", expenseCategories);
@@ -253,9 +272,10 @@ const App = () => {
       setPendingBackup(data);
 
       // Намери профили които съществуват и в приложението, и в backup файла
-      const conflicts = (data.profiles || []).filter((bp) =>
-        profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-      );
+      const backupActiveProfile = (data.profiles || []).find((p) => p.id === data.activeProfileId);
+      const conflicts = backupActiveProfile && profiles.some(
+        (lp) => lp.id === backupActiveProfile.id || lp.name.toLowerCase() === backupActiveProfile.name.toLowerCase()
+      ) ? [backupActiveProfile] : [];
 
       if (conflicts.length > 0) {
         // Има съвпадения — покажи прозорец за избор
@@ -293,11 +313,32 @@ const App = () => {
     let transactionsToRestore;
 
     if (choice === "merge") {
-      // Обедини — добави транзакциите от backup-а към съществуващите
       const backupTxs = pendingBackup.transactions
         .filter((t) => t.profileId === targetProfileId)
         .map((t) => ({ ...t, profileId: targetProfileId }));
-      await addTransactions(backupTxs);
+      // Раздели на уникални и дубликати
+      const dupes = backupTxs.filter((bt) =>
+        transactions.some(
+          (e) =>
+            e.date === bt.date &&
+            e.category === bt.category &&
+            e.type === bt.type &&
+            Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
+        )
+      );
+      const unique = backupTxs.filter((bt) => !dupes.includes(bt));
+      if (dupes.length > 0) {
+        // Има дубликати — спри тук и покажи прозореца за дубликати
+        setRestoreUniqueTransactions(unique);
+        setRestoreDuplicates(dupes);
+        setRestoreSelectedDuplicates([]);
+        setShowRestoreConfirm(false);
+        setShowConflictModal(false);
+        setShowRestoreDuplicates(true);
+        return; // излизаме — останалото ще се довърши от handleRestoreDuplicatesConfirm
+      }
+      // Няма дубликати — добави директно
+      await addTransactions(unique);
     } else if (choice === "local") {
       // Запази само локалните — не правим нищо с транзакциите
     } else {
@@ -655,6 +696,81 @@ const App = () => {
         onChange={handleBackupFileSelect}
         className="hidden"
       />
+      {showRestoreDuplicates && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">Вероятни дубликати</h2>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="bg-orange-50 rounded-xl px-3 py-2 text-xs text-orange-700">
+                ⚠️ Намерени са <strong>{restoreDuplicates.length}</strong> вероятни дубликата (същата дата, категория, тип и сума вече съществуват). Уникални транзакции за добавяне: <strong>{restoreUniqueTransactions.length}</strong>.
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-gray-600">Вероятни дубликати:</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setRestoreSelectedDuplicates(restoreDuplicates.map((t) => t.id))}
+                      className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
+                    >
+                      Избери всички
+                    </button>
+                    <button
+                      onClick={() => setRestoreSelectedDuplicates([])}
+                      className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                    >
+                      Откажи всички
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+                  {restoreDuplicates.map((t) => (
+                    <label
+                      key={t.id}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition ${
+                        restoreSelectedDuplicates.includes(t.id)
+                          ? "border-blue-300 bg-blue-50"
+                          : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={restoreSelectedDuplicates.includes(t.id)}
+                        onChange={() => setRestoreSelectedDuplicates((prev) =>
+                          prev.includes(t.id) ? prev.filter((d) => d !== t.id) : [...prev, t.id]
+                        )}
+                        className="accent-blue-500 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 truncate">{t.category}</p>
+                        <p className="text-xs text-gray-400">{t.date} · {Number(t.amount).toFixed(2)} EUR</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                        t.type === "expense" ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"
+                      }`}>
+                        {t.type === "expense" ? "Разход" : "Приход"}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={handleRestoreDuplicatesConfirm}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition"
+              >
+                Потвърди ({restoreUniqueTransactions.length + restoreSelectedDuplicates.length} транзакции)
+              </button>
+              <button
+                onClick={() => { setShowRestoreDuplicates(false); setShowRestoreDone(true); }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Пропусни дубликатите
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showConflictModal && conflictProfiles.length > 0 && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
