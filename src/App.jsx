@@ -23,6 +23,7 @@ import PendingRecurringModal from "./components/PendingRecurringModal";
 import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
+import { openDB } from "./utils/db";
 
 const App = () => {
   const {
@@ -99,6 +100,7 @@ const App = () => {
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [showRestoreDone, setShowRestoreDone] = useState(false);
+  const [restoreDoneType, setRestoreDoneType] = useState("restore"); // "restore" | "merge"
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -106,6 +108,11 @@ const App = () => {
   const [restoreDuplicates, setRestoreDuplicates] = useState([]);
   const [restoreUniqueTransactions, setRestoreUniqueTransactions] = useState([]);
   const [restoreSelectedDuplicates, setRestoreSelectedDuplicates] = useState([]);
+  const [pendingNewProfiles, setPendingNewProfiles] = useState([]);
+  const [addNewProfiles, setAddNewProfiles] = useState(null);
+  const [showAddNewProfilesConfirm, setShowAddNewProfilesConfirm] = useState(false);
+  const [pendingMergeProfileId, setPendingMergeProfileId] = useState(null);
+  const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
@@ -223,17 +230,61 @@ const App = () => {
     setShowPendingModal(false);
     setPendingRecurring([]);
   };
+  const handleAddNewProfilesConfirm = async (doAdd) => {
+    if (doAdd) {
+      for (const bp of pendingNewProfiles) {
+        await addOrUpdateProfile(bp);
+        // Транзакции
+        const backupTxs = (pendingBackup.transactions || [])
+          .filter((t) => t.profileId === bp.id)
+          .map((t) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }));
+        await replaceAllTransactions(backupTxs, bp.id);
+        // Категории
+        const cats = pendingBackup.profileCategories?.[bp.id]
+          ? pendingBackup.profileCategories[bp.id]
+          : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
+        await saveCategoriesDirectly(bp.id, cats.expense, cats.income);
+        // Филтри
+        if (pendingBackup.savedFilters) {
+          const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
+          await restoreFilters(profileFilters);
+        }
+        // Повтарящи се
+        if (pendingBackup.recurringItems) {
+          const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
+          await restoreRecurring(profileRecurring);
+        }
+      }
+    }
+    setConflictProfiles([]);
+    setConflictChoices({});
+    setPendingNewProfiles([]);
+    setAddNewProfiles(null);
+    setPendingBackup(null);
+    setShowAddNewProfilesConfirm(false);
+    setShowRestoreDone(true);
+  };
   const handleRestoreDuplicatesConfirm = async () => {
     const toAdd = [
       ...restoreUniqueTransactions,
       ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
     ];
     if (toAdd.length > 0) await addTransactions(toAdd);
+
+    // Довърши категории, филтри, повтарящи се за текущия профил
+    const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
+    if (currentBp) {
+      await finishRestoreForProfile(currentBp, "merge", pendingBackup);
+      await addOrUpdateProfile(currentBp);
+    }
     setRestoreDuplicates([]);
     setRestoreUniqueTransactions([]);
     setRestoreSelectedDuplicates([]);
+    setPendingMergeProfileId(null);
     setShowRestoreDuplicates(false);
-    setShowRestoreDone(true);
+
+    // Продължи с останалите профили
+    await finishRestore(pendingRemainingProfiles, pendingBackup);
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
@@ -272,118 +323,124 @@ const App = () => {
       setPendingBackup(data);
 
       // Намери профили които съществуват и в приложението, и в backup файла
-      const backupActiveProfile = (data.profiles || []).find((p) => p.id === data.activeProfileId);
-      const conflicts = backupActiveProfile && profiles.some(
-        (lp) => lp.id === backupActiveProfile.id || lp.name.toLowerCase() === backupActiveProfile.name.toLowerCase()
-      ) ? [backupActiveProfile] : [];
+      const conflicts = (data.profiles || []).filter((bp) =>
+        profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+      );
+      const newProfiles = (data.profiles || []).filter((bp) =>
+        !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+      );
 
       if (conflicts.length > 0) {
-        // Има съвпадения — покажи прозорец за избор
         const initialChoices = {};
         conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
         setConflictProfiles(conflicts);
         setConflictChoices(initialChoices);
         setShowConflictModal(true);
       } else {
-        // Няма съвпадения — продължи директно към стария прозорец
         setShowRestoreConfirm(true);
       }
+      // Запомни новите профили (само в backup файла) отделно
+      setPendingNewProfiles(newProfiles);
     } catch (err) {
       alert(err.message);
     }
   };
+  const finishRestoreForProfile = async (bp, choice, backupData) => {
+    const cats = backupData.profileCategories?.[bp.id]
+      ? backupData.profileCategories[bp.id]
+      : { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] };
 
-  const handleRestoreConfirm = async () => {
-    const targetProfileId = pendingBackup.activeProfileId || activeProfileId;
-
-    // Определи кои профили от backup-а да се запишат
-    const profilesToWrite = (pendingBackup.profiles || []).filter((bp) => {
-      const isConflict = conflictProfiles.some((cp) => cp.id === bp.id);
-      if (!isConflict) return true; // няма конфликт — винаги добавяме
-      return conflictChoices[bp.id] !== "local"; // "local" = пази само локалните данни
-    });
-
-    // Запиши профилите един по един (без да трием останалите)
-    for (const p of profilesToWrite) {
-      await addOrUpdateProfile(p);
-    }
-
-    // Запиши транзакциите само за активния профил от backup-а
-    const choice = conflictChoices[targetProfileId];
-    let transactionsToRestore;
-
-    if (choice === "merge") {
-      const backupTxs = pendingBackup.transactions
-        .filter((t) => t.profileId === targetProfileId)
-        .map((t) => ({ ...t, profileId: targetProfileId }));
-      // Раздели на уникални и дубликати
-      const dupes = backupTxs.filter((bt) =>
-        transactions.some(
-          (e) =>
-            e.date === bt.date &&
-            e.category === bt.category &&
-            e.type === bt.type &&
-            Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
-        )
-      );
-      const unique = backupTxs.filter((bt) => !dupes.includes(bt));
-      if (dupes.length > 0) {
-        // Има дубликати — спри тук и покажи прозореца за дубликати
-        setRestoreUniqueTransactions(unique);
-        setRestoreDuplicates(dupes);
-        setRestoreSelectedDuplicates([]);
-        setShowRestoreConfirm(false);
-        setShowConflictModal(false);
-        setShowRestoreDuplicates(true);
-        return; // излизаме — останалото ще се довърши от handleRestoreDuplicatesConfirm
+    if (choice === "backup") {
+      await saveCategoriesDirectly(bp.id, cats.expense, cats.income);
+      if (bp.id === activeProfileId) {
+        setExpenseCategoriesFromBackup(cats.expense || []);
+        setIncomeCategoriesFromBackup(cats.income || []);
+        if (backupData.currency) restoreCurrency(backupData.currency, backupData.rate);
+        if (backupData.budgets) restoreBudgets(backupData.budgets);
       }
-      // Няма дубликати — добави директно
-      await addTransactions(unique);
-    } else if (choice === "local") {
-      // Запази само локалните — не правим нищо с транзакциите
-    } else {
-      // "backup" (по подразбиране) — замести с данните от backup-а
-      transactionsToRestore = pendingBackup.transactions
-        .filter((t) => t.profileId === targetProfileId)
-        .map((t) => ({ ...t, profileId: targetProfileId }));
-      await replaceAllTransactions(transactionsToRestore, targetProfileId);
     }
 
-    // Категории
-    const catsToRestore = pendingBackup.profileCategories?.[targetProfileId]
-      ? pendingBackup.profileCategories[targetProfileId]
-      : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
+    if (backupData.savedFilters) {
+      const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
+      await restoreFilters(profileFilters);
+      if (bp.id === activeProfileId) setSavedFilters(profileFilters);
+    }
+    if (backupData.recurringItems) {
+      const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
+      await restoreRecurring(profileRecurring);
+    }
+  };
 
-    if (choice !== "local") {
-      await saveCategoriesDirectly(targetProfileId, catsToRestore.expense, catsToRestore.income);
-      setExpenseCategoriesFromBackup(catsToRestore.expense || []);
-      setIncomeCategoriesFromBackup(catsToRestore.income || []);
+  const finishRestore = async (remainingProfiles, backupData) => {
+    for (const bp of remainingProfiles) {
+      const isNew = pendingNewProfiles.some((np) => np.id === bp.id);
+      if (isNew) continue;
+      const choice = conflictChoices[bp.id] || "backup";
+      if (choice === "local") continue;
+
+      const db = await openDB();
+      const localTxsForProfile = await new Promise((resolve) => {
+        const tx = db.transaction("transactions", "readonly");
+        const req = tx.objectStore("transactions").getAll();
+        req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === bp.id));
+      });
+
+      const backupTxs = (backupData.transactions || [])
+        .filter((t) => t.profileId === bp.id)
+        .map((t) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }));
+
+      if (choice === "merge") {
+        const dupes = backupTxs.filter((bt) =>
+          localTxsForProfile.some(
+            (e) =>
+              e.date === bt.date &&
+              e.category === bt.category &&
+              e.type === bt.type &&
+              Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
+          )
+        );
+        const unique = backupTxs.filter((bt) => !dupes.includes(bt));
+        if (dupes.length > 0) {
+          setRestoreUniqueTransactions(unique);
+          setRestoreDuplicates(dupes);
+          setRestoreSelectedDuplicates([]);
+          setPendingMergeProfileId(bp.id);
+          const idx = remainingProfiles.findIndex((p) => p.id === bp.id);
+          setPendingRemainingProfiles(remainingProfiles.slice(idx + 1));
+          setShowRestoreConfirm(false);
+          setShowConflictModal(false);
+          setShowRestoreDuplicates(true);
+          return;
+        }
+        await addTransactions(unique);
+      } else {
+        await replaceAllTransactions(backupTxs, bp.id);
+      }
+      await finishRestoreForProfile(bp, choice, backupData);
+      await addOrUpdateProfile(bp);
     }
 
-    // Филтри
+    if (pendingNewProfiles.length > 0) {
+      setShowAddNewProfilesConfirm(true);
+      return;
+    }
+
     handleClearFilter();
-    if (pendingBackup.savedFilters) {
-      await restoreFilters(pendingBackup.savedFilters);
-      setSavedFilters(pendingBackup.savedFilters.filter((f) => f.profileId === targetProfileId));
-    }
-
-    // Валута и бюджети
-    if (pendingBackup.currency && choice !== "local") {
-      restoreCurrency(pendingBackup.currency, pendingBackup.rate);
-    }
-    if (pendingBackup.budgets && choice !== "local") {
-      restoreBudgets(pendingBackup.budgets);
-    }
-    if (pendingBackup.recurringItems) {
-      await restoreRecurring(pendingBackup.recurringItems);
-    }
-
     setConflictProfiles([]);
     setConflictChoices({});
+    setPendingNewProfiles([]);
+    setAddNewProfiles(null);
     setPendingBackup(null);
     setShowRestoreConfirm(false);
     setShowConflictModal(false);
+    const allLocal = (pendingBackup?.profiles || []).every((bp) => (conflictChoices[bp.id] || "backup") === "local");
+    const hasMerge = (pendingBackup?.profiles || []).some((bp) => (conflictChoices[bp.id] || "backup") === "merge");
+    setRestoreDoneType(allLocal ? "local" : hasMerge ? "merge" : "restore");
     setShowRestoreDone(true);
+  };
+
+  const handleRestoreConfirm = async () => {
+    await finishRestore(pendingBackup.profiles || [], pendingBackup);
   };
 
   return (
@@ -568,7 +625,25 @@ const App = () => {
                       <button
                         onClick={async () => {
                           const data = await driveDownloadBackup(activeProfile?.name);
-                          if (data) { setPendingBackup(data); setShowRestoreConfirm(true); }
+                          if (data) {
+                            setPendingBackup(data);
+                            const conflicts = (data.profiles || []).filter((bp) =>
+                              profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+                            );
+                            const newProfiles = (data.profiles || []).filter((bp) =>
+                              !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+                            );
+                            setPendingNewProfiles(newProfiles);
+                            if (conflicts.length > 0) {
+                              const initialChoices = {};
+                              conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
+                              setConflictProfiles(conflicts);
+                              setConflictChoices(initialChoices);
+                              setShowConflictModal(true);
+                            } else {
+                              setShowRestoreConfirm(true);
+                            }
+                          }
                         }}
                         disabled={driveLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
@@ -714,13 +789,13 @@ const App = () => {
                       onClick={() => setRestoreSelectedDuplicates(restoreDuplicates.map((t) => t.id))}
                       className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
                     >
-                      Избери всички
+                      Избери всички дубликати
                     </button>
                     <button
                       onClick={() => setRestoreSelectedDuplicates([])}
                       className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                     >
-                      Откажи всички
+                      Откажи всички дубликати
                     </button>
                   </div>
                 </div>
@@ -761,11 +836,38 @@ const App = () => {
               >
                 Потвърди ({restoreUniqueTransactions.length + restoreSelectedDuplicates.length} транзакции)
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAddNewProfilesConfirm && pendingNewProfiles.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">Нови профили в backup файла</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                Следните профили са в backup файла, но не съществуват локално. Искате ли да ги добавите заедно с техните данни?
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {pendingNewProfiles.map((p) => (
+                  <div key={p.id} className="bg-white rounded-xl px-3 py-2 border border-gray-200 text-sm text-gray-700">
+                    👤 {p.name}
+                  </div>
+                ))}
+              </div>
               <button
-                onClick={() => { setShowRestoreDuplicates(false); setShowRestoreDone(true); }}
+                onClick={() => handleAddNewProfilesConfirm(true)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Да, добави ги
+              </button>
+              <button
+                onClick={() => handleAddNewProfilesConfirm(false)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
-                Пропусни дубликатите
+                Не, пропусни ги
               </button>
             </div>
           </div>
@@ -982,9 +1084,8 @@ const App = () => {
             </div>
             <div className="px-5 py-5 space-y-3">
               <div className="bg-green-50 rounded-xl p-4">
-                <p className="text-sm text-green-700 font-medium mb-1">✅ Данните са възстановени успешно.</p>
-                <p className="text-sm text-green-600">
-                  Ако backup файлът съдържа и други профили, влезте в съответния профил и направете Restore отново за да възстановите и неговите данни.
+                <p className="text-sm text-green-700 font-medium mb-1">
+                  {restoreDoneType === "merge" ? "✅ Данните са обединени успешно." : restoreDoneType === "local" ? "✅ Локалните данни са запазени." : "✅ Данните са възстановени успешно."}
                 </p>
               </div>
               <button
