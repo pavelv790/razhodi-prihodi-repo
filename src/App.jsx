@@ -846,20 +846,39 @@ const App = () => {
               </h2>
             </div>
             <div className="px-5 py-5 space-y-3">
-              <div className="bg-orange-50 rounded-xl p-4">
-                <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
-                <p className="text-sm text-orange-600">
-                  Всички съществуващи данни ({transactions.length} транзакции) ще бъдат заменени с данните от backup файла ({pendingBackup.transactions.filter(t => t.profileId === (pendingBackup.activeProfileId || activeProfileId)).length} транзакции).
-                </p>
-                <p className="text-sm text-orange-600 mt-2">
-                  Това действие не може да бъде отменено.
-                </p>
-              </div>
+              {conflictChoices[pendingBackup.activeProfileId || activeProfileId] !== "local" &&
+               conflictChoices[pendingBackup.activeProfileId || activeProfileId] !== "merge" && (
+                <div className="bg-orange-50 rounded-xl p-4">
+                  <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
+                  <p className="text-sm text-orange-600">
+                    Всички съществуващи данни ({transactions.length} транзакции) ще бъдат заменени с данните от backup файла ({pendingBackup.transactions.filter(t => t.profileId === (pendingBackup.activeProfileId || activeProfileId)).length} транзакции).
+                  </p>
+                  <p className="text-sm text-orange-600 mt-2">
+                    Това действие не може да бъде отменено.
+                  </p>
+                </div>
+              )}
+              {conflictChoices[pendingBackup.activeProfileId || activeProfileId] === "merge" && (
+                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                  <p className="text-sm text-blue-700 font-medium mb-1">ℹ️ Обединяване</p>
+                  <p className="text-sm text-blue-600">
+                    Транзакциите от backup файла ще бъдат добавени към съществуващите. Вероятните дубликати ще бъдат показани за преглед.
+                  </p>
+                </div>
+              )}
+              {conflictChoices[pendingBackup.activeProfileId || activeProfileId] === "local" && (
+                <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                  <p className="text-sm text-green-700 font-medium mb-1">✅ Локалните данни се запазват</p>
+                  <p className="text-sm text-green-600">
+                    Данните от backup файла за този профил няма да бъдат заредени.
+                  </p>
+                </div>
+              )}
               <button
                 onClick={handleRestoreConfirm}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
-                Да, зареди backup-а
+                Потвърди
               </button>
               <button
                 onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); }}
