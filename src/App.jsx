@@ -321,12 +321,19 @@ const App = () => {
     });
     // Категориите на активния профил се вземат от state за да са най-актуални
     allProfileCategories[activeProfileId] = { expense: expenseCategories, income: incomeCategories };
+    const allTransactions = await new Promise((resolve) => {
+      const tx = db.transaction("transactions", "readonly");
+      const req = tx.objectStore("transactions").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+
     return {
       version: "1.5",
       date: new Date().toISOString(),
       profiles,
       activeProfileId,
-      transactions,
+      transactions: allTransactions,
       expenseCategories,
       incomeCategories,
       profileCategories: allProfileCategories,
