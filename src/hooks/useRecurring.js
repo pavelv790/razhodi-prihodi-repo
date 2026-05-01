@@ -174,17 +174,18 @@ export const useRecurring = (profileId) => {
     await deleteByProfile(targetProfileId);
   };
 
-  const restoreRecurring = async (items) => {
+  const restoreRecurring = async (items, targetProfileId) => {
     try {
       const db = await openDB();
+      const target = targetProfileId || profileId;
       const all = await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
         const req = tx.objectStore(STORE).getAll();
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => reject(req.error);
       });
-      const otherProfiles = all.filter((r) => r.profileId !== profileId);
-      const withProfile = items.map((r) => ({ ...r, profileId }));
+      const otherProfiles = all.filter((r) => r.profileId !== target);
+      const withProfile = items.map((r) => ({ ...r, profileId: target }));
       const merged = [...otherProfiles, ...withProfile];
       await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");
@@ -194,7 +195,7 @@ export const useRecurring = (profileId) => {
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
       });
-      setRecurringItems(withProfile);
+      if (target === profileId) setRecurringItems(withProfile);
     } catch { console.error("Грешка при restore на повтарящи се транзакции"); }
   };
 

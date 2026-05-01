@@ -69,17 +69,18 @@ export const useSavedFilters = (profileId) => {
     setSavedFilters((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const restoreFilters = async (filters) => {
+  const restoreFilters = async (filters, targetProfileId) => {
     try {
       const db = await openDB();
+      const target = targetProfileId || profileId;
       const all = await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readonly");
         const req = tx.objectStore(STORE).getAll();
         req.onsuccess = () => resolve(req.result || []);
         req.onerror = () => reject(req.error);
       });
-      const otherProfiles = all.filter((f) => f.profileId !== profileId);
-      const withProfile = filters.map((f) => ({ ...f, profileId }));
+      const otherProfiles = all.filter((f) => f.profileId !== target);
+      const withProfile = filters.map((f) => ({ ...f, profileId: target }));
       const merged = [...otherProfiles, ...withProfile];
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");

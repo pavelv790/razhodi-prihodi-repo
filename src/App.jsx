@@ -269,7 +269,19 @@ const App = () => {
       ...restoreUniqueTransactions,
       ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
     ];
-    if (toAdd.length > 0) await addTransactions(toAdd);
+    if (toAdd.length > 0) {
+      const existingTxs = pendingMergeProfileId === activeProfileId
+        ? transactions
+        : await (async () => {
+            const db = await openDB();
+            return new Promise((resolve) => {
+              const tx = db.transaction("transactions", "readonly");
+              const req = tx.objectStore("transactions").getAll();
+              req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === pendingMergeProfileId));
+            });
+          })();
+      await replaceAllTransactions([...existingTxs, ...toAdd], pendingMergeProfileId);
+    }
 
     // Довърши категории, филтри, повтарящи се за текущия профил
     const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
@@ -380,14 +392,34 @@ const App = () => {
       }
     }
 
+    if (choice === "merge") {
+      const existingCats = await (async () => {
+        const db = await openDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction("categories", "readonly");
+          const req = tx.objectStore("categories").get(bp.id);
+          req.onsuccess = () => resolve(req.result || null);
+        });
+      })();
+      const existingExpense = existingCats?.categories?.expense || [];
+      const existingIncome = existingCats?.categories?.income || [];
+      const mergedExpense = [...new Set([...existingExpense, ...(cats.expense || [])])];
+      const mergedIncome = [...new Set([...existingIncome, ...(cats.income || [])])];
+      await saveCategoriesDirectly(bp.id, mergedExpense, mergedIncome);
+      if (bp.id === activeProfileId) {
+        setExpenseCategoriesFromBackup(mergedExpense);
+        setIncomeCategoriesFromBackup(mergedIncome);
+      }
+    }
+
     if (backupData.savedFilters) {
       const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
-      await restoreFilters(profileFilters);
+      await restoreFilters(profileFilters, bp.id);
       if (bp.id === activeProfileId) setSavedFilters(profileFilters);
     }
     if (backupData.recurringItems) {
       const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
-      await restoreRecurring(profileRecurring);
+      await restoreRecurring(profileRecurring, bp.id);
     }
   };
 
@@ -432,7 +464,19 @@ const App = () => {
           setShowRestoreDuplicates(true);
           return;
         }
-        await addTransactions(unique);
+        if (unique.length > 0) {
+          const existingTxs = bp.id === activeProfileId
+            ? transactions
+            : await (async () => {
+                const db = await openDB();
+                return new Promise((resolve) => {
+                  const tx = db.transaction("transactions", "readonly");
+                  const req = tx.objectStore("transactions").getAll();
+                  req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === bp.id));
+                });
+              })();
+          await replaceAllTransactions([...existingTxs, ...unique], bp.id);
+        }
       } else {
         await replaceAllTransactions(backupTxs, bp.id);
       }
