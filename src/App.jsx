@@ -550,26 +550,49 @@ const App = () => {
   return (
     <div className="min-h-screen bg-transparent">
       {driveMessage === "blocked" && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-white border border-orange-200 rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4">
-          <div className="flex justify-between items-start gap-2">
-            <p className="text-sm text-orange-700">⚠️ Свързването е отменено. Натиснете <strong>'Свържи с Google Drive'</strong> за да опитате отново.</p>
-            <button onClick={() => driveSetMessage("")} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-orange-200">
+              <h2 className="text-base font-semibold text-orange-700">⚠️ Внимание!</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                <p className="text-sm text-orange-700">Свързването е отменено. Натиснете <strong>'Свържи с Google Drive'</strong> за да опитате отново.</p>
+              </div>
+              <button onClick={() => driveSetMessage("")} className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition">Разбрах</button>
+            </div>
           </div>
-          <button onClick={() => driveSetMessage("")} className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition">Разбрах</button>
         </div>
       )}
       {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4">
-          <div className="flex justify-between items-start gap-2">
-            <p className="text-sm text-gray-700">{driveMessage}</p>
-            {(driveMessage.startsWith("✅")) && (
-              <button onClick={() => driveSetMessage("")} className="text-gray-400 hover:text-gray-600 text-lg leading-none flex-shrink-0">×</button>
-            )}
-          </div>
-          {!driveMessage.startsWith("✅") && (
-            <button onClick={() => driveSetMessage("")} className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">Разбрах</button>
+        <>
+          {driveMessage.startsWith("✅") ? (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
+              <div className="flex justify-between items-start gap-2">
+                <p className="text-sm font-medium text-emerald-800">{driveMessage}</p>
+                <button onClick={() => driveSetMessage("")} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none flex-shrink-0">×</button>
+              </div>
+            </div>
+          ) : (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+                <div className={`px-5 py-4 border-b ${driveMessage.startsWith("❌") ? "border-red-200" : "border-orange-200"}`}>
+                  <h2 className={`text-base font-semibold ${driveMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
+                    {driveMessage.startsWith("❌") ? "❌ Грешка" : "⚠️ Внимание!"}
+                  </h2>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  <div className={`rounded-xl p-4 border ${driveMessage.startsWith("❌") ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
+                    <p className={`text-sm ${driveMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
+                      {driveMessage.replace(/^❌\s*/, "").replace(/^⚠️\s*/, "").replace(/^🔌\s*/, "")}
+                    </p>
+                  </div>
+                  <button onClick={() => driveSetMessage("")} className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition">Разбрах</button>
+                </div>
+              </div>
+            </div>
           )}
-        </div>
+        </>
       )}
       <div className="max-w-3xl mx-auto px-4 py-6">
 
