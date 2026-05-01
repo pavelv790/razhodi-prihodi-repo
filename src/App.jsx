@@ -296,7 +296,7 @@ const App = () => {
     setShowRestoreDuplicates(false);
 
     // Продължи с останалите профили
-    await finishRestore(pendingRemainingProfiles, pendingBackup);
+    await finishRestore(pendingRemainingProfiles.filter((p) => p.id !== pendingMergeProfileId), pendingBackup);
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
