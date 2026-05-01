@@ -87,9 +87,9 @@ export const useProfiles = () => {
 
   const deleteProfile = async (id) => {
     await deleteOne(id);
-    setProfiles((prev) => prev.filter((p) => p.id !== id));
+    const remaining = profiles.filter((p) => p.id !== id);
+    setProfiles(remaining);
     if (activeProfileId === id) {
-      const remaining = profiles.filter((p) => p.id !== id);
       if (remaining.length > 0) {
         setActiveProfileId(remaining[0].id);
         localStorage.setItem(ACTIVE_PROFILE_KEY, remaining[0].id);

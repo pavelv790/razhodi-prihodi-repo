@@ -1250,17 +1250,17 @@ const App = () => {
             </div>
             <div className="px-5 py-5 space-y-3">
               <div className="bg-green-50 rounded-xl p-4">
-                <p className="text-sm text-green-700 font-medium mb-1">
+                <div className="text-sm text-green-700 font-medium mb-1">
                   {restoreDoneType.map((r) => (
-                    <p key={r.name}>
+                    <div key={r.name}>
                       {r.choice === "merge"
                         ? `✅ Данните за ${r.name} са обединени успешно.`
                         : r.choice === "local"
                         ? `✅ Данните за ${r.name} са запазени локално.`
                         : `✅ Данните за ${r.name} са възстановени успешно.`}
-                    </p>
+                    </div>
                   ))}
-                </p>
+                </div>
               </div>
               <button
                 onClick={() => setShowRestoreDone(false)}

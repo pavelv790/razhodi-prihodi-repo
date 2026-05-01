@@ -80,8 +80,8 @@ export function useGoogleDrive() {
   const disconnect = () => {
     signOutFromGoogle();
     setConnected(false);
-    setAutoSync(false);
-    saveSettings(false);
+    setAutoSync("off");
+    saveSettings("off");
     showMessage("🔌 Изключено от Google Drive.");
   };
 

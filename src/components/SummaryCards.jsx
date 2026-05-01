@@ -21,14 +21,14 @@ const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allT
   // Общ лимит — от allTransactions за бюджетния период
   const filteredBudgetExpense = (allTransactions || [])
     .filter((t) => t.type === "expense" && isInBudgetPeriod(t))
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + Number(t.amount), 0);
 
   // Лимити по категории — от allTransactions за бюджетния период
   const expenseByCategory = {};
   (allTransactions || [])
     .filter((t) => t.type === "expense" && isInBudgetPeriod(t))
     .forEach((t) => {
-      expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + t.amount;
+      expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + Number(t.amount);
     });
 
   const totalLimit = budgets?.totalLimit ? parseFloat(budgets.totalLimit) : null;
