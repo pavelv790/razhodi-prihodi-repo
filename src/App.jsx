@@ -112,6 +112,7 @@ const App = () => {
   const [addNewProfiles, setAddNewProfiles] = useState(null);
   const [showAddNewProfilesConfirm, setShowAddNewProfilesConfirm] = useState(false);
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState(null);
+  const [localTransactionCounts, setLocalTransactionCounts] = useState({});
   const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
   const {
     connected: driveConnected,
@@ -124,6 +125,8 @@ const App = () => {
     toggleAutoSync: driveToggleAutoSync,
     uploadBackup: driveUploadBackup,
     downloadBackup: driveDownloadBackup,
+    shouldRunDaily: driveShouldRunDaily,
+    markDailyDone: driveMarkDailyDone,
   } = useGoogleDrive();
   
   useEffect(() => {
@@ -151,14 +154,31 @@ const App = () => {
     [filteredTransactions, getSummary]
   );
   useEffect(() => {
-    if (!driveAutoSync || !driveConnected) return;
+    if (!driveConnected) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
-    const timer = setTimeout(async () => {
-      driveUploadBackup(await buildBackupData(), activeProfile.name);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles]);
+
+    if (driveAutoSync === "onChange") {
+      const timer = setTimeout(async () => {
+        const success = await driveUploadBackup(await buildBackupData(), activeProfile.name);
+        if (success === false) {
+          driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+
+    if (driveAutoSync === "daily" && driveShouldRunDaily()) {
+      const timer = setTimeout(async () => {
+        driveMarkDailyDone();
+        const success = await driveUploadBackup(await buildBackupData(), activeProfile.name);
+        if (success === false) {
+          driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -368,6 +388,18 @@ const App = () => {
       const newProfiles = (data.profiles || []).filter((bp) =>
         !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
       );
+      // Зареди броя транзакции за всеки профил от IndexedDB
+      const db = await openDB();
+      const allTxs = await new Promise((resolve) => {
+        const tx = db.transaction("transactions", "readonly");
+        const req = tx.objectStore("transactions").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+      });
+      const counts = {};
+      profiles.forEach((lp) => {
+        counts[lp.id] = allTxs.filter((t) => t.profileId === lp.id).length;
+      });
+      setLocalTransactionCounts(counts);
 
       if (conflicts.length > 0) {
         const initialChoices = {};
@@ -523,11 +555,20 @@ const App = () => {
             <p className="text-sm text-orange-700">⚠️ Свързването е отменено. Натиснете <strong>'Свържи с Google Drive'</strong> за да опитате отново.</p>
             <button onClick={() => driveSetMessage("")} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
           </div>
+          <button onClick={() => driveSetMessage("")} className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition">Разбрах</button>
         </div>
       )}
       {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4">
-          <p className="text-sm text-gray-700 text-center">{driveMessage}</p>
+          <div className="flex justify-between items-start gap-2">
+            <p className="text-sm text-gray-700">{driveMessage}</p>
+            {(driveMessage.startsWith("✅")) && (
+              <button onClick={() => driveSetMessage("")} className="text-gray-400 hover:text-gray-600 text-lg leading-none flex-shrink-0">×</button>
+            )}
+          </div>
+          {!driveMessage.startsWith("✅") && (
+            <button onClick={() => driveSetMessage("")} className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">Разбрах</button>
+          )}
         </div>
       )}
       <div className="max-w-3xl mx-auto px-4 py-6">
@@ -678,14 +719,25 @@ const App = () => {
                     </>
                   ) : (
                     <>
-                      <div className="flex items-center justify-between px-1 py-1 mb-1">
-                        <span className="text-xs text-gray-500">Авто при всяка промяна</span>
-                        <button
-                          onClick={() => driveToggleAutoSync(!driveAutoSync)}
-                          className={`w-10 h-5 rounded-full transition-colors ${driveAutoSync ? "bg-blue-400" : "bg-gray-300"}`}
-                        >
-                          <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${driveAutoSync ? "translate-x-5" : "translate-x-0"}`} />
-                        </button>
+                      <div className="flex flex-col gap-1 px-1 py-1 mb-1">
+                        <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
+                        {[
+                          { value: "off", label: "Изключено" },
+                          { value: "onChange", label: "При всяка промяна" },
+                          { value: "daily", label: "Веднъж дневно" },
+                        ].map((opt) => (
+                          <label key={opt.value} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="driveAutoSync"
+                              value={opt.value}
+                              checked={driveAutoSync === opt.value}
+                              onChange={() => driveToggleAutoSync(opt.value)}
+                              className="accent-blue-500"
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
                       </div>
                       <button
                         onClick={handleDriveUpload}
@@ -706,6 +758,18 @@ const App = () => {
                               !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
                             );
                             setPendingNewProfiles(newProfiles);
+                            // Зареди броя транзакции за всеки профил от IndexedDB
+                            const db2 = await openDB();
+                            const allTxs2 = await new Promise((resolve) => {
+                              const tx = db2.transaction("transactions", "readonly");
+                              const req = tx.objectStore("transactions").getAll();
+                              req.onsuccess = () => resolve(req.result || []);
+                            });
+                            const counts2 = {};
+                            profiles.forEach((lp) => {
+                              counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
+                            });
+                            setLocalTransactionCounts(counts2);
                             if (conflicts.length > 0) {
                               const initialChoices = {};
                               conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
@@ -851,7 +915,7 @@ const App = () => {
             </div>
             <div className="px-5 py-4 space-y-4">
               <div className="bg-orange-50 rounded-xl px-3 py-2 text-xs text-orange-700">
-                ⚠️ Намерени са <strong>{restoreDuplicates.length}</strong> вероятни дубликата (същата дата, категория, тип и сума вече съществуват). Уникални транзакции за добавяне: <strong>{restoreUniqueTransactions.length}</strong>.
+                ⚠️ Намерени са <strong>{restoreDuplicates.length}</strong> вероятни дубликата за <strong>{profiles.find(p => p.id === pendingMergeProfileId)?.name ?? ""}</strong> (същата дата, категория, тип и сума вече съществуват). Уникални транзакции за добавяне: <strong>{restoreUniqueTransactions.length}</strong>.
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -1022,7 +1086,7 @@ const App = () => {
                   <div className="px-5 py-5 space-y-3">
                     {conflictProfiles.map((bp) => {
                       const choice = conflictChoices[bp.id] || "backup";
-                      const localCount = transactions.filter(t => t.profileId === bp.id).length;
+                      const localCount = localTransactionCounts[bp.id] ?? transactions.filter(t => t.profileId === bp.id).length;
                       const backupCount = (pendingBackup.transactions || []).filter(t => t.profileId === bp.id).length;
                       return (
                         <div key={bp.id}>

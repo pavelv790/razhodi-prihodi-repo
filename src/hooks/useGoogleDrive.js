@@ -16,14 +16,21 @@ export function useGoogleDrive() {
   const [connected, setConnected] = useState(false);
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved).autoSync || false : false;
+    if (!saved) return "off";
+    const parsed = JSON.parse(saved);
+    // обратна съвместимост със стара boolean стойност
+    if (parsed.autoSync === true) return "onChange";
+    if (parsed.autoSync === false) return "off";
+    return parsed.autoSync || "off";
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   const showMessage = (msg) => {
     setMessage(msg);
-    setTimeout(() => setMessage(""), 3000);
+    if (msg.startsWith("✅")) {
+      setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   useEffect(() => {
@@ -47,6 +54,16 @@ export function useGoogleDrive() {
 
   const saveSettings = (newAutoSync) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ autoSync: newAutoSync }));
+  };
+
+  const DAILY_KEY = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
+
+  const shouldRunDaily = () => {
+    return !localStorage.getItem(DAILY_KEY);
+  };
+
+  const markDailyDone = () => {
+    localStorage.setItem(DAILY_KEY, "true");
   };
 
   const connect = async () => {
@@ -122,5 +139,7 @@ export function useGoogleDrive() {
     toggleAutoSync,
     uploadBackup,
     downloadBackup,
+    shouldRunDaily,
+    markDailyDone,
   };
 }
