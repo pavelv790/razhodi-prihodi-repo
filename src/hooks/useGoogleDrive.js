@@ -23,7 +23,8 @@ export function useGoogleDrive() {
     if (parsed.autoSync === false) return "off";
     return parsed.autoSync || "off";
   });
-  const [loading, setLoading] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const [message, setMessage] = useState("");
 
   const showMessage = (msg) => {
@@ -67,13 +68,11 @@ export function useGoogleDrive() {
   };
 
   const connect = async () => {
-    setLoading(true);
     setMessage("");
     try {
       await signInWithGoogle();
     } catch (err) {
       showMessage("blocked");
-      setLoading(false);
     }
   };
 
@@ -82,7 +81,7 @@ export function useGoogleDrive() {
     setConnected(false);
     setAutoSync("off");
     saveSettings("off");
-    showMessage("🔌 Изключено от Google Drive.");
+    showMessage("🔌 Не сте свързани с Google Drive.");
   };
 
   const toggleAutoSync = (val) => {
@@ -95,7 +94,7 @@ export function useGoogleDrive() {
       showMessage("❌ Сесията е изтекла. Свържете се отново с Google Drive.");
       return false;
     }
-    setLoading(true);
+    setUploadLoading(true);
     setMessage("");
     try {
       await uploadBackupToDrive(backupData, profileName);
@@ -105,7 +104,7 @@ export function useGoogleDrive() {
       showMessage("❌ " + err.message);
       return false;
     } finally {
-      setLoading(false);
+      setUploadLoading(false);
     }
   }, []);
 
@@ -114,7 +113,7 @@ export function useGoogleDrive() {
       showMessage("❌ Първо се свържете с Google Drive.");
       return null;
     }
-    setLoading(true);
+    setDownloadLoading(true);
     setMessage("");
     try {
       const data = await downloadLatestBackupFromDrive(profileName);
@@ -124,14 +123,15 @@ export function useGoogleDrive() {
       showMessage("❌ " + err.message);
       return null;
     } finally {
-      setLoading(false);
+      setDownloadLoading(false);
     }
   }, []);
 
   return {
     connected,
     autoSync,
-    loading,
+    uploadLoading,
+    downloadLoading,
     message,
     setMessage,
     connect,

@@ -117,7 +117,8 @@ const App = () => {
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
-    loading: driveLoading,
+    uploadLoading: driveUploadLoading,
+    downloadLoading: driveDownloadLoading,
     message: driveMessage,
     setMessage: driveSetMessage,
     connect: driveConnect,
@@ -734,10 +735,10 @@ const App = () => {
                       </div>
                       <button
                         onClick={() => { setShowDataPanel(true); driveConnect(); }}
-                        disabled={driveLoading}
+                        disabled={driveUploadLoading || driveDownloadLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
                       >
-                        🔗 {driveLoading ? "Свързване..." : "Свържи с Google Drive"}
+                        🔗 Свържи с Google Drive
                       </button>
                     </>
                   ) : (
@@ -764,10 +765,10 @@ const App = () => {
                       </div>
                       <button
                         onClick={handleDriveUpload}
-                        disabled={driveLoading}
+                        disabled={driveUploadLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
                       >
-                        ☁️ {driveLoading ? "Качване..." : "Запази в Drive"}
+                        ☁️ {driveUploadLoading ? "Качване..." : "Запази в Drive"}
                       </button>
                       <button
                         onClick={async () => {
@@ -804,10 +805,10 @@ const App = () => {
                             }
                           }
                         }}
-                        disabled={driveLoading}
+                        disabled={driveDownloadLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
-                        ⬇️ {driveLoading ? "Изтегляне..." : "Възстанови от Drive"}
+                        ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Drive"}
                       </button>
                       <button
                         onClick={driveDisconnect}
@@ -1142,7 +1143,7 @@ const App = () => {
                       );
                     })}
                     <button
-                      onClick={handleRestoreConfirm}
+                      onClick={() => { setShowRestoreConfirm(false); handleRestoreConfirm(); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
                     >
                       Потвърди
