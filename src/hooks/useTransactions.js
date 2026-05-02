@@ -112,8 +112,10 @@ export const useTransactions = (profileId) => {
     const targetId = overrideProfileId || profileId;
     const withProfile = newTransactions.map((t) => ({ ...t, profileId: targetId }));
     const sorted = sortByDate(withProfile);
-    skipAutoSave.current = true;
-    if (targetId === profileId) setTransactions(sorted);
+    if (targetId === profileId) {
+      skipAutoSave.current = true;
+      setTransactions(sorted);
+    }
     await saveAllToDB_forProfile(targetId, sorted);
   };
 

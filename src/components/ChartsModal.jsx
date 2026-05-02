@@ -495,9 +495,12 @@ useEffect(() => {
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length > 0) {
                       const visible = payload.filter((p) => p.value !== 0 && p.value !== null && p.value !== undefined);
-                      if (JSON.stringify(tooltipData) !== JSON.stringify({ label, items: visible })) {
-                        setTimeout(() => setTooltipData({ label, items: visible }), 0);
-                      }
+                      const newLabel = label;
+                      const newItems = visible;
+                      setTimeout(() => setTooltipData((prev) => {
+                        if (prev?.label === newLabel && prev?.items?.length === newItems.length) return prev;
+                        return { label: newLabel, items: newItems };
+                      }), 0);
                     } else {
                       if (tooltipData !== null) setTimeout(() => setTooltipData(null), 0);
                     }

@@ -90,6 +90,7 @@ const ImportExportModal = ({
         accept=".xlsx"
         onChange={handleFileSelect}
         onClick={(e) => { e.target.value = ""; }}
+        onCancel={onClose}
         className="hidden"
       />
     );
