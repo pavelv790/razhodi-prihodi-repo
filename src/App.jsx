@@ -349,6 +349,20 @@ const App = () => {
       req.onerror = () => resolve([]);
     });
 
+    const allSavedFilters = await new Promise((resolve) => {
+      const tx = db.transaction("saved_filters", "readonly");
+      const req = tx.objectStore("saved_filters").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+      
+    const allRecurringItems = await new Promise((resolve) => {
+      const tx = db.transaction("recurring", "readonly");
+      const req = tx.objectStore("recurring").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+      
     return {
       version: "1.5",
       date: new Date().toISOString(),
@@ -358,11 +372,11 @@ const App = () => {
       expenseCategories,
       incomeCategories,
       profileCategories: allProfileCategories,
-      savedFilters,
+      savedFilters: allSavedFilters,
       currency,
       rate,
       budgets,
-      recurringItems,
+      recurringItems: allRecurringItems,
     };
   };
   
@@ -862,6 +876,7 @@ const App = () => {
         <TransactionList
           transactions={filteredTransactions}
           isFiltered={isFiltered}
+          profileId={activeProfileId}
           onEdit={(t) => {
             setEditingTransaction(t);
             window.scrollTo({ top: 0, behavior: "smooth" });

@@ -4,12 +4,20 @@ import { useState } from "react";
 
 const PAGE_SIZE = 50;
 
-const TransactionList = ({ transactions, onEdit, onDelete, isFiltered }) => {
+const TransactionList = ({ transactions, onEdit, onDelete, isFiltered, profileId }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [sortField, setSortField] = useState("date");
   const [sortDirection, setSortDirection] = useState("desc");
   const [typeFilter, setTypeFilter] = useState("all");
+
+  useEffect(() => {
+    setTypeFilter("all");
+    setSortField("date");
+    setSortDirection("desc");
+    setVisibleCount(PAGE_SIZE);
+    setConfirmDeleteId(null);
+  }, [profileId]);
 
   const handleSort = (field) => {
     if (sortField === field) {
