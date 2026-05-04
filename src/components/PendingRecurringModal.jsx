@@ -6,6 +6,10 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
     pendingItems.map((_, i) => i)
   );
 
+  const [amounts, setAmounts] = useState(
+    Object.fromEntries(pendingItems.map((item, i) => [i, item.variableAmount ? "" : String(item.amount)]))
+  );
+
   const toggle = (i) => {
     setSelected((prev) =>
       prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]
@@ -16,7 +20,12 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
   const deselectAll = () => setSelected([]);
 
   const handleConfirm = () => {
-    const toAdd = pendingItems.filter((_, i) => selected.includes(i));
+    const toAdd = pendingItems
+      .filter((_, i) => selected.includes(i))
+      .map((item, i) => ({
+        ...item,
+        amount: item.variableAmount ? parseFloat(amounts[i]) || 0 : item.amount,
+      }));
     onConfirm(toAdd);
   };
 
@@ -61,7 +70,20 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
                 className="accent-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-gray-700 truncate">{item.category}</p>
-                <p className="text-xs text-gray-400">{item.date} · {Number(item.amount).toFixed(2)} EUR</p>
+                {item.variableAmount ? (
+                  <input
+                    type="number"
+                    placeholder="Въведи сума..."
+                    value={amounts[i]}
+                    onChange={(e) => setAmounts((prev) => ({ ...prev, [i]: e.target.value }))}
+                    onClick={(e) => e.stopPropagation()}
+                    min="0"
+                    step="0.01"
+                    className="mt-1 w-full border border-blue-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                ) : (
+                  <p className="text-xs text-gray-400">{item.date} · {Number(item.amount).toFixed(2)} EUR</p>
+                )}
                 {item.description && <p className="text-xs text-gray-400 italic truncate">{item.description}</p>}
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${

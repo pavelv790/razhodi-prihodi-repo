@@ -15,6 +15,7 @@ const emptyForm = () => ({
   type: "expense",
   category: "",
   amount: "",
+  variableAmount: false,
   description: "",
   startDate: getTodayString(),
   endDate: "",
@@ -46,14 +47,15 @@ const RecurringModal = ({
 
   const handleSubmit = async () => {
     if (!form.category.trim()) { setError("Изберете категория."); return; }
-    if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) { setError("Въведете валидна сума."); return; }
+    if (!form.variableAmount && (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)) { setError("Въведете валидна сума."); return; }
     if (!form.startDate) { setError("Въведете начална дата."); return; }
     if (form.period === "custom" && (!form.customDays || Number(form.customDays) < 1)) { setError("Въведете брой дни."); return; }
 
     const item = {
       type: form.type,
       category: form.category.trim(),
-      amount: parseFloat(Number(form.amount).toFixed(2)),
+      amount: form.variableAmount ? 0 : parseFloat(Number(form.amount).toFixed(2)),
+      variableAmount: form.variableAmount || false,
       description: form.description.trim(),
       startDate: form.startDate,
       endDate: form.endDate || null,
@@ -78,7 +80,8 @@ const RecurringModal = ({
     setForm({
       type: item.type,
       category: item.category,
-      amount: String(item.amount),
+      amount: item.variableAmount ? "" : String(item.amount),
+      variableAmount: item.variableAmount || false,
       description: item.description || "",
       startDate: item.startDate,
       endDate: item.endDate || "",
@@ -148,7 +151,7 @@ const RecurringModal = ({
                       <span className="text-sm font-medium text-gray-700 truncate">{item.category}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {Number(item.amount).toFixed(2)} EUR · {periodLabel(item)}
+                      {item.variableAmount ? "Променлива сума" : `${Number(item.amount).toFixed(2)} EUR`} · {periodLabel(item)}
                     </p>
                     <p className="text-xs text-gray-400">
                       От: {item.startDate}{item.endDate ? ` · До: ${item.endDate}` : ""}
@@ -209,12 +212,29 @@ const RecurringModal = ({
 
               {/* Сума */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Сума (EUR)</label>
-                <input type="number" placeholder="0.00" value={form.amount}
-                  onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
-                  min="0" step="0.01"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500">Сума (EUR)</label>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.variableAmount}
+                      onChange={(e) => setForm((p) => ({ ...p, variableAmount: e.target.checked, amount: "" }))}
+                      className="accent-blue-500"
+                    />
+                    Променлива сума
+                  </label>
+                </div>
+                {form.variableAmount ? (
+                  <div className="w-full border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-400 bg-blue-50">
+                    Сумата ще се въвежда при всяко потвърждение
+                  </div>
+                ) : (
+                  <input type="number" placeholder="0.00" value={form.amount}
+                    onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))}
+                    min="0" step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  />
+                )}
               </div>
 
               {/* Описание */}

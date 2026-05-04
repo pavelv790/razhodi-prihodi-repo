@@ -212,6 +212,7 @@ export const useRecurring = (profileId) => {
           type: item.type,
           category: item.category,
           amount: item.amount,
+          variableAmount: item.variableAmount || false,
           description: item.description || "",
         });
       });
