@@ -78,7 +78,7 @@ const App = () => {
 
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
-  const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", categories: [] });
+  const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", categories: [], description: "" });
   const [isFiltered, setIsFiltered] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showImportExport, setShowImportExport] = useState(false);
@@ -218,12 +218,12 @@ const App = () => {
   const handleFilter = useCallback((newFilters) => {
     setActiveFilters(newFilters);
     setIsFiltered(
-      !!(newFilters.fromDate || newFilters.toDate || (newFilters.categories && newFilters.categories.length > 0))
+      !!(newFilters.fromDate || newFilters.toDate || (newFilters.categories && newFilters.categories.length > 0) || newFilters.description?.trim())
     );
   }, []);
           
   const handleClearFilter = useCallback(() => {
-    const empty = { fromDate: "", toDate: "", categories: [] };
+    const empty = { fromDate: "", toDate: "", categories: [], description: "" };
     setFilters(empty);
     setActiveFilters(empty);
     setIsFiltered(false);

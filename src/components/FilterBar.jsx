@@ -141,6 +141,7 @@ const FilterBar = ({
   const [showIncomeList, setShowIncomeList] = useState(false);
   const [filterName, setFilterName] = useState("");
   const [showSaved, setShowSaved] = useState(false);
+  const [descriptionSearch, setDescriptionSearch] = useState(filters.description || "");
 
   const selectedCategories = filters.categories || [];
   const selectedExpenses = selectedCategories.filter((k) => k.endsWith("::expense"));
@@ -250,6 +251,31 @@ const FilterBar = ({
             onChange={(val) => setFilters((prev) => ({ ...prev, toDate: val }))}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
+        </div>
+      </div>
+      {/* Търсене по описание */}
+      <div className="mb-4">
+        <label className="block text-xs text-gray-500 mb-1">Търсене по описание</label>
+        <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
+          <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Напр. Kaufland..."
+            value={descriptionSearch}
+            onChange={(e) => {
+              setDescriptionSearch(e.target.value);
+              setFilters((prev) => ({ ...prev, description: e.target.value }));
+            }}
+            className="text-sm w-full focus:outline-none bg-transparent"
+          />
+          {descriptionSearch && (
+            <button onClick={() => {
+              setDescriptionSearch("");
+              setFilters((prev) => ({ ...prev, description: "" }));
+            }}>
+              <X className="w-3.5 h-3.5 text-gray-400" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -384,6 +410,7 @@ const FilterBar = ({
           {filters.toDate && ` • До: ${filters.toDate}`}
           {selectedExpenses.length > 0 && ` • Разходи: ${selectedExpenses.length}`}
           {selectedIncomes.length > 0 && ` • Приходи: ${selectedIncomes.length}`}
+          {filters.description?.trim() && ` • Описание: ${filters.description.trim()}`}
         </div>
       )}
     </div>

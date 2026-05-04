@@ -147,7 +147,7 @@ export const useTransactions = (profileId) => {
   };
 
   const getFilteredTransactions = useCallback((filters) => {
-    const { fromDate, toDate, categories } = filters;
+    const { fromDate, toDate, categories, description } = filters;
     return transactions.filter((t) => {
       const date = parseDate(t.date);
       if (fromDate) {
@@ -166,6 +166,10 @@ export const useTransactions = (profileId) => {
           }
         );
         if (!match) return false;
+      }
+      if (description && description.trim() !== "") {
+        const desc = (t.description || "").toLowerCase();
+        if (!desc.includes(description.toLowerCase().trim())) return false;
       }
       return true;
     });
