@@ -57,14 +57,14 @@ export function useGoogleDrive() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ autoSync: newAutoSync }));
   };
 
-  const DAILY_KEY = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
-
   const shouldRunDaily = () => {
-    return !localStorage.getItem(DAILY_KEY);
+    const key = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
+    return !localStorage.getItem(key);
   };
 
   const markDailyDone = () => {
-    localStorage.setItem(DAILY_KEY, "true");
+    const key = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
+    localStorage.setItem(key, "true");
   };
 
   const connect = async () => {

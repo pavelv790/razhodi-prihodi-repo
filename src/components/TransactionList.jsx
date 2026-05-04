@@ -1,6 +1,6 @@
 import { TrendingUp, TrendingDown, Pencil, Trash2, ArrowUpDown } from "lucide-react";
 import { formatAmount, parseDate } from "../utils/formatters";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const PAGE_SIZE = 50;
 
