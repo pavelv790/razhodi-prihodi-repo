@@ -98,6 +98,7 @@ export function useGoogleDrive() {
     setMessage("");
     try {
       await uploadBackupToDrive(backupData, profileName);
+      localStorage.setItem("last_drive_upload_date", new Date().toISOString());
       showMessage("✅ Backup качен в Google Drive.");
       return true;
     } catch (err) {

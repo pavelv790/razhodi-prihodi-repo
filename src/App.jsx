@@ -114,6 +114,12 @@ const App = () => {
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState(null);
   const [localTransactionCounts, setLocalTransactionCounts] = useState({});
   const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
+  const [backupReminderInterval, setBackupReminderInterval] = useState(
+    () => localStorage.getItem("backup_reminder_interval") ?? "weekly"
+  );
+  const [lastLocalBackupDate, setLastLocalBackupDate] = useState(
+    () => localStorage.getItem("last_local_backup_date") ?? null
+  );
   const {
     connected: driveConnected,
     autoSync: driveAutoSync,
@@ -184,15 +190,27 @@ const App = () => {
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
 
-    const now = new Date();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    monday.setHours(0, 0, 0, 0);
-    const weekKey = `auto_export_${monday.getFullYear()}_${monday.getMonth() + 1}_${monday.getDate()}`;
+    const interval = localStorage.getItem("backup_reminder_interval") ?? "weekly";
+    if (interval === "off") return;
 
-    const alreadyExported = localStorage.getItem(weekKey);
-    if (!alreadyExported) {
-      localStorage.setItem(weekKey, "true");
+    const lastStr = localStorage.getItem("last_backup_reminder_date");
+    const last = lastStr ? new Date(lastStr) : null;
+    const now = new Date();
+
+    let shouldShow = false;
+    if (!last) {
+      shouldShow = true;
+    } else if (interval === "weekly") {
+      shouldShow = (now - last) >= 7 * 24 * 60 * 60 * 1000;
+    } else if (interval === "monthly") {
+      shouldShow = now.getMonth() !== last.getMonth() || now.getFullYear() !== last.getFullYear();
+    } else if (interval === "quarterly") {
+      const monthsDiff = (now.getFullYear() - last.getFullYear()) * 12 + (now.getMonth() - last.getMonth());
+      shouldShow = monthsDiff >= 3;
+    }
+
+    if (shouldShow) {
+      localStorage.setItem("last_backup_reminder_date", now.toISOString());
       setTimeout(() => setShowWeeklyBackup(true), 500);
     }
   }, [transactions, expenseCategories, incomeCategories]);
@@ -387,6 +405,9 @@ const App = () => {
   const handleBackupExport = async () => {
     const data = await buildBackupData();
     exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
+    const now = new Date().toISOString();
+    localStorage.setItem("last_local_backup_date", now);
+    setLastLocalBackupDate(now);
   };
 
   const handleBackupFileSelect = async (e) => {
@@ -726,6 +747,11 @@ const App = () => {
                   <FileDown className="w-4 h-4" />
                   Backup
                 </button>
+                {lastLocalBackupDate && (
+                  <p className="text-xs text-gray-400 px-1">
+                    последно сваляне: {new Date(lastLocalBackupDate).toLocaleDateString("bg-BG", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                )}
                 <button
                   onClick={() => { backupFileRef.current.value = ""; backupFileRef.current.click(); }}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
@@ -740,6 +766,33 @@ const App = () => {
                   <Trash2 className="w-4 h-4" />
                   Изтрий всички данни
                 </button>
+
+                <div className="border-t border-gray-200 pt-2 mt-1">
+                  <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Напомняне за backup</p>
+                  <div className="flex flex-col gap-1 px-1">
+                    {[
+                      { value: "off", label: "Изключено" },
+                      { value: "weekly", label: "Веднъж седмично" },
+                      { value: "monthly", label: "Веднъж месечно" },
+                      { value: "quarterly", label: "Веднъж на 3 месеца" },
+                    ].map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="backupReminder"
+                          value={opt.value}
+                          checked={backupReminderInterval === opt.value}
+                          onChange={() => {
+                            localStorage.setItem("backup_reminder_interval", opt.value);
+                            setBackupReminderInterval(opt.value);
+                          }}
+                          className="accent-blue-500"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="border-t border-gray-200 pt-2 mt-1">
                   <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Google Drive</p>
                   {!driveConnected ? (
@@ -784,6 +837,11 @@ const App = () => {
                       >
                         ☁️ {driveUploadLoading ? "Качване..." : "Запази в Drive"}
                       </button>
+                      {localStorage.getItem("last_drive_upload_date") && (
+                        <p className="text-xs text-gray-400 px-1">
+                          последно качване: {new Date(localStorage.getItem("last_drive_upload_date")).toLocaleDateString("bg-BG", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      )}
                       <button
                         onClick={async () => {
                           const data = await driveDownloadBackup(activeProfile?.name);
@@ -1190,6 +1248,9 @@ const App = () => {
                 onClick={async () => {
                   const data = await buildBackupData();
                   exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
+                  const now = new Date().toISOString();
+                  localStorage.setItem("last_local_backup_date", now);
+                  setLastLocalBackupDate(now);
                   setShowWeeklyBackup(false);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
