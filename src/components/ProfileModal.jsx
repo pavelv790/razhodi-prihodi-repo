@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { User, Plus, Check, X, Trash2, Edit2, Download } from "lucide-react";
+import { User, Plus, Check, X, Trash2, Edit2, Download, Copy } from "lucide-react";
 
-const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete, onRename, onClose, onOpenMerge }) => {
+const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete, onRename, onClose, onOpenMerge, onOpenCopy }) => {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState("");
@@ -138,7 +138,10 @@ const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete,
                 <Plus className="w-4 h-4" /> Създай нов профил
               </button>
               <button onClick={() => { onClose(); onOpenMerge(); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
-                <Download className="w-4 h-4" /> Импортирай данни от друг профил
+                <Download className="w-4 h-4" /> Импортирай данни от Backup файл от друг профил
+              </button>
+              <button onClick={() => { onClose(); onOpenCopy(); }} className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-purple-50 text-purple-600 hover:bg-purple-100 transition">
+                <Copy className="w-4 h-4" /> Копирай транзакции от друг профил
               </button>
             </div>
           )}

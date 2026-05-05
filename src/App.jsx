@@ -6,6 +6,7 @@ import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
 import MergeProfileModal from "./components/MergeProfileModal";
+import CopyTransactionsModal from "./components/CopyTransactionsModal";
 import SummaryCards from "./components/SummaryCards";
 import FilterBar from "./components/FilterBar";
 import TransactionForm from "./components/TransactionForm";
@@ -92,6 +93,7 @@ const App = () => {
   const [showBudget, setShowBudget] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showCopyModal, setShowCopyModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [pendingRecurring, setPendingRecurring] = useState([]);
@@ -1289,6 +1291,7 @@ const App = () => {
           onRename={renameProfile}
           onClose={() => setShowProfileModal(false)}
           onOpenMerge={() => setShowMergeModal(true)}
+          onOpenCopy={() => setShowCopyModal(true)}
         />
       )}
       {showRecurringModal && (
@@ -1348,6 +1351,15 @@ const App = () => {
             </div>
           </div>
         </div>
+      )}
+      {showCopyModal && (
+        <CopyTransactionsModal
+          profiles={profiles}
+          activeProfileId={activeProfileId}
+          activeProfileName={activeProfile?.name}
+          onClose={() => setShowCopyModal(false)}
+          onAdd={addTransactions}
+        />
       )}
 
       {showMergeModal && (
