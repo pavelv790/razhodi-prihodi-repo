@@ -38,6 +38,7 @@ const TransactionForm = ({
   const amountRef = useRef(null);
   const descriptionRef = useRef(null);
   const successTimerRef = useRef(null);
+  const savedStickyDateRef = useRef(null);
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
@@ -64,6 +65,7 @@ const TransactionForm = ({
 
   useEffect(() => {
     if (editingTransaction) {
+      if (stickyDate) savedStickyDateRef.current = date;
       setType(editingTransaction.type);
       setCategory(editingTransaction.category);
       setCategorySearch(editingTransaction.category);
@@ -73,13 +75,8 @@ const TransactionForm = ({
       setErrors({});
       setShowExtra(true);
     }
-  }, [editingTransaction]);
+  }, [editingTransaction]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    setCategory("");
-    setCategorySearch("");
-    setErrors({});
-  }, [type]);
   useEffect(() => {
     return () => {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
@@ -124,7 +121,12 @@ const TransactionForm = ({
     setCategory("");
     setCategorySearch("");
     setAmount("");
-    setDate(stickyDate && !editingTransaction ? date : getTodayString());
+    if (stickyDate) {
+      setDate(savedStickyDateRef.current || date);
+    } else {
+      setDate(getTodayString());
+    }
+    savedStickyDateRef.current = null;
     setDescription("");
     setErrors({});
     setShowCategoryDropdown(false);
@@ -166,9 +168,9 @@ const TransactionForm = ({
           Избраната валута е {currency}
         </div>
       )}
-      {stickyDate && (
+      {stickyDate && !editingTransaction && (
         <div className="mb-4 bg-orange-50 border border-orange-200 rounded-xl px-4 py-2 text-sm text-orange-600 font-medium text-center animate-pulse">
-          📅 Всички транзакции се въвеждат за дата {date}
+          📅 Всички транзакции се въвеждат за дата {savedStickyDateRef.current || date}
         </div>
       )}
 
@@ -189,7 +191,7 @@ const TransactionForm = ({
       {/* Тип */}
       <div className="flex gap-3 mb-4">
         <button
-          onClick={() => setType("expense")}
+          onClick={() => { if (!editingTransaction) { setCategory(""); setCategorySearch(""); } setType("expense"); }}
           className={`flex-1 py-2 rounded-xl font-medium text-sm transition ${
             type === "expense" ? "bg-red-500 text-white shadow" : "bg-red-50 text-red-400 hover:bg-red-100"
           }`}
@@ -197,7 +199,7 @@ const TransactionForm = ({
           Разход
         </button>
         <button
-          onClick={() => setType("income")}
+          onClick={() => { if (!editingTransaction) { setCategory(""); setCategorySearch(""); } setType("income"); }}
           className={`flex-1 py-2 rounded-xl font-medium text-sm transition ${
             type === "income" ? "bg-green-500 text-white shadow" : "bg-green-50 text-green-400 hover:bg-green-100"
           }`}
@@ -303,15 +305,17 @@ const TransactionForm = ({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs text-gray-500">Дата</label>
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={stickyDate}
-                  onChange={(e) => setStickyDate(e.target.checked)}
-                  className="accent-orange-500 w-3.5 h-3.5"
-                />
-                <span className="text-xs text-gray-500">Запази датата</span>
-              </label>
+              {!editingTransaction && (
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={stickyDate}
+                    onChange={(e) => setStickyDate(e.target.checked)}
+                    className="accent-orange-500 w-3.5 h-3.5"
+                  />
+                  <span className="text-xs text-gray-500">Запази датата</span>
+                </label>
+              )}
             </div>
             <DateInput
               value={date}
