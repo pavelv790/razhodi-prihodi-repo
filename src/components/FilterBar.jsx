@@ -223,12 +223,13 @@ const FilterBar = ({
   const handleSave = () => {
     const name = filterName.trim();
     if (!name) return;
-    onSaveFilter(name, { fromDate: filters.fromDate, toDate: filters.toDate, categories: filters.categories });
+    onSaveFilter(name, { fromDate: filters.fromDate, toDate: filters.toDate, categories: filters.categories, description: filters.description || "" });
     setFilterName("");
   };
 
   const handleLoad = (f) => {
-    setFilters({ fromDate: f.fromDate, toDate: f.toDate, categories: f.categories });
+    setFilters({ fromDate: f.fromDate, toDate: f.toDate, categories: f.categories, description: f.description || "" });
+    setDescriptionSearch(f.description || "");
   };
 
   

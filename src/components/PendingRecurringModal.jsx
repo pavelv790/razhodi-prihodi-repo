@@ -70,6 +70,9 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
                 className="accent-blue-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-gray-700 truncate">{item.category}</p>
+                {item.variableAmount && (
+                  <p className="text-xs text-gray-400">{item.date}</p>
+                )}
                 {item.variableAmount ? (
                   <input
                     type="number"
