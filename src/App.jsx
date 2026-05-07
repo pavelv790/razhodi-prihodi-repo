@@ -151,7 +151,7 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, getPendingTransactions]);
+  }, [activeProfileId]);
   const backupFileRef = useRef(null);
 
   const filteredTransactions = useMemo(
