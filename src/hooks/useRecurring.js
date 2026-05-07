@@ -72,15 +72,14 @@ export const getPendingDates = (item, today) => {
   const end = item.endDate ? parseDate(item.endDate) : null;
   const last = item.lastAdded ? parseDate(item.lastAdded) : null;
 
-  // Началната точка е деня след последното добавяне, или startDate
+  const originalDay = start.getDate();
+
   let current = last ? new Date(last) : new Date(start);
   if (last) {
-    // Добавяме един период след lastAdded
-    current = getNextDate(item, current);
+    current = getNextDate(item, current, originalDay);
   }
 
   const pending = [];
-  // Максимум 366 итерации за да избегнем безкраен цикъл
   let safety = 0;
   while (current <= todayDate && safety < 366) {
     safety++;
@@ -88,17 +87,22 @@ export const getPendingDates = (item, today) => {
     if (current >= start) {
       pending.push(formatDate(current));
     }
-    current = getNextDate(item, current);
+    current = getNextDate(item, current, originalDay);
   }
   return pending;
 };
 
-const getNextDate = (item, from) => {
+const getNextDate = (item, from, originalDay) => {
   const next = new Date(from);
   if (item.period === "weekly") {
     next.setDate(next.getDate() + 7);
   } else if (item.period === "monthly") {
-    next.setMonth(next.getMonth() + 1);
+    const targetMonth = next.getMonth() + 1;
+    const targetYear = next.getFullYear() + (targetMonth > 11 ? 1 : 0);
+    const normalizedMonth = targetMonth % 12;
+    const maxDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+    next.setMonth(targetMonth);
+    next.setDate(Math.min(originalDay ?? next.getDate(), maxDay));
   } else if (item.period === "yearly") {
     next.setFullYear(next.getFullYear() + 1);
   } else if (item.period === "daily") {

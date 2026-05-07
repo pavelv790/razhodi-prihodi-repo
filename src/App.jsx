@@ -252,7 +252,7 @@ const App = () => {
   };
   const handleConfirmPending = async (toAdd) => {
     for (const item of toAdd) {
-      await addTransaction({
+      addTransaction({
         type: item.type,
         category: item.category,
         amount: item.amount,
