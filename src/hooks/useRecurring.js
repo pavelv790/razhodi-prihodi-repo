@@ -97,12 +97,12 @@ const getNextDate = (item, from, originalDay) => {
   if (item.period === "weekly") {
     next.setDate(next.getDate() + 7);
   } else if (item.period === "monthly") {
-    const targetMonth = next.getMonth() + 1;
-    const targetYear = next.getFullYear() + (targetMonth > 11 ? 1 : 0);
-    const normalizedMonth = targetMonth % 12;
-    const maxDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+    const newMonth = next.getMonth() + 1;
+    const newYear = newMonth > 11 ? next.getFullYear() + 1 : next.getFullYear();
+    const normalizedMonth = newMonth % 12;
+    const maxDay = new Date(newYear, normalizedMonth + 1, 0).getDate();
     next.setDate(1);
-    next.setMonth(targetMonth);
+    next.setMonth(newMonth);
     next.setDate(Math.min(originalDay ?? next.getDate(), maxDay));
   } else if (item.period === "yearly") {
     next.setFullYear(next.getFullYear() + 1);

@@ -151,8 +151,9 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems]);
+  }, [activeProfileId, recurringItems.length]);
   const backupFileRef = useRef(null);
+  const pendingNewProfilesRef = useRef([]);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
@@ -345,7 +346,6 @@ const App = () => {
     addCategoriesFromImport("income", incomeCategories);
   };
   const buildBackupData = async () => {
-    const { openDB } = await import("./utils/db");
     const db = await openDB();
     const allCats = await new Promise((resolve) => {
       const tx = db.transaction("categories", "readonly");
@@ -449,6 +449,7 @@ const App = () => {
         setShowRestoreConfirm(true);
       }
       // Запомни новите профили (само в backup файла) отделно
+      pendingNewProfilesRef.current = newProfiles;
       setPendingNewProfiles(newProfiles);
     } catch (err) {
       alert(err.message);
@@ -561,7 +562,7 @@ const App = () => {
       await addOrUpdateProfile(bp);
     }
 
-    if (pendingNewProfiles.length > 0) {
+    if (pendingNewProfilesRef.current.length > 0) {
       setShowAddNewProfilesConfirm(true);
       return;
     }
@@ -574,10 +575,10 @@ const App = () => {
     setPendingBackup(null);
     setShowRestoreConfirm(false);
     setShowConflictModal(false);
-    const summary = (pendingBackup?.profiles || [])
-      .filter((bp) => !pendingNewProfiles.some((np) => np.id === bp.id))
+    const summary = (remainingProfiles || [])
+      .filter((bp) => !pendingNewProfilesRef.current.some((np) => np.id === bp.id))
       .map((bp) => ({ name: bp.name, choice: conflictChoices[bp.id] || "backup" }));
-    setRestoreDoneType(summary);
+    setRestoreDoneType(summary.length > 0 ? summary : [{ name: "", choice: "backup" }]);
     setShowRestoreDone(true);
   };
 
@@ -855,6 +856,7 @@ const App = () => {
                             const newProfiles = (data.profiles || []).filter((bp) =>
                               !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
                             );
+                            pendingNewProfilesRef.current = newProfiles;
                             setPendingNewProfiles(newProfiles);
                             // Зареди броя транзакции за всеки профил от IndexedDB
                             const db2 = await openDB();
@@ -1331,9 +1333,11 @@ const App = () => {
             <div className="px-5 py-5 space-y-3">
               <div className="bg-green-50 rounded-xl p-4">
                 <div className="text-sm text-green-700 font-medium mb-1">
-                  {restoreDoneType.map((r) => (
-                    <div key={r.name}>
-                      {r.choice === "merge"
+                  {restoreDoneType.map((r, i) => (
+                    <div key={i}>
+                      {r.name === ""
+                        ? "✅ Данните са възстановени успешно."
+                        : r.choice === "merge"
                         ? `✅ Данните за ${r.name} са обединени успешно.`
                         : r.choice === "local"
                         ? `✅ Данните за ${r.name} са запазени локално.`

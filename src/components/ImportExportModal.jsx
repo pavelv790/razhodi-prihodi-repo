@@ -28,7 +28,7 @@ const ImportExportModal = ({
       if (!fileInputRef.current?.files?.length) {
         onClose();
       }
-    }, 300);
+    }, 800);
     window.removeEventListener("focus", handleFocusBack);
   }, [onClose]);
 
