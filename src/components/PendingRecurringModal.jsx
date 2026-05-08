@@ -20,12 +20,13 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
   const deselectAll = () => setSelected([]);
 
   const handleConfirm = () => {
-    const toAdd = pendingItems
-      .filter((_, i) => selected.includes(i))
-      .map((item, i) => ({
+    const toAdd = selected.map((originalIndex) => {
+      const item = pendingItems[originalIndex];
+      return {
         ...item,
-        amount: item.variableAmount ? parseFloat(amounts[i]) || 0 : item.amount,
-      }));
+        amount: item.variableAmount ? parseFloat(amounts[originalIndex]) || 0 : item.amount,
+      };
+    });
     onConfirm(toAdd);
   };
 

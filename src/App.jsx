@@ -243,7 +243,7 @@ const App = () => {
     await deleteAllTransactionsByProfile(id);
     await deleteAllRecurringByProfile(id);
     await deleteProfileCategories(id);
-    deleteProfile(id);
+    await deleteProfile(id);
   };
 
   const handleCategoriesImported = (newCategories) => {
@@ -288,12 +288,12 @@ const App = () => {
         // Филтри
         if (pendingBackup.savedFilters) {
           const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
-          await restoreFilters(profileFilters);
+          await restoreFilters(profileFilters, bp.id);
         }
         // Повтарящи се
         if (pendingBackup.recurringItems) {
           const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
-          await restoreRecurring(profileRecurring);
+          await restoreRecurring(profileRecurring, bp.id);
         }
       }
     }

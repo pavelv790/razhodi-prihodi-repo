@@ -101,6 +101,7 @@ const getNextDate = (item, from, originalDay) => {
     const targetYear = next.getFullYear() + (targetMonth > 11 ? 1 : 0);
     const normalizedMonth = targetMonth % 12;
     const maxDay = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+    next.setDate(1);
     next.setMonth(targetMonth);
     next.setDate(Math.min(originalDay ?? next.getDate(), maxDay));
   } else if (item.period === "yearly") {
