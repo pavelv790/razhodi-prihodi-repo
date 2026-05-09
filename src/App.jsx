@@ -24,6 +24,7 @@ import PendingRecurringModal from "./components/PendingRecurringModal";
 import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
+import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
 import { openDB } from "./utils/db";
 
 const App = () => {
@@ -137,6 +138,23 @@ const App = () => {
     shouldRunDaily: driveShouldRunDaily,
     markDailyDone: driveMarkDailyDone,
   } = useGoogleDrive();
+  const {
+    connected: supabaseConnected,
+    autoSync: supabaseAutoSync,
+    uploadLoading: supabaseUploadLoading,
+    downloadLoading: supabaseDownloadLoading,
+    message: supabaseMessage,
+    setMessage: supabaseSetMessage,
+    toggleAutoSync: supabaseToggleAutoSync,
+    uploadBackup: supabaseUploadBackup,
+    downloadBackup: supabaseDownloadBackup,
+    shouldRunDaily: supabaseShouldRunDaily,
+    markDailyDone: supabaseMarkDailyDone,
+  } = useSupabaseStorage();
+
+  const [lastSupabaseUploadDate, setLastSupabaseUploadDate] = useState(
+    () => localStorage.getItem("last_supabase_upload_date") ?? null
+  );
   
   useEffect(() => {
     if (!profilesLoaded) return;
@@ -189,6 +207,26 @@ const App = () => {
       return () => clearTimeout(timer);
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
+  useEffect(() => {
+    if (!supabaseConnected) return;
+    if (transactions.length === 0) return;
+    if (!activeProfile?.name) return;
+
+    if (supabaseAutoSync === "onChange") {
+      const timer = setTimeout(async () => {
+        await supabaseUploadBackup(await buildBackupData(), activeProfile.name);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+
+    if (supabaseAutoSync === "daily" && supabaseShouldRunDaily()) {
+      const timer = setTimeout(async () => {
+        supabaseMarkDailyDone();
+        await supabaseUploadBackup(await buildBackupData(), activeProfile.name);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -402,6 +440,13 @@ const App = () => {
   
   const handleDriveUpload = async () => {
     await driveUploadBackup(await buildBackupData(), activeProfile?.name);
+  };
+  const handleSupabaseUpload = async () => {
+    const success = await supabaseUploadBackup(await buildBackupData(), activeProfile?.name);
+    if (success) {
+      const now = new Date().toISOString();
+      setLastSupabaseUploadDate(now);
+    }
   };
 
   const handleBackupExport = async () => {
@@ -633,6 +678,32 @@ const App = () => {
           )}
         </>
       )}
+      {supabaseMessage && (
+        <>
+          {supabaseMessage.startsWith("✅") ? (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
+              <div className="flex justify-between items-start gap-2">
+                <p className="text-sm font-medium text-emerald-800">{supabaseMessage}</p>
+                <button onClick={() => supabaseSetMessage("")} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none flex-shrink-0">×</button>
+              </div>
+            </div>
+          ) : (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+                <div className="px-5 py-4 border-b border-red-200">
+                  <h2 className="text-base font-semibold text-red-700">❌ Грешка</h2>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  <div className="bg-red-50 rounded-xl p-4 border border-red-200">
+                    <p className="text-sm text-red-700">{supabaseMessage.replace(/^❌\s*/, "")}</p>
+                  </div>
+                  <button onClick={() => supabaseSetMessage("")} className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition">Разбрах</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       <div className="max-w-3xl mx-auto px-4 py-6">
 
         {/* Transaction Form */}
@@ -813,6 +884,12 @@ const App = () => {
                     </>
                   ) : (
                     <>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
+                        <p className="text-xs text-amber-700 font-semibold mb-0.5">⏱️ Ограничения на Google сесията</p>
+                        <p className="text-xs text-amber-600">
+                          Вписването важи до <strong>1 седмица</strong> без активност. При автоматично качване токенът изтича след <strong>1 час</strong> — ако качването се провали, натиснете "Изключи" и се свържете отново.
+                        </p>
+                      </div>
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
                         <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
                         {[
@@ -894,7 +971,100 @@ const App = () => {
                       </button>
                     </>
                   )}
-                  {null}
+                  </div>
+
+                <div className="border-t border-gray-200 pt-2 mt-1">
+                  <p className="text-xs font-semibold text-gray-400 mb-1 px-1">☁️ Облачен Backup</p>
+                  <p className="text-xs text-gray-500 px-1 mb-2">
+                    {supabaseConnected
+                      ? "Вписани сте — файлът се съхранява в облака."
+                      : "Свържете се с Google акаунт (вижте секцията Google Drive по-горе)."}
+                  </p>
+                  {supabaseConnected && (
+                    <>
+                      <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-2">
+                        <p className="text-xs text-green-700 font-semibold mb-0.5">✅ Без ограничения на сесията</p>
+                        <p className="text-xs text-green-600">
+                          Сесията се поддържа автоматично. Не е нужно повторно вписване.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1 px-1 py-1 mb-1">
+                        <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
+                        {[
+                          { value: "off", label: "Изключено" },
+                          { value: "onChange", label: "При всяка промяна" },
+                          { value: "daily", label: "Веднъж дневно" },
+                        ].map((opt) => (
+                          <label key={opt.value} className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="supabaseAutoSync"
+                              value={opt.value}
+                              checked={supabaseAutoSync === opt.value}
+                              onChange={() => supabaseToggleAutoSync(opt.value)}
+                              className="accent-blue-500"
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        onClick={handleSupabaseUpload}
+                        disabled={supabaseUploadLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
+                      >
+                        ☁️ {supabaseUploadLoading ? "Качване..." : "Запази в облака"}
+                      </button>
+                      {lastSupabaseUploadDate && (
+                        <p className="text-xs text-gray-400 px-1 mb-1">
+                          последно качване: {new Date(lastSupabaseUploadDate).toLocaleDateString("bg-BG", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                            hour: "2-digit", minute: "2-digit"
+                          })}
+                        </p>
+                      )}
+                      <button
+                        onClick={async () => {
+                          const data = await supabaseDownloadBackup(activeProfile?.name);
+                          if (data) {
+                            setPendingBackup(data);
+                            const conflicts = (data.profiles || []).filter((bp) =>
+                              profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+                            );
+                            const newProfiles = (data.profiles || []).filter((bp) =>
+                              !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+                            );
+                            pendingNewProfilesRef.current = newProfiles;
+                            setPendingNewProfiles(newProfiles);
+                            const db2 = await openDB();
+                            const allTxs2 = await new Promise((resolve) => {
+                              const tx = db2.transaction("transactions", "readonly");
+                              const req = tx.objectStore("transactions").getAll();
+                              req.onsuccess = () => resolve(req.result || []);
+                            });
+                            const counts2 = {};
+                            profiles.forEach((lp) => {
+                              counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
+                            });
+                            setLocalTransactionCounts(counts2);
+                            if (conflicts.length > 0) {
+                              const initialChoices = {};
+                              conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
+                              setConflictProfiles(conflicts);
+                              setConflictChoices(initialChoices);
+                              setShowConflictModal(true);
+                            } else {
+                              setShowRestoreConfirm(true);
+                            }
+                          }
+                        }}
+                        disabled={supabaseDownloadLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full"
+                      >
+                        ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
