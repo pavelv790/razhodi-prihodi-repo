@@ -109,8 +109,3 @@ export async function downloadBackupFromSupabase(profileName) {
   const text = await data.text();
   return JSON.parse(text);
 }
-
-export async function isSupabaseStorageAvailable() {
-  const user = await getCurrentUser();
-  return !!user;
-}

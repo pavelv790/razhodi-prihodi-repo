@@ -8,7 +8,9 @@ import {
   signInWithEmail,
   signOutFromSupabase,
   getCurrentSession,
+  resetPassword,
 } from "../utils/supabaseAuth";
+import { supabase } from "../utils/supabase";
 
 const STORAGE_KEY = "supabase_storage_settings";
 
@@ -43,12 +45,55 @@ export function useSupabaseStorage() {
       }
     };
     check();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setConnected(!!session?.user);
+      if (event === "PASSWORD_RECOVERY") {
+        setShowNewPassword(true);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
   const [authMode, setAuthMode] = useState("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [newPasswordLoading, setNewPasswordLoading] = useState(false);
+
+  const updatePassword = async () => {
+    setNewPasswordLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw new Error(error.message);
+      setShowNewPassword(false);
+      setNewPassword("");
+      setAuthError("✅ Паролата е сменена успешно!");
+    } catch (err) {
+      setAuthError("❌ " + err.message);
+    } finally {
+      setNewPasswordLoading(false);
+    }
+  };
+  const sendResetEmail = async () => {
+    setResetLoading(true);
+    setAuthError("");
+    try {
+      await resetPassword(resetEmail);
+      setAuthError("✅ Изпратен е имейл с линк за нова парола. Проверете пощата си.");
+      setShowReset(false);
+    } catch (err) {
+      setAuthError("❌ " + err.message);
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const connectWithEmail = async () => {
     setAuthLoading(true);
@@ -56,7 +101,11 @@ export function useSupabaseStorage() {
     try {
       if (authMode === "register") {
         await signUpWithEmail(authEmail, authPassword);
-        setAuthError("✅ Регистрацията е успешна! Проверете имейла си за потвърждение, след което влезте.");
+        await signInWithEmail(authEmail, authPassword);
+        setConnected(true);
+        setEnabled(true);
+        localStorage.setItem("supabase_storage_enabled", "true");
+        setAuthError("✅ Регистрацията е успешна!");
       } else {
         await signInWithEmail(authEmail, authPassword);
         setConnected(true);
@@ -174,5 +223,17 @@ export function useSupabaseStorage() {
     downloadBackup,
     shouldRunDaily,
     markDailyDone,
+    resetLoading,
+    showReset,
+    setShowReset,
+    resetEmail,
+    setResetEmail,
+    sendResetEmail,
+    showNewPassword,
+    setShowNewPassword,
+    newPassword,
+    setNewPassword,
+    newPasswordLoading,
+    updatePassword,
   };
 }

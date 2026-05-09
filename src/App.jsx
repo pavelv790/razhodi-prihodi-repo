@@ -159,6 +159,18 @@ const App = () => {
     setAuthError: supabaseSetAuthError,
     connectWithEmail: supabaseConnectWithEmail,
     disconnectSupabase: supabaseDisconnect,
+    resetLoading: supabaseResetLoading,
+    showReset: supabaseShowReset,
+    setShowReset: supabaseSetShowReset,
+    resetEmail: supabaseResetEmail,
+    setResetEmail: supabaseSetResetEmail,
+    sendResetEmail: supabaseSendResetEmail,
+    showNewPassword: supabaseShowNewPassword,
+    setShowNewPassword: supabaseSetShowNewPassword,
+    newPassword: supabaseNewPassword,
+    setNewPassword: supabaseSetNewPassword,
+    newPasswordLoading: supabaseNewPasswordLoading,
+    updatePassword: supabaseUpdatePassword,
     toggleAutoSync: supabaseToggleAutoSync,
     uploadBackup: supabaseUploadBackup,
     downloadBackup: supabaseDownloadBackup,
@@ -692,6 +704,38 @@ const App = () => {
           )}
         </>
       )}
+      {supabaseShowNewPassword && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">Нова парола</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-gray-600">Въведете новата си парола:</p>
+              <input
+                type="password"
+                placeholder="Нова парола"
+                value={supabaseNewPassword}
+                onChange={(e) => supabaseSetNewPassword(e.target.value)}
+                className="w-full text-sm px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
+              />
+              <button
+                onClick={supabaseUpdatePassword}
+                disabled={supabaseNewPasswordLoading}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                {supabaseNewPasswordLoading ? "Запазване..." : "Запази новата парола"}
+              </button>
+              <button
+                onClick={() => supabaseSetShowNewPassword(false)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {supabaseMessage && (
         <>
           {supabaseMessage.startsWith("✅") ? (
@@ -1019,6 +1063,41 @@ const App = () => {
                         onChange={(e) => supabaseSetAuthPassword(e.target.value)}
                         className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
                       />
+                      {supabaseAuthMode === "login" && (
+                        <button
+                          onClick={() => { supabaseSetShowReset(true); supabaseSetAuthError(""); }}
+                          className="text-xs text-blue-400 hover:text-blue-600 text-left px-1"
+                        >
+                          Забравена парола?
+                        </button>
+                      )}
+                      {supabaseShowReset && (
+                        <div className="flex flex-col gap-2 bg-blue-50 border border-blue-200 rounded-xl p-3">
+                          <p className="text-xs text-blue-700 font-medium">Въведете имейла си и ще получите линк за нова парола:</p>
+                          <input
+                            type="email"
+                            placeholder="Имейл"
+                            value={supabaseResetEmail}
+                            onChange={(e) => supabaseSetResetEmail(e.target.value)}
+                            className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={supabaseSendResetEmail}
+                              disabled={supabaseResetLoading}
+                              className="flex-1 px-3 py-2 rounded-xl text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+                            >
+                              {supabaseResetLoading ? "Изпращане..." : "Изпрати"}
+                            </button>
+                            <button
+                              onClick={() => { supabaseSetShowReset(false); supabaseSetAuthError(""); }}
+                              className="flex-1 px-3 py-2 rounded-xl text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                            >
+                              Откажи
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {supabaseAuthError && (
                         <p className={`text-xs px-1 ${supabaseAuthError.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>
                           {supabaseAuthError}
