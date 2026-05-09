@@ -2,14 +2,21 @@ import { useState, useCallback, useEffect } from "react";
 import {
   uploadBackupToSupabase,
   downloadBackupFromSupabase,
-  isSupabaseStorageAvailable,
 } from "../utils/supabaseStorage";
-import { supabase } from "../utils/supabase";
+import {
+  signUpWithEmail,
+  signInWithEmail,
+  signOutFromSupabase,
+  getCurrentSession,
+} from "../utils/supabaseAuth";
 
 const STORAGE_KEY = "supabase_storage_settings";
 
 export function useSupabaseStorage() {
   const [connected, setConnected] = useState(false);
+  const [enabled, setEnabled] = useState(
+    () => localStorage.getItem("supabase_storage_enabled") === "true"
+  );
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return "off";
@@ -30,20 +37,50 @@ export function useSupabaseStorage() {
   // Проверява дали потребителят е вписан (Supabase сесията вече я управлява useGoogleDrive)
   useEffect(() => {
     const check = async () => {
-      const available = await isSupabaseStorageAvailable();
-      setConnected(available);
+      const session = await getCurrentSession();
+      if (session?.user) {
+        setConnected(true);
+      }
     };
     check();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setConnected(!!session?.user);
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
+  const [authMode, setAuthMode] = useState("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  const connectWithEmail = async () => {
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      if (authMode === "register") {
+        await signUpWithEmail(authEmail, authPassword);
+        setAuthError("✅ Регистрацията е успешна! Проверете имейла си за потвърждение, след което влезте.");
+      } else {
+        await signInWithEmail(authEmail, authPassword);
+        setConnected(true);
+        setEnabled(true);
+        localStorage.setItem("supabase_storage_enabled", "true");
+      }
+    } catch (err) {
+      setAuthError("❌ " + err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const saveSettings = (newAutoSync) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ autoSync: newAutoSync }));
+  };
+
+  const disconnectSupabase = async () => {
+    await signOutFromSupabase();
+    setConnected(false);
+    setEnabled(false);
+    setAutoSync("off");
+    saveSettings("off");
+    localStorage.setItem("supabase_storage_enabled", "false");
   };
 
   const shouldRunDaily = () => {
@@ -62,9 +99,8 @@ export function useSupabaseStorage() {
   };
 
   const uploadBackup = useCallback(async (backupData, profileName) => {
-    const available = await isSupabaseStorageAvailable();
-    if (!available) {
-      showMessage("❌ Не сте вписани. Свържете се с Google акаунт.");
+    if (!connected) {
+      showMessage("❌ Не сте вписани в облака.");
       return false;
     }
     setUploadLoading(true);
@@ -80,12 +116,11 @@ export function useSupabaseStorage() {
     } finally {
       setUploadLoading(false);
     }
-  }, []);
+  }, [connected]);
 
   const downloadBackup = useCallback(async (profileName) => {
-    const available = await isSupabaseStorageAvailable();
-    if (!available) {
-      showMessage("❌ Не сте вписани. Свържете се с Google акаунт.");
+    if (!connected) {
+      showMessage("❌ Не сте вписани в облака.");
       return null;
     }
     setDownloadLoading(true);
@@ -100,10 +135,35 @@ export function useSupabaseStorage() {
     } finally {
       setDownloadLoading(false);
     }
-  }, []);
+  }, [connected]);
+
+  const enable = () => {
+    localStorage.setItem("supabase_storage_enabled", "true");
+    setEnabled(true);
+  };
+  const disable = () => {
+    localStorage.setItem("supabase_storage_enabled", "false");
+    setEnabled(false);
+    setAutoSync("off");
+    saveSettings("off");
+  };
 
   return {
     connected,
+    enabled,
+    enable,
+    disable,
+    authMode,
+    setAuthMode,
+    authEmail,
+    setAuthEmail,
+    authPassword,
+    setAuthPassword,
+    authLoading,
+    authError,
+    setAuthError,
+    connectWithEmail,
+    disconnectSupabase,
     autoSync,
     uploadLoading,
     downloadLoading,

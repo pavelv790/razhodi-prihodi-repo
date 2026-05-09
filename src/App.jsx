@@ -145,6 +145,20 @@ const App = () => {
     downloadLoading: supabaseDownloadLoading,
     message: supabaseMessage,
     setMessage: supabaseSetMessage,
+    enabled: supabaseEnabled,
+    enable: supabaseEnable,
+    disable: supabaseDisable,
+    authMode: supabaseAuthMode,
+    setAuthMode: supabaseSetAuthMode,
+    authEmail: supabaseAuthEmail,
+    setAuthEmail: supabaseSetAuthEmail,
+    authPassword: supabaseAuthPassword,
+    setAuthPassword: supabaseSetAuthPassword,
+    authLoading: supabaseAuthLoading,
+    authError: supabaseAuthError,
+    setAuthError: supabaseSetAuthError,
+    connectWithEmail: supabaseConnectWithEmail,
+    disconnectSupabase: supabaseDisconnect,
     toggleAutoSync: supabaseToggleAutoSync,
     uploadBackup: supabaseUploadBackup,
     downloadBackup: supabaseDownloadBackup,
@@ -208,7 +222,7 @@ const App = () => {
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
   useEffect(() => {
-    if (!supabaseConnected) return;
+    if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
 
@@ -885,9 +899,9 @@ const App = () => {
                   ) : (
                     <>
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
-                        <p className="text-xs text-amber-700 font-semibold mb-0.5">⏱️ Ограничения на Google сесията</p>
+                        <p className="text-xs text-amber-700 font-semibold mb-0.5">⏱️ Забележка за връзката с Google</p>
                         <p className="text-xs text-amber-600">
-                          Вписването важи до <strong>1 седмица</strong> без активност. При автоматично качване токенът изтича след <strong>1 час</strong> — ако качването се провали, натиснете "Изключи" и се свържете отново.
+                          Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте Облачен Backup.
                         </p>
                       </div>
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
@@ -975,12 +989,57 @@ const App = () => {
 
                 <div className="border-t border-gray-200 pt-2 mt-1">
                   <p className="text-xs font-semibold text-gray-400 mb-1 px-1">☁️ Облачен Backup</p>
-                  <p className="text-xs text-gray-500 px-1 mb-2">
-                    {supabaseConnected
-                      ? "Вписани сте — файлът се съхранява в облака."
-                      : "Свържете се с Google акаунт (вижте секцията Google Drive по-горе)."}
-                  </p>
-                  {supabaseConnected && (
+                  {!supabaseConnected ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2 px-1">
+                        <button
+                          onClick={() => supabaseSetAuthMode("login")}
+                          className={`text-xs px-3 py-1 rounded-lg transition ${supabaseAuthMode === "login" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"}`}
+                        >
+                          Вход
+                        </button>
+                        <button
+                          onClick={() => supabaseSetAuthMode("register")}
+                          className={`text-xs px-3 py-1 rounded-lg transition ${supabaseAuthMode === "register" ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"}`}
+                        >
+                          Регистрация
+                        </button>
+                      </div>
+                      <input
+                        type="email"
+                        placeholder="Имейл"
+                        value={supabaseAuthEmail}
+                        onChange={(e) => supabaseSetAuthEmail(e.target.value)}
+                        className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Парола"
+                        value={supabaseAuthPassword}
+                        onChange={(e) => supabaseSetAuthPassword(e.target.value)}
+                        className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
+                      />
+                      {supabaseAuthError && (
+                        <p className={`text-xs px-1 ${supabaseAuthError.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>
+                          {supabaseAuthError}
+                        </p>
+                      )}
+                      <button
+                        onClick={supabaseConnectWithEmail}
+                        disabled={supabaseAuthLoading}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
+                      >
+                        🔗 {supabaseAuthLoading ? "Зареждане..." : supabaseAuthMode === "login" ? "Влез в облака" : "Регистрирай се"}
+                      </button>
+                    </div>
+                  ) : !supabaseEnabled ? (
+                    <button
+                      onClick={supabaseEnable}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
+                    >
+                      🔗 Активирай облачен backup
+                    </button>
+                  ) : (
                     <>
                       <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2 mb-2">
                         <p className="text-xs text-green-700 font-semibold mb-0.5">✅ Без ограничения на сесията</p>
@@ -1059,9 +1118,21 @@ const App = () => {
                           }
                         }}
                         disabled={supabaseDownloadLoading}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full"
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
+                      </button>
+                      <button
+                        onClick={supabaseDisable}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition w-full mt-1 mb-1"
+                      >
+                        ⏸️ Деактивирай backup
+                      </button>
+                      <button
+                        onClick={supabaseDisconnect}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
+                      >
+                        🔌 Изход от облака
                       </button>
                     </>
                   )}
