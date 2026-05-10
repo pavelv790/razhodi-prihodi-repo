@@ -136,7 +136,6 @@ export function useSupabaseStorage() {
     try {
       if (authMode === "register") {
         await signUpWithEmail(authEmail, authPassword);
-        await signInWithEmail(authEmail, authPassword);
         setConnected(true);
         setEnabled(true);
         localStorage.setItem("supabase_storage_enabled", "true");

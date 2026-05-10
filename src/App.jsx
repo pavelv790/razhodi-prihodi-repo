@@ -103,7 +103,7 @@ const App = () => {
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [showRestoreDone, setShowRestoreDone] = useState(false);
-  const [restoreDoneType, setRestoreDoneType] = useState([]); // "restore" | "merge"
+  const [restoreDoneType, setRestoreDoneType] = useState([]);
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -190,6 +190,7 @@ const App = () => {
   }, [profilesLoaded, profiles.length]);
   useEffect(() => {
     if (!activeProfileId || recurringItems.length === 0) return;
+    if (showRecurringModal) return;
     const pending = getPendingTransactions();
     if (pending.length > 0) {
       setPendingRecurring(pending);
