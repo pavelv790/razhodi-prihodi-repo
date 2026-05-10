@@ -72,6 +72,8 @@ export function useSupabaseStorage() {
     if (msg.includes("New password should be different")) return "Новата парола трябва да се различава от старата.";
     if (msg.includes("Password should be at least")) return "Паролата трябва да е поне 6 символа.";
     if (msg.includes("Invalid login credentials")) return "Грешен имейл или парола.";
+    if (msg.includes("missing email or phone")) return "Моля въведете имейл адрес.";
+    if (msg.includes("should be different from the old password")) return "Новата парола трябва да се различава от старата.";
     if (msg.includes("Email not confirmed")) return "Имейлът не е потвърден.";
     if (msg.includes("User already registered")) return "Вече съществува акаунт с този имейл.";
     if (msg.includes("Unable to validate email address")) return "Невалиден имейл адрес.";
