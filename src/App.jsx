@@ -719,6 +719,7 @@ const App = () => {
                 onChange={(e) => supabaseSetNewPassword(e.target.value)}
                 className="w-full text-sm px-3 py-2 rounded-xl border border-gray-200 bg-white outline-none"
               />
+              {supabaseMessage && <p className={`text-xs px-1 ${supabaseMessage.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>{supabaseMessage}</p>}
               <button
                 onClick={supabaseUpdatePassword}
                 disabled={supabaseNewPasswordLoading}

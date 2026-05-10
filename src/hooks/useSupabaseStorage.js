@@ -69,20 +69,18 @@ export function useSupabaseStorage() {
 
   const updatePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
-      setAuthError("❌ Паролата трябва да е поне 6 символа.");
+      setMessage("❌ Паролата трябва да е поне 6 символа.");
       return;
     }
     setNewPasswordLoading(true);
     try {
-      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw new Error(error.message);
-      if (data) {
-        setShowNewPassword(false);
-        setNewPassword("");
-        setAuthError("✅ Паролата е сменена успешно!");
-      }
+      setShowNewPassword(false);
+      setNewPassword("");
+      showMessage("✅ Паролата е сменена успешно!");
     } catch (err) {
-      setAuthError("❌ " + err.message);
+      setMessage("❌ " + err.message);
     } finally {
       setNewPasswordLoading(false);
     }
