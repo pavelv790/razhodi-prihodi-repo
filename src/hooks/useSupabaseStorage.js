@@ -104,6 +104,10 @@ export function useSupabaseStorage() {
     }
   };
   const sendResetEmail = async () => {
+    if (!resetEmail || !resetEmail.includes("@")) {
+      setAuthError("❌ Моля въведете имейл адрес.");
+      return;
+    }
     setResetLoading(true);
     setAuthError("");
     try {
@@ -119,6 +123,14 @@ export function useSupabaseStorage() {
   };
 
   const connectWithEmail = async () => {
+    if (!authEmail || !authEmail.includes("@")) {
+      setAuthError("❌ Моля въведете имейл адрес.");
+      return;
+    }
+    if (!authPassword || authPassword.length < 6) {
+      setAuthError("❌ Паролата трябва да е поне 6 символа.");
+      return;
+    }
     setAuthLoading(true);
     setAuthError("");
     try {
