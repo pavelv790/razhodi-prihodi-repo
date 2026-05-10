@@ -21,6 +21,7 @@ export async function getCurrentSession() {
   return session;
 }
 export async function resetPassword(email) {
+  if (!email || !email.includes("@")) throw new Error("missing email or phone");
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: window.location.origin,
   });

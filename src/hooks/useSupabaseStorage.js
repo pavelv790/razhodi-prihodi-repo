@@ -73,6 +73,9 @@ export function useSupabaseStorage() {
     if (msg.includes("Password should be at least")) return "Паролата трябва да е поне 6 символа.";
     if (msg.includes("Invalid login credentials")) return "Грешен имейл или парола.";
     if (msg.includes("missing email or phone")) return "Моля въведете имейл адрес.";
+    if (msg.includes("password recovery requires an email")) return "Възстановяването на парола изисква имейл адрес.";
+    if (msg.includes("signup requires an email")) return "Регистрацията изисква имейл адрес.";
+    if (msg.includes("invalid email")) return "Невалиден имейл адрес.";
     if (msg.includes("should be different from the old password")) return "Новата парола трябва да се различава от старата.";
     if (msg.includes("Email not confirmed")) return "Имейлът не е потвърден.";
     if (msg.includes("User already registered")) return "Вече съществува акаунт с този имейл.";
@@ -109,6 +112,7 @@ export function useSupabaseStorage() {
       setShowReset(false);
     } catch (err) {
       setAuthError("❌ " + translateSupabaseError(err.message));
+      return;
     } finally {
       setResetLoading(false);
     }
