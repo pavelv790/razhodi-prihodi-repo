@@ -67,6 +67,19 @@ export function useSupabaseStorage() {
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordLoading, setNewPasswordLoading] = useState(false);
 
+  const translateSupabaseError = (msg) => {
+    if (!msg) return "Непозната грешка.";
+    if (msg.includes("New password should be different")) return "Новата парола трябва да се различава от старата.";
+    if (msg.includes("Password should be at least")) return "Паролата трябва да е поне 6 символа.";
+    if (msg.includes("Invalid login credentials")) return "Грешен имейл или парола.";
+    if (msg.includes("Email not confirmed")) return "Имейлът не е потвърден.";
+    if (msg.includes("User already registered")) return "Вече съществува акаунт с този имейл.";
+    if (msg.includes("Unable to validate email address")) return "Невалиден имейл адрес.";
+    if (msg.includes("Email rate limit exceeded")) return "Твърде много опити. Опитайте по-късно.";
+    if (msg.includes("Token has expired")) return "Линкът е изтекъл. Поискайте нов.";
+    return msg;
+  };
+
   const updatePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
       setMessage("❌ Паролата трябва да е поне 6 символа.");
@@ -80,7 +93,7 @@ export function useSupabaseStorage() {
       setNewPassword("");
       showMessage("✅ Паролата е сменена успешно!");
     } catch (err) {
-      setMessage("❌ " + err.message);
+      setMessage("❌ " + translateSupabaseError(err.message));
     } finally {
       setNewPasswordLoading(false);
     }
@@ -93,7 +106,7 @@ export function useSupabaseStorage() {
       setAuthError("✅ Изпратен е имейл с линк за нова парола. Проверете пощата си.");
       setShowReset(false);
     } catch (err) {
-      setAuthError("❌ " + err.message);
+      setAuthError("❌ " + translateSupabaseError(err.message));
     } finally {
       setResetLoading(false);
     }
@@ -117,7 +130,7 @@ export function useSupabaseStorage() {
         localStorage.setItem("supabase_storage_enabled", "true");
       }
     } catch (err) {
-      setAuthError("❌ " + err.message);
+      setAuthError("❌ " + translateSupabaseError(err.message));
     } finally {
       setAuthLoading(false);
     }
