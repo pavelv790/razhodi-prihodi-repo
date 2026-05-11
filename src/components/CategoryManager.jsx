@@ -89,6 +89,7 @@ const CategoryManager = ({
               setActiveTab("expense");
               setEditingCategory(null);
               setAddingNew(false);
+              setConfirmDelete(null);
               setError("");
             }}
             className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${
@@ -104,6 +105,7 @@ const CategoryManager = ({
               setActiveTab("income");
               setEditingCategory(null);
               setAddingNew(false);
+              setConfirmDelete(null);
               setError("");
             }}
             className={`flex-1 py-2 rounded-xl text-sm font-medium transition ${

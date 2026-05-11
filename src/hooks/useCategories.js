@@ -62,18 +62,20 @@ export const useCategories = (profileId) => {
       setIsLoaded(false);
       return;
     }
+    let cancelled = false;
     setIsLoaded(false);
     loadFromDB(profileId).then((data) => {
+      if (cancelled) return;
       if (data) {
         setExpenseCategories(sortCategories(data.categories.expense || []));
         setIncomeCategories(sortCategories(data.categories.income || []));
       } else {
-        // Нов профил — зареждаме DEFAULT категориите
         setExpenseCategories(sortCategories(DEFAULT_EXPENSE_CATEGORIES));
         setIncomeCategories(sortCategories(DEFAULT_INCOME_CATEGORIES));
       }
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {

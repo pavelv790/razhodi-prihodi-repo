@@ -415,8 +415,11 @@ const App = () => {
     const allCats = await new Promise((resolve) => {
       const tx = db.transaction("categories", "readonly");
       const req = tx.objectStore("categories").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
+      req.onsuccess = () => {
+        const fromDB = (req.result || []).filter((t) => t.type !== activeProfileId);
+        resolve([...fromDB]);
+      };
+      req.onerror = () => resolve(transactions);
     });
     const allProfileCategories = {};
     allCats.forEach((entry) => {
@@ -430,8 +433,11 @@ const App = () => {
     const allTransactions = await new Promise((resolve) => {
       const tx = db.transaction("transactions", "readonly");
       const req = tx.objectStore("transactions").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
+      req.onsuccess = () => {
+        const fromDB = (req.result || []).filter((t) => t.profileId !== activeProfileId);
+        resolve([...fromDB, ...transactions]);
+      };
+      req.onerror = () => resolve(transactions);
     });
 
     const allSavedFilters = await new Promise((resolve) => {

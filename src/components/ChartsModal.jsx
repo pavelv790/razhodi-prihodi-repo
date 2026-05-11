@@ -211,7 +211,9 @@ const ChartsModal = ({
     const saved = localStorage.getItem("pie_threshold");
     return saved !== null ? parseFloat(saved) : 3;
   });
+  const tooltipRef = useRef(null);
   const [tooltipData, setTooltipData] = useState(null);
+  const tooltipTimeoutRef = useRef(null);
   const [pieThresholdInput, setPieThresholdInput] = useState(() => {
     const saved = localStorage.getItem("pie_threshold");
     return saved !== null ? saved : "3";
@@ -493,16 +495,17 @@ useEffect(() => {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatAmount(v)} width={80} label={{ value: "EUR", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11, fill: "#9ca3af" } }} />
                 <Tooltip
                   content={({ active, payload, label }) => {
+                    if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
                     if (active && payload && payload.length > 0) {
                       const visible = payload.filter((p) => p.value !== 0 && p.value !== null && p.value !== undefined);
-                      const newLabel = label;
-                      const newItems = visible;
-                      setTimeout(() => setTooltipData((prev) => {
-                        if (prev?.label === newLabel && prev?.items?.length === newItems.length) return prev;
-                        return { label: newLabel, items: newItems };
-                      }), 0);
+                      tooltipTimeoutRef.current = setTimeout(() => {
+                        setTooltipData((prev) => {
+                          if (prev?.label === label && prev?.items?.length === visible.length) return prev;
+                          return { label, items: visible };
+                        });
+                      }, 0);
                     } else {
-                      if (tooltipData !== null) setTimeout(() => setTooltipData(null), 0);
+                      tooltipTimeoutRef.current = setTimeout(() => setTooltipData(null), 0);
                     }
                     return null;
                   }}

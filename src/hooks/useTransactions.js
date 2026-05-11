@@ -67,11 +67,14 @@ export const useTransactions = (profileId) => {
       setIsLoaded(false);
       return;
     }
+    let cancelled = false;
     setIsLoaded(false);
     loadByProfile(profileId).then((data) => {
+      if (cancelled) return;
       setTransactions(sortByDate(data));
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {

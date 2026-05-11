@@ -39,6 +39,22 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
   };
 
   const handleSave = () => {
+    if (fromDate && fromDate.length === 10) {
+      const [d, m, y] = fromDate.split("/").map(Number);
+      const date = new Date(y, m - 1, d);
+      if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+        alert("Невалидна начална дата.");
+        return;
+      }
+    }
+    if (toDate && toDate.length === 10) {
+      const [d, m, y] = toDate.split("/").map(Number);
+      const date = new Date(y, m - 1, d);
+      if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+        alert("Невалидна крайна дата.");
+        return;
+      }
+    }
     onSave({ totalLimit, categoryLimits, fromDate, toDate });
     onClose();
   };
