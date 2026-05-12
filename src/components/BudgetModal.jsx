@@ -11,6 +11,7 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
   const [newCategory, setNewCategory] = useState("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [search, setSearch] = useState("");
+  const [dateError, setDateError] = useState("");
 
   const handleSetCurrentMonth = () => {
     const today = new Date();
@@ -43,7 +44,7 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
       const [d, m, y] = fromDate.split("/").map(Number);
       const date = new Date(y, m - 1, d);
       if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
-        alert("Невалидна начална дата.");
+        setDateError("Невалидна начална дата.");
         return;
       }
     }
@@ -51,10 +52,11 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
       const [d, m, y] = toDate.split("/").map(Number);
       const date = new Date(y, m - 1, d);
       if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
-        alert("Невалидна крайна дата.");
+        setDateError("Невалидна крайна дата.");
         return;
       }
     }
+    setDateError("");
     onSave({ totalLimit, categoryLimits, fromDate, toDate });
     onClose();
   };
@@ -111,9 +113,10 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
                 <DateInput value={toDate} onChange={setToDate} />
               </div>
             </div>
+            {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
           </div>
 
-          {/* Общ лимит */}
+            {/* Общ лимит */}
           <div>
             <span className="text-sm font-semibold text-gray-600 block mb-2">
               Общ лимит за разходи

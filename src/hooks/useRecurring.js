@@ -99,8 +99,8 @@ const getNextDate = (item, from, originalDay) => {
   } else if (item.period === "monthly") {
     const newMonth = next.getMonth() + 1;
     const newYear = newMonth > 11 ? next.getFullYear() + 1 : next.getFullYear();
-    const normalizedMonth = newMonth % 12;
-    const maxDay = new Date(newYear, normalizedMonth + 1, 0).getDate();
+    const targetMonth = newMonth % 12; // 0=януари, ..., 11=декември
+    const maxDay = new Date(newYear, targetMonth + 1, 0).getDate();
     next.setDate(1);
     next.setMonth(newMonth);
     next.setDate(Math.min(originalDay ?? next.getDate(), maxDay));

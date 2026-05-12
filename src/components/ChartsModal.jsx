@@ -211,7 +211,6 @@ const ChartsModal = ({
     const saved = localStorage.getItem("pie_threshold");
     return saved !== null ? parseFloat(saved) : 3;
   });
-  const tooltipRef = useRef(null);
   const [tooltipData, setTooltipData] = useState(null);
   const tooltipTimeoutRef = useRef(null);
   const [pieThresholdInput, setPieThresholdInput] = useState(() => {

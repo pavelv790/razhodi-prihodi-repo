@@ -196,7 +196,9 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems.length]);
+  }, [activeProfileId, recurringItems]);
+  const skipDriveSync = useRef(true);
+  const skipSupabaseSync = useRef(true);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
 
@@ -209,6 +211,7 @@ const App = () => {
     [filteredTransactions, getSummary]
   );
   useEffect(() => {
+    if (skipDriveSync.current) { skipDriveSync.current = false; return; }
     if (!driveConnected) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
@@ -235,10 +238,16 @@ const App = () => {
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
   useEffect(() => {
+    skipDriveSync.current = true;
+    skipSupabaseSync.current = true;
+  }, [activeProfileId]);
+
+  useEffect(() => {
+    if (skipSupabaseSync.current) { skipSupabaseSync.current = false; return; }
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
-
+    
     if (supabaseAutoSync === "onChange") {
       const timer = setTimeout(async () => {
         await supabaseUploadBackup(await buildBackupData(), activeProfile.name);
@@ -419,7 +428,7 @@ const App = () => {
         const fromDB = (req.result || []).filter((t) => t.type !== activeProfileId);
         resolve([...fromDB]);
       };
-      req.onerror = () => resolve(transactions);
+      req.onerror = () => resolve([]);
     });
     const allProfileCategories = {};
     allCats.forEach((entry) => {
@@ -581,7 +590,7 @@ const App = () => {
 
   const finishRestore = async (remainingProfiles, backupData) => {
     for (const bp of remainingProfiles) {
-      const isNew = pendingNewProfiles.some((np) => np.id === bp.id);
+      const isNew = pendingNewProfilesRef.current.some((np) => np.id === bp.id);
       if (isNew) continue;
       const choice = conflictChoices[bp.id] || "backup";
       if (choice === "local") continue;

@@ -56,14 +56,6 @@ async function getOrCreateFolder() {
   return folder.id;
 }
 
-async function findExistingFile(fileName, folderId) {
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${folderId}' in parents and trashed=false&fields=files(id,name)`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
-}
 async function findExistingFileByProfile(prefix, folderId) {
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=1`,
