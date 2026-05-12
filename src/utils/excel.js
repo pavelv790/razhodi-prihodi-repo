@@ -245,7 +245,23 @@ export const importFromExcel = (file) => {
           if (!row || row.length === 0) return;
           const category    = String(row[0] || "").trim();
           const amount      = Number(row[1]);
-          const date        = String(row[2] || "").trim();
+          let date = row[2];
+        if (typeof date === "number") {
+          // Excel serial date → JS Date
+          const excelEpoch = new Date(1899, 11, 30);
+          const jsDate = new Date(excelEpoch.getTime() + date * 86400000);
+          const d = String(jsDate.getDate()).padStart(2, "0");
+          const m = String(jsDate.getMonth() + 1).padStart(2, "0");
+          const y = jsDate.getFullYear();
+          date = `${d}/${m}/${y}`;
+        } else {
+          date = String(date || "").trim();
+          // ISO формат: 2025-07-15
+          if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            const [y, m, d] = date.split("-");
+            date = `${d}/${m}/${y}`;
+          }
+        }
           const description = String(row[3] || "").trim();
           if (!category || isNaN(amount) || amount === 0 || !date) return;
           transactions.push({

@@ -39,6 +39,7 @@ const TransactionForm = ({
   const descriptionRef = useRef(null);
   const successTimerRef = useRef(null);
   const savedStickyDateRef = useRef(null);
+  const isSubmittingRef = useRef(false);
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
@@ -95,7 +96,10 @@ const TransactionForm = ({
   };
 
   const handleSubmit = () => {
+    if (isSubmittingRef.current) return;
     if (!validate()) return;
+    isSubmittingRef.current = true;
+    setTimeout(() => { isSubmittingRef.current = false; }, 800);
     const transaction = {
       type,
       category,

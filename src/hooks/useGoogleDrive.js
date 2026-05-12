@@ -42,6 +42,7 @@ export function useGoogleDrive() {
     restore();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (_event === "PASSWORD_RECOVERY") return;
       if (session?.provider_token) {
         setAccessToken(session.provider_token);
         setConnected(true);

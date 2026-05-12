@@ -58,7 +58,10 @@ export async function uploadBackupToSupabase(backupData, profileName) {
       .filter((f) => f.name.startsWith(prefix))
       .map((f) => `${userId}/${f.name}`);
     if (oldPaths.length > 0) {
-      await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
+      const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
+      if (removeError) {
+        console.warn("Предупреждение: не успя да изтрие стария backup файл:", removeError.message);
+      }
     }
   }
 

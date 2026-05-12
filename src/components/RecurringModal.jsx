@@ -50,6 +50,13 @@ const RecurringModal = ({
     if (!form.variableAmount && (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)) { setError("Въведете валидна сума."); return; }
     if (!form.startDate) { setError("Въведете начална дата."); return; }
     if (form.period === "custom" && (!form.customDays || Number(form.customDays) < 1)) { setError("Въведете брой дни."); return; }
+    if (form.endDate && form.startDate && form.endDate.length === 10 && form.startDate.length === 10) {
+      const [ed, em, ey] = form.endDate.split("/").map(Number);
+      const [sd, sm, sy] = form.startDate.split("/").map(Number);
+      const end = new Date(ey, em - 1, ed);
+      const start = new Date(sy, sm - 1, sd);
+      if (end < start) { setError("Крайната дата не може да е преди началната."); return; }
+    }
 
     const item = {
       type: form.type,

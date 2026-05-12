@@ -217,8 +217,10 @@ const App = () => {
     if (!activeProfile?.name) return;
 
     if (driveAutoSync === "onChange") {
+      const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
-        const success = await driveUploadBackup(await buildBackupData(), activeProfile.name);
+        if (!profileNameAtTrigger) return;
+        const success = await driveUploadBackup(await buildBackupData(), profileNameAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
@@ -227,9 +229,11 @@ const App = () => {
     }
 
     if (driveAutoSync === "daily" && driveShouldRunDaily()) {
+      const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
+        if (!profileNameAtTrigger) return;
         driveMarkDailyDone();
-        const success = await driveUploadBackup(await buildBackupData(), activeProfile.name);
+        const success = await driveUploadBackup(await buildBackupData(), profileNameAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
@@ -249,16 +253,20 @@ const App = () => {
     if (!activeProfile?.name) return;
     
     if (supabaseAutoSync === "onChange") {
+      const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
-        await supabaseUploadBackup(await buildBackupData(), activeProfile.name);
+        if (!profileNameAtTrigger) return;
+        await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
 
     if (supabaseAutoSync === "daily" && supabaseShouldRunDaily()) {
+      const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
+        if (!profileNameAtTrigger) return;
         supabaseMarkDailyDone();
-        await supabaseUploadBackup(await buildBackupData(), activeProfile.name);
+        await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -1033,7 +1041,7 @@ const App = () => {
                             }
                           }
                         }}
-                        disabled={driveDownloadLoading}
+                        disabled={driveDownloadLoading || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Drive"}
@@ -1213,7 +1221,7 @@ const App = () => {
                             }
                           }
                         }}
-                        disabled={supabaseDownloadLoading}
+                        disabled={supabaseDownloadLoading || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
@@ -1255,8 +1263,9 @@ const App = () => {
             Управление на категории
           </button>
           <button
-            onClick={() => setShowRecurringModal(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-purple-50 text-purple-500 hover:bg-purple-100 transition shadow-sm"
+            onClick={() => { if (!showPendingModal) setShowRecurringModal(true); }}
+            disabled={showPendingModal}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-medium bg-purple-50 text-purple-500 hover:bg-purple-100 transition shadow-sm disabled:opacity-40"
           >
             <RefreshCw className="w-4 h-4" />
             Повтарящи се транзакции
