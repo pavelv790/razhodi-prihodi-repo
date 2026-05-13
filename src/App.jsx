@@ -37,7 +37,6 @@ const App = () => {
     switchProfile,
     deleteProfile,
     renameProfile,
-    restoreProfiles,
     addOrUpdateProfile,
   } = useProfiles();
   const {
@@ -211,6 +210,10 @@ const App = () => {
     [filteredTransactions, getSummary]
   );
   useEffect(() => {
+    skipDriveSync.current = true;
+    skipSupabaseSync.current = true;
+  }, [activeProfileId]);
+  useEffect(() => {
     if (skipDriveSync.current) { skipDriveSync.current = false; return; }
     if (!driveConnected) return;
     if (transactions.length === 0) return;
@@ -241,11 +244,7 @@ const App = () => {
       return () => clearTimeout(timer);
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
-  useEffect(() => {
-    skipDriveSync.current = true;
-    skipSupabaseSync.current = true;
-  }, [activeProfileId]);
-
+  
   useEffect(() => {
     if (skipSupabaseSync.current) { skipSupabaseSync.current = false; return; }
     if (!supabaseConnected || !supabaseEnabled) return;
@@ -1531,6 +1530,14 @@ const App = () => {
                     </h2>
                   </div>
                   <div className="px-5 py-5 space-y-3">
+                    {conflictProfiles.length === 0 && (
+                      <div className="bg-orange-50 rounded-xl p-4">
+                        <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
+                        <p className="text-sm text-orange-600">
+                          Данните от backup файла ще бъдат заредени. Съществуващите данни може да бъдат засегнати.
+                        </p>
+                      </div>
+                    )}
                     {conflictProfiles.map((bp) => {
                       const choice = conflictChoices[bp.id] || "backup";
                       const localCount = localTransactionCounts[bp.id] ?? transactions.filter(t => t.profileId === bp.id).length;

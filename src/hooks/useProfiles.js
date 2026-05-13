@@ -119,28 +119,7 @@ export const useProfiles = () => {
     });
   };
 
-  const restoreProfiles = async (newProfiles, newActiveId) => {
-    try {
-      const db = await openDB();
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, "readwrite");
-        const store = tx.objectStore(STORE);
-        store.clear();
-        newProfiles.forEach((p) => store.put(p));
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-      });
-      setProfiles(newProfiles);
-      if (newActiveId && newProfiles.some((p) => p.id === newActiveId)) {
-        setActiveProfileId(newActiveId);
-        localStorage.setItem(ACTIVE_PROFILE_KEY, newActiveId);
-      } else if (newProfiles.length > 0) {
-        setActiveProfileId(newProfiles[0].id);
-        localStorage.setItem(ACTIVE_PROFILE_KEY, newProfiles[0].id);
-      }
-    } catch { console.error("Грешка при restore на профили"); }
-  };
-
+  
   return {
     profiles,
     activeProfileId,
@@ -150,7 +129,6 @@ export const useProfiles = () => {
     switchProfile,
     deleteProfile,
     renameProfile,
-    restoreProfiles,
     addOrUpdateProfile,
   };
 };
