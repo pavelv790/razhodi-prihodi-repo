@@ -45,7 +45,7 @@ export const importBackup = (file) => {
         // Ако backup-ът е стар (без профили), създаваме един профил "По подразбиране"
         if (!data.profiles || data.profiles.length === 0) {
           const defaultProfile = {
-            id: `profile_${Date.now()}`,
+            id: `profile_default_legacy`,
             name: "По подразбиране",
             createdAt: new Date().toISOString(),
           };

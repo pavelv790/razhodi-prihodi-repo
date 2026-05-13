@@ -39,21 +39,31 @@ export function useSupabaseStorage() {
   // Проверява дали потребителят е вписан (Supabase сесията вече я управлява useGoogleDrive)
   useEffect(() => {
     const check = async () => {
-      const session = await getCurrentSession();
-      if (session?.user) {
-        setConnected(true);
+      try {
+        const session = await getCurrentSession();
+        if (session?.user) {
+          setConnected(true);
+        }
+      } catch (err) {
+        // няма интернет или Supabase не е достъпен
       }
     };
     check();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setConnected(!!session?.user);
-      if (event === "PASSWORD_RECOVERY") {
-        setShowNewPassword(true);
-      }
-    });
+    let subscription;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((event, session) => {
+        setConnected(!!session?.user);
+        if (event === "PASSWORD_RECOVERY") {
+          setShowNewPassword(true);
+        }
+      });
+      subscription = data.subscription;
+    } catch (err) {
+      // няма интернет или Supabase не е достъпен
+    }
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe();
   }, []);
   const [authMode, setAuthMode] = useState("login");
   const [authEmail, setAuthEmail] = useState("");

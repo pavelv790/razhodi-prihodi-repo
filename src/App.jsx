@@ -367,6 +367,10 @@ const App = () => {
           ? pendingBackup.profileCategories[bp.id]
           : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
         await saveCategoriesDirectly(bp.id, cats.expense, cats.income);
+        if (bp.id === activeProfileId) {
+          setExpenseCategoriesFromBackup(cats.expense || []);
+          setIncomeCategoriesFromBackup(cats.income || []);
+        }
         // Филтри
         if (pendingBackup.savedFilters) {
           const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
@@ -407,6 +411,7 @@ const App = () => {
     }
 
     // Довърши категории, филтри, повтарящи се за текущия профил
+    if (!pendingBackup) return;
     const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
     if (currentBp) {
       await finishRestoreForProfile(currentBp, "merge", pendingBackup);
@@ -419,7 +424,7 @@ const App = () => {
     setShowRestoreDuplicates(false);
 
     // Продължи с останалите профили
-    await finishRestore(pendingRemainingProfiles.filter((p) => p.id !== pendingMergeProfileId), pendingBackup);
+    await finishRestore(pendingRemainingProfiles, pendingBackup);
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
@@ -559,9 +564,31 @@ const App = () => {
       if (bp.id === activeProfileId) {
         setExpenseCategoriesFromBackup(cats.expense || []);
         setIncomeCategoriesFromBackup(cats.income || []);
-        if (backupData.currency) restoreCurrency(backupData.currency, backupData.rate);
-        if (backupData.budgets) restoreBudgets(backupData.budgets);
       }
+      if (backupData.currency) {
+        if (bp.id === activeProfileId) {
+          restoreCurrency(backupData.currency, backupData.rate);
+        } else {
+          const db = await openDB();
+          await new Promise((resolve) => {
+            const tx = db.transaction("currency", "readwrite");
+            tx.objectStore("currency").put({ id: bp.id, currency: backupData.currency, rate: backupData.rate });
+            tx.oncomplete = resolve;
+          });
+        }
+      }
+if (backupData.budgets) {
+  if (bp.id === activeProfileId) {
+    restoreBudgets(backupData.budgets);
+  } else {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction("budgets", "readwrite");
+      tx.objectStore("budgets").put({ id: bp.id, ...backupData.budgets });
+      tx.oncomplete = resolve;
+    });
+  }
+}
     }
 
     if (choice === "merge") {
@@ -575,8 +602,8 @@ const App = () => {
       })();
       const existingExpense = existingCats?.categories?.expense || [];
       const existingIncome = existingCats?.categories?.income || [];
-      const mergedExpense = [...new Set([...existingExpense, ...(cats.expense || [])])];
-      const mergedIncome = [...new Set([...existingIncome, ...(cats.income || [])])];
+      const mergedExpense = [...new Set([...existingExpense, ...(cats.expense || [])].map(c => c.trim()))];
+      const mergedIncome = [...new Set([...existingIncome, ...(cats.income || [])].map(c => c.trim()))];
       await saveCategoriesDirectly(bp.id, mergedExpense, mergedIncome);
       if (bp.id === activeProfileId) {
         setExpenseCategoriesFromBackup(mergedExpense);
@@ -587,11 +614,24 @@ const App = () => {
     if (backupData.savedFilters) {
       const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
       await restoreFilters(profileFilters, bp.id);
-      if (bp.id === activeProfileId) setSavedFilters(profileFilters);
+      if (bp.id === activeProfileId) setSavedFilters(profileFilters.map((f) => ({ ...f, profileId: bp.id })));
     }
     if (backupData.recurringItems) {
       const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
-      await restoreRecurring(profileRecurring, bp.id);
+      if (choice === "merge") {
+        const db = await openDB();
+        const existingRecurring = await new Promise((resolve) => {
+          const tx = db.transaction("recurring", "readonly");
+          const req = tx.objectStore("recurring").getAll();
+          req.onsuccess = () => resolve((req.result || []).filter((r) => r.profileId === bp.id));
+        });
+        const newItems = profileRecurring.filter((br) =>
+          !existingRecurring.some((er) => er.description === br.description && er.category === br.category && er.period === br.period)
+        );
+        await restoreRecurring([...existingRecurring, ...newItems], bp.id);
+      } else {
+        await restoreRecurring(profileRecurring, bp.id);
+      }
     }
   };
 
@@ -1511,7 +1551,7 @@ const App = () => {
                 Продължи
               </button>
               <button
-                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); }}
+                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
@@ -1579,7 +1619,7 @@ const App = () => {
                       Потвърди
                     </button>
                     <button
-                      onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); }}
+                      onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                     >
                       Откажи

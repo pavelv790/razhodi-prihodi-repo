@@ -36,22 +36,32 @@ export function useGoogleDrive() {
 
   useEffect(() => {
     const restore = async () => {
-      const restored = await restoreSessionFromSupabase();
-      if (restored) setConnected(true);
+      try {
+        const restored = await restoreSessionFromSupabase();
+        if (restored) setConnected(true);
+      } catch (err) {
+        // няма интернет или Supabase не е достъпен
+      }
     };
     restore();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (_event === "PASSWORD_RECOVERY") return;
-      if (session?.provider_token) {
-        setAccessToken(session.provider_token);
-        setConnected(true);
-      } else {
-        setConnected(false);
-      }
-    });
+    let subscription;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (_event === "PASSWORD_RECOVERY") return;
+        if (session?.provider_token) {
+          setAccessToken(session.provider_token);
+          setConnected(true);
+        } else {
+          setConnected(false);
+        }
+      });
+      subscription = data.subscription;
+    } catch (err) {
+      // няма интернет или Supabase не е достъпен
+    }
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe();
   }, []);
 
   const saveSettings = (newAutoSync) => {
