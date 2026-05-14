@@ -43,9 +43,17 @@ const TransactionForm = ({
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
+  const oneYearAgo = new Date();
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+  const recentTransactions = (transactions || []).filter((t) => {
+    const [d, m, y] = t.date.split("/");
+    return new Date(`${y}-${m}-${d}`) >= oneYearAgo;
+  });
+
   const categoriesWithCount = categories.map((cat) => ({
     name: cat,
-    count: (transactions || []).filter((t) => t.category === cat && t.type === type).length,
+    count: recentTransactions.filter((t) => t.category === cat && t.type === type).length,
   }));
 
   const filteredCategories = categoriesWithCount
