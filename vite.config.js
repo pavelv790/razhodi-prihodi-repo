@@ -4,11 +4,6 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      stream: "stream-browserify",
-    },
-  },
   plugins: [
     react(),
     tailwindcss(),
