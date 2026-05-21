@@ -1634,12 +1634,12 @@ if (backupData.budgets) {
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
-                Седмичен backup
+                Седмично резервно копие
               </h2>
             </div>
             <div className="px-5 py-5 space-y-3">
               <p className="text-sm text-gray-600">
-                Искате ли да свалите седмичния backup файл с всички данни?
+                Искате ли да свалите седмичното резервно копие с всички данни?
               </p>
               <button
                 onClick={async () => {
@@ -1652,7 +1652,7 @@ if (backupData.budgets) {
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
-                Да, свали backup
+                Да, свали резервно копие
               </button>
               <button
                 onClick={() => setShowWeeklyBackup(false)}
