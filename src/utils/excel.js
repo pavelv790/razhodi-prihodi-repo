@@ -1,4 +1,4 @@
-import XLSXStyle from "xlsx-js-style";
+import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
 
 const COLOR = {
@@ -19,7 +19,25 @@ const border = {
   right:  { style: "thin" },
 };
 
-const numFmt = "0.00";
+const applyCell = (cell, value, bgColor, opts = {}) => {
+  cell.value = value ?? "";
+  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgColor } };
+  cell.font = { name: "Calibri", size: opts.sz ?? 11, bold: opts.bold ?? false };
+  cell.alignment = { horizontal: opts.align ?? "left", vertical: "middle" };
+  cell.border = border;
+  if (typeof value === "number") {
+    cell.numFmt = "0.00";
+  }
+};
+
+const applyFormulaCell = (cell, formula, bgColor) => {
+  cell.value = { formula };
+  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + bgColor } };
+  cell.font = { name: "Calibri", size: 11, bold: false };
+  cell.alignment = { horizontal: "right", vertical: "middle" };
+  cell.border = border;
+  cell.numFmt = "0.00";
+};
 
 const colLetter = (i) => {
   let s = "";
@@ -31,29 +49,16 @@ const colLetter = (i) => {
   return s;
 };
 
-const cell = (value, bgColor, opts = {}) => ({
-  v: value ?? "",
-  t: typeof value === "number" ? "n" : "s",
-  s: {
-    fill:      { fgColor: { rgb: bgColor } },
-    font:      { name: "Calibri", sz: opts.sz ?? 11, bold: opts.bold ?? false },
-    alignment: { horizontal: opts.align ?? "left", vertical: "center" },
-    border,
-    ...(typeof value === "number" ? { numFmt } : {}),
-  },
-});
-
-const fCell = (formula, bgColor) => ({
-  f: formula,
-  t: "n",
-  s: {
-    fill:      { fgColor: { rgb: bgColor } },
-    font:      { name: "Calibri", sz: 11, bold: false },
-    alignment: { horizontal: "right", vertical: "center" },
-    border,
-    numFmt,
-  },
-});
+const saveWorkbook = async (workbook, filename) => {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 export const exportToExcel = (
   transactions,
@@ -62,7 +67,7 @@ export const exportToExcel = (
   isFiltered = false,
   filterCategories = [],
   profileName = ""
-) => new Promise((resolve) => setTimeout(() => {
+) => new Promise((resolve) => setTimeout(async () => {
   const MONTH_NAMES = [
     "януари","февруари","март","април","май","юни",
     "юли","август","септември","октомври","ноември","декември",
@@ -84,44 +89,44 @@ export const exportToExcel = (
     ? incomeCategories.filter((c) => filterCategories.includes(c + "::income"))
     : incomeCategories;
 
-  const workbook = XLSXStyle.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
 
   const years = [...new Set(
     transactions.map((t) => Number(t.date.split("/")[2]))
   )].sort((a, b) => b - a);
 
   years.forEach((year) => {
-    const ws = {};
+    const ws = workbook.addWorksheet(String(year));
     let r = 1;
 
     const titleRow = (label) => {
-      ws["A" + r] = cell(label, COLOR.titleBg, { bold: true, sz: 16 });
+      applyCell(ws.getCell("A" + r), label, COLOR.titleBg, { bold: true, sz: 16 });
       MONTH_NAMES.forEach((m, i) => {
-        ws[colLetter(i + 1) + r] = cell(m, COLOR.monthBg, { bold: true, align: "center" });
+        applyCell(ws.getCell(colLetter(i + 1) + r), m, COLOR.monthBg, { bold: true, align: "center" });
       });
-      ws[colLetter(13) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+      applyCell(ws.getCell(colLetter(13) + r), "СУМА", COLOR.sumColBg, { bold: true, align: "center" });
       r++;
     };
 
     const catRow = (cat, type) => {
       const bg = type === "expense" ? COLOR.expRowBg : COLOR.incRowBg;
-      ws["A" + r] = cell(cat, bg);
+      applyCell(ws.getCell("A" + r), cat, bg);
       for (let m = 1; m <= 12; m++) {
         const amt = getAmount(year, m, type, cat);
-        ws[colLetter(m) + r] = cell(amt || 0, COLOR.white, { align: "right" });
+        applyCell(ws.getCell(colLetter(m) + r), amt || 0, COLOR.white, { align: "right" });
       }
-      ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
+      applyFormulaCell(ws.getCell(colLetter(13) + r), "SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
       r++;
     };
 
     const totalRow = (startR, endR) => {
-      ws["A" + r] = cell("ОБЩО ЗА МЕСЕЦА", COLOR.totalBg);
+      applyCell(ws.getCell("A" + r), "ОБЩО ЗА МЕСЕЦА", COLOR.totalBg);
       for (let m = 1; m <= 12; m++) {
         const cl = colLetter(m);
         const formula = startR <= endR ? "SUM(" + cl + startR + ":" + cl + endR + ")" : "0";
-        ws[cl + r] = fCell(formula, COLOR.totalBg);
+        applyFormulaCell(ws.getCell(cl + r), formula, COLOR.totalBg);
       }
-      ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.totalBg);
+      applyFormulaCell(ws.getCell(colLetter(13) + r), "SUM(B" + r + ":M" + r + ")", COLOR.totalBg);
       r++;
     };
 
@@ -142,51 +147,44 @@ export const exportToExcel = (
     r++;
 
     const balanceHeaderRow = r;
-    ws["A" + r] = cell("БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
+    applyCell(ws.getCell("A" + r), "БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
     MONTH_NAMES.forEach((m, i) => {
-      ws[colLetter(i + 1) + r] = cell(m, COLOR.monthBg, { bold: true, align: "center" });
+      applyCell(ws.getCell(colLetter(i + 1) + r), m, COLOR.monthBg, { bold: true, align: "center" });
     });
-    ws[colLetter(13) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+    applyCell(ws.getCell(colLetter(13) + r), "СУМА", COLOR.sumColBg, { bold: true, align: "center" });
     r++;
 
-    ws["A" + r] = cell("", COLOR.titleBg);
+    applyCell(ws.getCell("A" + r), "", COLOR.titleBg);
     for (let m = 1; m <= 12; m++) {
       const inc = activeIncCats.reduce((s, cat) => s + getAmount(year, m, "income", cat), 0);
       const exp = activeExpCats.reduce((s, cat) => s + getAmount(year, m, "expense", cat), 0);
       const bal = inc - exp;
       const cl = colLetter(m);
-      ws[cl + r] = {
-        f: cl + (incEnd + 1) + "-" + cl + (expEnd + 1),
-        t: "n",
-        s: {
-          fill: { fgColor: { rgb: bal >= 0 ? "C6EFCE" : "FFC7CE" } },
-          font: { name: "Calibri", sz: 11, bold: false },
-          alignment: { horizontal: "right", vertical: "center" },
-          border,
-          numFmt,
-        },
-      };
+      const balCell = ws.getCell(cl + r);
+      balCell.value = { formula: cl + (incEnd + 1) + "-" + cl + (expEnd + 1) };
+      balCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + (bal >= 0 ? "C6EFCE" : "FFC7CE") } };
+      balCell.font = { name: "Calibri", size: 11, bold: false };
+      balCell.alignment = { horizontal: "right", vertical: "middle" };
+      balCell.border = border;
+      balCell.numFmt = "0.00";
     }
-    ws[colLetter(13) + r] = fCell("SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
+    applyFormulaCell(ws.getCell(colLetter(13) + r), "SUM(B" + r + ":M" + r + ")", COLOR.sumNBg);
     r++;
 
-    ws["!ref"] = "A1:N" + r;
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
+    ws.mergeCells("A" + balanceHeaderRow + ":A" + (balanceHeaderRow + 1));
 
     const allCats = [...activeExpCats, ...activeIncCats, "ОБЩО ЗА МЕСЕЦА"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
-    ws["!cols"] = [
-      { wch: Math.max(maxLen + 2, 20) },
-      ...MONTH_NAMES.map((m) => ({ wch: Math.max(m.length + 3, 10) })),
-      { wch: 14 },
-    ];
-
-    XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
+    ws.getColumn(1).width = Math.max(maxLen + 2, 20);
+    MONTH_NAMES.forEach((m, i) => {
+      ws.getColumn(i + 2).width = Math.max(m.length + 3, 10);
+    });
+    ws.getColumn(14).width = 14;
   });
 
-  const wsH = {};
+  const wsH = workbook.addWorksheet("История на транзакциите");
   ["Категория", "Сума", "Дата", "Описание"].forEach((h, i) => {
-    wsH[colLetter(i) + "1"] = cell(h, COLOR.monthBg, { bold: true, align: "center" });
+    applyCell(wsH.getCell(colLetter(i) + "1"), h, COLOR.monthBg, { bold: true, align: "center" });
   });
 
   const sorted = [...transactions].sort((a, b) => {
@@ -199,30 +197,25 @@ export const exportToExcel = (
   sorted.forEach((t, idx) => {
     const rr = idx + 2;
     const amt = t.type === "expense" ? -Number(t.amount) : Number(t.amount);
-    wsH["A" + rr] = cell(t.category, COLOR.white);
-    wsH["B" + rr] = cell(amt, COLOR.white, { align: "right" });
-    wsH["C" + rr] = cell(t.date, COLOR.white, { align: "center" });
-    wsH["D" + rr] = cell(t.description || "", COLOR.white);
+    applyCell(wsH.getCell("A" + rr), t.category, COLOR.white);
+    applyCell(wsH.getCell("B" + rr), amt, COLOR.white, { align: "right" });
+    applyCell(wsH.getCell("C" + rr), t.date, COLOR.white, { align: "center" });
+    applyCell(wsH.getCell("D" + rr), t.description || "", COLOR.white);
     if (t.category.length > maxCatLen) maxCatLen = t.category.length;
     if ((t.description || "").length > maxDescLen) maxDescLen = (t.description || "").length;
   });
 
-  wsH["!ref"]  = "A1:D" + (sorted.length + 1);
-  wsH["!cols"] = [
-    { wch: maxCatLen + 2 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: maxDescLen + 2 },
-  ];
-
-  XLSXStyle.utils.book_append_sheet(workbook, wsH, "История на транзакциите");
+  wsH.getColumn(1).width = maxCatLen + 2;
+  wsH.getColumn(2).width = 12;
+  wsH.getColumn(3).width = 12;
+  wsH.getColumn(4).width = maxDescLen + 2;
 
   const today = new Date();
   const d = String(today.getDate()).padStart(2, "0");
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
   const profileSuffix = profileName ? `_${profileName}` : "";
-  XLSXStyle.writeFile(workbook, "Разходи-Приходи" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
+  await saveWorkbook(workbook, "Разходи-Приходи" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
   resolve();
 }, 50));
 
@@ -243,25 +236,23 @@ export const importFromExcel = (file) => {
         const transactions = [];
         rows.slice(1).forEach((row) => {
           if (!row || row.length === 0) return;
-          const category    = String(row[0] || "").trim();
-          const amount      = Number(row[1]);
+          const category = String(row[0] || "").trim();
+          const amount = Number(row[1]);
           let date = row[2];
-        if (typeof date === "number") {
-          // Excel serial date → JS Date
-          const excelEpoch = new Date(1899, 11, 30);
-          const jsDate = new Date(excelEpoch.getTime() + date * 86400000);
-          const d = String(jsDate.getDate()).padStart(2, "0");
-          const m = String(jsDate.getMonth() + 1).padStart(2, "0");
-          const y = jsDate.getFullYear();
-          date = `${d}/${m}/${y}`;
-        } else {
-          date = String(date || "").trim();
-          // ISO формат: 2025-07-15
-          if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            const [y, m, d] = date.split("-");
+          if (typeof date === "number") {
+            const excelEpoch = new Date(1899, 11, 30);
+            const jsDate = new Date(excelEpoch.getTime() + date * 86400000);
+            const d = String(jsDate.getDate()).padStart(2, "0");
+            const m = String(jsDate.getMonth() + 1).padStart(2, "0");
+            const y = jsDate.getFullYear();
             date = `${d}/${m}/${y}`;
+          } else {
+            date = String(date || "").trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+              const [y, m, d] = date.split("-");
+              date = `${d}/${m}/${y}`;
+            }
           }
-        }
           const description = String(row[3] || "").trim();
           if (!category || isNaN(amount) || amount === 0 || !date) return;
           transactions.push({
@@ -299,7 +290,7 @@ export const findDuplicates = (existing, incoming) => {
   return { duplicates, unique };
 };
 
-export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, profileName = "") => new Promise((resolve) => setTimeout(() => {
+export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, profileName = "") => new Promise((resolve) => setTimeout(async () => {
   const monthNames = [
     "Януари","Февруари","Март","Април","Май","Юни",
     "Юли","Август","Септември","Октомври","Ноември","Декември",
@@ -342,7 +333,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
 
   const years = [...new Set(transactions.map((t) => Number(t.date.split("/")[2])))].sort((a, b) => b - a);
 
-  const workbook = XLSXStyle.utils.book_new();
+  const workbook = new ExcelJS.Workbook();
 
   years.forEach((year) => {
     const months = [];
@@ -352,7 +343,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
     }
     if (months.length === 0) return;
 
-    const ws = {};
+    const ws = workbook.addWorksheet(String(year));
     let r = 1;
 
     ["expense", "income"].forEach((type) => {
@@ -369,65 +360,62 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
           .map((t) => t.category)
       )].sort((a, b) => a.localeCompare(b, "bg", { sensitivity: "base" }));
 
-      ws["A" + r] = cell(label, COLOR.titleBg, { bold: true, sz: 16 });
+      applyCell(ws.getCell("A" + r), label, COLOR.titleBg, { bold: true, sz: 16 });
       months.forEach((m, i) => {
-        ws[colLetter(i + 1) + r] = cell(monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
+        applyCell(ws.getCell(colLetter(i + 1) + r), monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
       });
-      ws[colLetter(months.length + 1) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+      applyCell(ws.getCell(colLetter(months.length + 1) + r), "СУМА", COLOR.sumColBg, { bold: true, align: "center" });
       r++;
       const catsStartR = r;
 
       cats.forEach((cat) => {
-        ws["A" + r] = cell(cat, rowBg);
+        applyCell(ws.getCell("A" + r), cat, rowBg);
         months.forEach((m, i) => {
           const avg = getRollingAverage(cat, type, year, m);
-          ws[colLetter(i + 1) + r] = cell(avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.white, { align: "right" });
+          applyCell(ws.getCell(colLetter(i + 1) + r), avg > 0 ? Math.round(avg * 100) / 100 : 0, COLOR.white, { align: "right" });
         });
-        ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
+        applyFormulaCell(ws.getCell(colLetter(months.length + 1) + r), "SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
         r++;
       });
 
-      ws["A" + r] = cell("ОБЩО", COLOR.totalBg, { bold: true });
+      applyCell(ws.getCell("A" + r), "ОБЩО", COLOR.totalBg, { bold: true });
       months.forEach((m, i) => {
         const cl = colLetter(i + 1);
-        ws[cl + r] = fCell("SUM(" + cl + catsStartR + ":" + cl + (r - 1) + ")", COLOR.totalBg);
+        applyFormulaCell(ws.getCell(cl + r), "SUM(" + cl + catsStartR + ":" + cl + (r - 1) + ")", COLOR.totalBg);
       });
-      ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.totalBg);
+      applyFormulaCell(ws.getCell(colLetter(months.length + 1) + r), "SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.totalBg);
       r++;
       r++;
     });
 
     r++;
     const balanceHeaderRow = r;
-    ws["A" + r] = cell("БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
+    applyCell(ws.getCell("A" + r), "БАЛАНС", COLOR.titleBg, { bold: true, sz: 16 });
     months.forEach((m, i) => {
-      ws[colLetter(i + 1) + r] = cell(monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
+      applyCell(ws.getCell(colLetter(i + 1) + r), monthNames[m - 1], COLOR.monthBg, { bold: true, align: "center" });
     });
-    ws[colLetter(months.length + 1) + r] = cell("СУМА", COLOR.sumColBg, { bold: true, align: "center" });
+    applyCell(ws.getCell(colLetter(months.length + 1) + r), "СУМА", COLOR.sumColBg, { bold: true, align: "center" });
     r++;
 
-    ws["A" + r] = cell("", COLOR.titleBg);
+    applyCell(ws.getCell("A" + r), "", COLOR.titleBg);
     months.forEach((m, i) => {
       const incAvg = getTotalRollingAverage("income", year, m);
       const expAvg = getTotalRollingAverage("expense", year, m);
       const balance = Math.round((incAvg - expAvg) * 100) / 100;
-      ws[colLetter(i + 1) + r] = cell(balance, balance >= 0 ? "C6EFCE" : "FFC7CE", { align: "right" });
+      applyCell(ws.getCell(colLetter(i + 1) + r), balance, balance >= 0 ? "C6EFCE" : "FFC7CE", { align: "right" });
     });
-    ws[colLetter(months.length + 1) + r] = fCell("SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
+    applyFormulaCell(ws.getCell(colLetter(months.length + 1) + r), "SUM(B" + r + ":" + colLetter(months.length) + r + ")", COLOR.sumNBg);
     r++;
 
-    ws["!merges"] = [{ s: { r: balanceHeaderRow - 1, c: 0 }, e: { r: balanceHeaderRow, c: 0 } }];
-    ws["!ref"] = "A1:" + colLetter(months.length + 1) + r;
+    ws.mergeCells("A" + balanceHeaderRow + ":A" + (balanceHeaderRow + 1));
 
     const allCats = [...new Set(transactions.map((t) => t.category)), "ОБЩО"];
     const maxLen = allCats.reduce((m, c) => Math.max(m, c.length), 0);
-    ws["!cols"] = [
-      { wch: Math.max(maxLen + 2, 20) },
-      ...months.map((m) => ({ wch: Math.max(monthNames[m - 1].length + 3, 10) })),
-      { wch: 14 },
-    ];
-
-    XLSXStyle.utils.book_append_sheet(workbook, ws, String(year));
+    ws.getColumn(1).width = Math.max(maxLen + 2, 20);
+    months.forEach((m, i) => {
+      ws.getColumn(i + 2).width = Math.max(monthNames[m - 1].length + 3, 10);
+    });
+    ws.getColumn(months.length + 2).width = 14;
   });
 
   const today = new Date();
@@ -435,6 +423,6 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
   const profileSuffix = profileName ? `_${profileName}` : "";
-  XLSXStyle.writeFile(workbook, "Месечна_Статистика" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
+  await saveWorkbook(workbook, "Месечна_Статистика" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
   resolve();
 }, 50));
