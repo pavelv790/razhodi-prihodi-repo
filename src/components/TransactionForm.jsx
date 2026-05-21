@@ -286,7 +286,7 @@ const TransactionForm = ({
           }`}
         >
           {editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
-          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено!</>
+          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено в {category}!</>
           : <><PlusCircle className="w-4 h-4" /> Добави</>}
         </button>
         {editingTransaction && (
