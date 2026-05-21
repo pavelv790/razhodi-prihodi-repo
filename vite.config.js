@@ -9,6 +9,11 @@ export default defineConfig({
       transformMixedEsModules: true,
     },
   },
+  resolve: {
+    alias: {
+      stream: "stream-browserify",
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
