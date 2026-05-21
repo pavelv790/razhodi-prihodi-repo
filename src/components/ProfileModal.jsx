@@ -110,7 +110,7 @@ const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete,
           ))}
         </div>
 
-        {/* Create new profile */}
+        {/* Създай нов профил */}
         <div className="px-5 pb-5 border-t border-gray-100 pt-3">
           {showCreate ? (
             <div className="space-y-2">
