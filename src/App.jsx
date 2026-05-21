@@ -941,7 +941,7 @@ if (backupData.budgets) {
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
                 >
                   <FileDown className="w-4 h-4" />
-                  Backup
+                  Свали резервно копие
                 </button>
                 {lastLocalBackupDate && (
                   <p className="text-xs text-gray-400 px-1">
@@ -953,7 +953,7 @@ if (backupData.budgets) {
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
                 >
                   <Upload className="w-4 h-4" />
-                  Restore
+                  Възстанови от файл
                 </button>
                 <button
                   onClick={() => setShowDeleteAll(true)}
@@ -1037,7 +1037,7 @@ if (backupData.budgets) {
                         disabled={driveUploadLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
                       >
-                        ☁️ {driveUploadLoading ? "Качване..." : "Запази в Drive"}
+                        ☁️ {driveUploadLoading ? "Качване..." : "Запази в Google Drive"}
                       </button>
                       {localStorage.getItem("last_drive_upload_date") && (
                         <p className="text-xs text-gray-400 px-1">
@@ -1083,7 +1083,7 @@ if (backupData.budgets) {
                         disabled={driveDownloadLoading || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
-                        ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Drive"}
+                        ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Google Drive"}
                       </button>
                       <button
                         onClick={driveDisconnect}
