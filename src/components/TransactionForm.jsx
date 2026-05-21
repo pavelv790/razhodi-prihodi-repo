@@ -30,6 +30,7 @@ const TransactionForm = ({
   const [errors, setErrors] = useState({});
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [successCategory, setSuccessCategory] = useState("");
   const [showExtra, setShowExtra] = useState(false);
   const [showCurrencyPanel, setShowCurrencyPanel] = useState(false);
   const [newCurrency, setNewCurrency] = useState("");
@@ -123,6 +124,7 @@ const TransactionForm = ({
     if (!editingTransaction) {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setShowSuccess(true);
+      setSuccessCategory(category);
       successTimerRef.current = setTimeout(() => setShowSuccess(false), 1000);
     }
     handleReset();
@@ -286,7 +288,7 @@ const TransactionForm = ({
           }`}
         >
           {editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
-          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено в {category}!</>
+          : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено в {successCategory}!</>
           : <><PlusCircle className="w-4 h-4" /> Добави</>}
         </button>
         {editingTransaction && (
