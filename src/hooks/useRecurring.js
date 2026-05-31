@@ -201,7 +201,7 @@ export const useRecurring = (profileId) => {
         tx.onerror = () => reject(tx.error);
       });
       if (target === profileId) setRecurringItems(withProfile);
-    } catch { console.error("Грешка при restore на повтарящи се транзакции"); }
+    } catch { console.error("Грешка при възстановяване от файл на повтарящи се транзакции"); }
   };
 
   // Изчислява всички чакащи транзакции за днес

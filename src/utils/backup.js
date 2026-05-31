@@ -39,10 +39,10 @@ export const importBackup = (file) => {
       try {
         const data = JSON.parse(e.target.result);
         if (!data.transactions || !data.expenseCategories || !data.incomeCategories) {
-          reject(new Error("Невалиден backup файл."));
+          reject(new Error("Невалидно резервно копие."));
           return;
         }
-        // Ако backup-ът е стар (без профили), създаваме един профил "По подразбиране"
+        // Ако резервното копие е старо (без профили), създаваме един профил "По подразбиране"
         if (!data.profiles || data.profiles.length === 0) {
           const defaultProfile = {
             id: `profile_default_legacy`,

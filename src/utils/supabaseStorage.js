@@ -60,7 +60,7 @@ export async function uploadBackupToSupabase(backupData, profileName) {
     if (oldPaths.length > 0) {
       const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
       if (removeError) {
-        console.warn("Предупреждение: не успя да изтрие стария backup файл:", removeError.message);
+        console.warn("Предупреждение: не успя да изтрие старото резервно копие:", removeError.message);
       }
     }
   }
@@ -93,10 +93,10 @@ export async function downloadBackupFromSupabase(profileName) {
     .from(BUCKET_NAME)
     .list(userId, { search: prefix });
 
-  if (listError) throw new Error("Грешка при търсене на backup файл.");
+  if (listError) throw new Error("Грешка при търсене на резервното копие.");
 
   const matching = (files || []).filter((f) => f.name.startsWith(prefix));
-  if (matching.length === 0) throw new Error("Няма намерен backup файл в Supabase.");
+  if (matching.length === 0) throw new Error("Няма намерено резервно копие в Supabase.");
 
   // Вземи най-новия ако има повече от един (не би трябвало, но за сигурност)
   const latest = matching.sort((a, b) =>

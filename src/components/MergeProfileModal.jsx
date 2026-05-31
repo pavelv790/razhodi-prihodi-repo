@@ -125,7 +125,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     try {
       const data = await importBackup(file);
       setBackupData(data);
-      // Избираме активния профил от backup-а по подразбиране
+      // Избираме активния профил от резервното копие по подразбиране
       const defaultId = data.activeProfileId || (data.profiles?.[0]?.id ?? null);
       setSelectedProfileId(defaultId);
       setStep(2);
@@ -135,7 +135,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     }
   };
 
-  // Категориите на избрания профил от backup файла — per-profile ако има, иначе стар формат
+  // Категориите на избрания профил от резервното копие — per-profile ако има, иначе стар формат
   const backupExpenseCategories = backupData?.profileCategories?.[selectedProfileId]?.expense
     || backupData?.expenseCategories || [];
   const backupIncomeCategories = backupData?.profileCategories?.[selectedProfileId]?.income
@@ -180,10 +180,10 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     if (!backupData) return [];
     let txs;
     if (!backupData.profiles || backupData.profiles.length === 0) {
-      // Стар backup без профили — взимаме всички транзакции
+      // Старо резервно копие без профили — взимаме всички транзакции
       txs = backupData.transactions;
     } else {
-      // Нов backup — взимаме само транзакциите на избрания профил
+      // Ново резервно копие — взимаме само транзакциите на избрания профил
       txs = backupData.transactions.filter((t) => t.profileId === selectedProfileId);
     }
     return txs.filter((t) => {
@@ -273,7 +273,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
           {/* Стъпка 1: избор на файл */}
           <div>
             <p className="text-xs text-gray-500 mb-2">
-              Избери backup файл (.json) от другия профил
+              Избери резервно копие (.json) от другия профил
             </p>
             <button
               onClick={() => { fileRef.current.value = ""; fileRef.current.click(); }}
@@ -290,10 +290,10 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
           {/* Стъпка 2: филтриране */}
           {step === 2 && backupData && (
             <>
-              {/* Избор на профил от backup-а */}
+              {/* Избор на профил от резервното копие */}
               {backupData.profiles?.length > 1 && (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Профил от backup файла</label>
+                  <label className="block text-xs text-gray-500 mb-1">Профил от резервното копие</label>
                   <div className="flex flex-col gap-1">
                     {backupData.profiles.map((p) => (
                       <button

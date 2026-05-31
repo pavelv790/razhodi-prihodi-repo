@@ -201,7 +201,7 @@ export function useSupabaseStorage() {
     try {
       await uploadBackupToSupabase(backupData, profileName);
       localStorage.setItem("last_supabase_upload_date", new Date().toISOString());
-      showMessage("✅ Backup качен в облака.");
+      showMessage("✅ Качено резервно копие в облака.");
       return true;
     } catch (err) {
       showMessage("❌ " + err.message);
@@ -220,7 +220,7 @@ export function useSupabaseStorage() {
     setMessage("");
     try {
       const data = await downloadBackupFromSupabase(profileName);
-      showMessage("✅ Backup изтеглен успешно.");
+      showMessage("✅ Резервно копие изтеглено успешно.");
       return data;
     } catch (err) {
       showMessage("❌ " + err.message);

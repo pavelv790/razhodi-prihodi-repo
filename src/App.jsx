@@ -518,7 +518,7 @@ const App = () => {
       const data = await importBackup(file);
       setPendingBackup(data);
 
-      // Намери профили които съществуват и в приложението, и в backup файла
+      // Намери профили които съществуват и в приложението, и в резервнптп копие
       const conflicts = (data.profiles || []).filter((bp) =>
         profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
       );
@@ -547,7 +547,7 @@ const App = () => {
       } else {
         setShowRestoreConfirm(true);
       }
-      // Запомни новите профили (само в backup файла) отделно
+      // Запомни новите профили (само в резервното копие) отделно
       pendingNewProfilesRef.current = newProfiles;
       setPendingNewProfiles(newProfiles);
     } catch (err) {
@@ -964,7 +964,7 @@ if (backupData.budgets) {
                 </button>
 
                 <div className="border-t border-gray-200 pt-2 mt-1">
-                  <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Напомняне за backup</p>
+                  <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Напомняне за резервно копие</p>
                   <div className="flex flex-col gap-1 px-1">
                     {[
                       { value: "off", label: "Изключено" },
@@ -1009,7 +1009,7 @@ if (backupData.budgets) {
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
                         <p className="text-xs text-amber-700 font-semibold mb-0.5">⏱️ Забележка за връзката с Google</p>
                         <p className="text-xs text-amber-600">
-                          Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте Облачен Backup.
+                          Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте качване на резервно копие в Облака.
                         </p>
                       </div>
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
@@ -1096,7 +1096,7 @@ if (backupData.budgets) {
                   </div>
 
                 <div className="border-t border-gray-200 pt-2 mt-1">
-                  <p className="text-xs font-semibold text-gray-400 mb-1 px-1">☁️ Облачен Backup</p>
+                  <p className="text-xs font-semibold text-gray-400 mb-1 px-1">☁️ Резервно копие в Облака</p>
                   {!supabaseConnected ? (
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2 px-1">
@@ -1180,7 +1180,7 @@ if (backupData.budgets) {
                       onClick={supabaseEnable}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full mb-1"
                     >
-                      🔗 Активирай облачен backup
+                      🔗 Активирай резервно копие в Облака
                     </button>
                   ) : (
                     <>
@@ -1269,7 +1269,7 @@ if (backupData.budgets) {
                         onClick={supabaseDisable}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition w-full mt-1 mb-1"
                       >
-                        ⏸️ Деактивирай backup
+                        ⏸️ Деактивирай резервно копие
                       </button>
                       <button
                         onClick={supabaseDisconnect}
@@ -1466,11 +1466,11 @@ if (backupData.budgets) {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-700">Нови профили в backup файла</h2>
+              <h2 className="text-base font-semibold text-gray-700">Нови профили в резервното копие</h2>
             </div>
             <div className="px-5 py-4 space-y-3">
               <p className="text-sm text-gray-600">
-                Следните профили са в backup файла, но не съществуват локално. Искате ли да ги добавите заедно с техните данни?
+                Следните профили са в резервното копие, но не съществуват локално. Искате ли да ги добавите заедно с техните данни?
               </p>
               <div className="flex flex-col gap-1.5">
                 {pendingNewProfiles.map((p) => (
@@ -1503,7 +1503,7 @@ if (backupData.budgets) {
             </div>
             <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
               <p className="text-sm text-gray-600">
-                Следните профили съществуват и в приложението, и в backup файла. Изберете какво да се направи за всеки:
+                Следните профили съществуват и в приложението, и в резервното копие. Изберете какво да се направи за всеки:
               </p>
               {conflictProfiles.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl p-3 border border-gray-200">
@@ -1517,7 +1517,7 @@ if (backupData.budgets) {
                         checked={conflictChoices[p.id] === "backup"}
                         onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "backup" }))}
                       />
-                      Зареди данните от backup файла (замести локалните)
+                      Зареди данните от резервното копие (замести локалните)
                     </label>
                     <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                       <input
@@ -1527,7 +1527,7 @@ if (backupData.budgets) {
                         checked={conflictChoices[p.id] === "local"}
                         onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "local" }))}
                       />
-                      Запази само локалните данни (игнорирай backup-а)
+                      Запази само локалните данни (игнорирай резервното копие)
                     </label>
                     <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                       <input
@@ -1537,7 +1537,7 @@ if (backupData.budgets) {
                         checked={conflictChoices[p.id] === "merge"}
                         onChange={() => setConflictChoices((prev) => ({ ...prev, [p.id]: "merge" }))}
                       />
-                      Обедини (добави транзакциите от backup-а към съществуващите)
+                      Обедини (добави транзакциите от резервното копие към съществуващите)
                     </label>
                   </div>
                 </div>
@@ -1566,7 +1566,7 @@ if (backupData.budgets) {
                 <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
                   <div className="px-5 py-4 border-b border-gray-100">
                     <h2 className="text-base font-semibold text-gray-700">
-                      Restore от Backup
+                      Възтановяване от резервно копие
                     </h2>
                   </div>
                   <div className="px-5 py-5 space-y-3">
@@ -1574,7 +1574,7 @@ if (backupData.budgets) {
                       <div className="bg-orange-50 rounded-xl p-4">
                         <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
                         <p className="text-sm text-orange-600">
-                          Данните от backup файла ще бъдат заредени. Съществуващите данни може да бъдат засегнати.
+                          Данните от резервното копие ще бъдат заредени. Съществуващите данни може да бъдат засегнати.
                         </p>
                       </div>
                     )}
@@ -1588,7 +1588,7 @@ if (backupData.budgets) {
                             <div className="bg-orange-50 rounded-xl p-4">
                               <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
                               <p className="text-sm text-orange-600">
-                                Всички съществуващи данни за {bp.name} ({localCount} транзакции) ще бъдат заменени с данните от backup файла ({backupCount} транзакции).
+                                Всички съществуващи данни за {bp.name} ({localCount} транзакции) ще бъдат заменени с данните от резервното копие ({backupCount} транзакции).
                               </p>
                               <p className="text-sm text-orange-600 mt-2">Това действие не може да бъде отменено.</p>
                             </div>
@@ -1597,7 +1597,7 @@ if (backupData.budgets) {
                             <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
                               <p className="text-sm text-blue-700 font-medium mb-1">ℹ️ Обединяване за {bp.name}</p>
                               <p className="text-sm text-blue-600">
-                                Транзакциите от backup файла ще бъдат добавени към съществуващите. Вероятните дубликати ще бъдат показани за преглед.
+                                Транзакциите от резервното копие ще бъдат добавени към съществуващите. Вероятните дубликати ще бъдат показани за преглед.
                               </p>
                             </div>
                           )}
@@ -1605,7 +1605,7 @@ if (backupData.budgets) {
                             <div className="bg-green-50 rounded-xl p-4 border border-green-200">
                               <p className="text-sm text-green-700 font-medium mb-1">✅ Локалните данни за {bp.name} се запазват</p>
                               <p className="text-sm text-green-600">
-                                Данните от backup файла за {bp.name} няма да бъдат заредени.
+                                Данните от резервното копие за {bp.name} няма да бъдат заредени.
                               </p>
                             </div>
                           )}
@@ -1720,7 +1720,7 @@ if (backupData.budgets) {
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
-                Restore завършен
+                Възстановяването от файла е завършено
               </h2>
             </div>
             <div className="px-5 py-5 space-y-3">

@@ -110,7 +110,7 @@ export function useGoogleDrive() {
     try {
       await uploadBackupToDrive(backupData, profileName);
       localStorage.setItem("last_drive_upload_date", new Date().toISOString());
-      showMessage("✅ Backup качен в Google Drive.");
+      showMessage("✅ Качено резервно копие в Google Drive.");
       return true;
     } catch (err) {
       showMessage("❌ " + err.message);
@@ -129,7 +129,7 @@ export function useGoogleDrive() {
     setMessage("");
     try {
       const data = await downloadLatestBackupFromDrive(profileName);
-      showMessage("✅ Backup изтеглен успешно.");
+      showMessage("✅ Резервно копие изтеглено успешно.");
       return data;
     } catch (err) {
       showMessage("❌ " + err.message);

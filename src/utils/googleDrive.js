@@ -116,7 +116,7 @@ export async function downloadLatestBackupFromDrive(profileName) {
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  if (!data.files?.length) throw new Error("Няма намерен backup файл в Google Drive.");
+  if (!data.files?.length) throw new Error("Няма намерено резервно копие в Google Drive.");
 
   const fileId = data.files[0].id;
   const fileRes = await fetch(

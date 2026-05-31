@@ -90,7 +90,7 @@ export const useSavedFilters = (profileId) => {
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
       });
-    } catch { console.error("Грешка при restore на филтри"); }
+    } catch { console.error("Грешка при възстановяване от файл на филтри"); }
   };
 
   return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters };
