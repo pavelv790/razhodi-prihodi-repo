@@ -122,7 +122,7 @@ const TransactionForm = ({
       onEdit(editingTransaction.id, transaction);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setShowSaveSuccess(true);
-      setSaveSuccessCategory(category);
+      setSaveSuccessCategory(`${category} · ${amount} ${currency}`);
       successTimerRef.current = setTimeout(() => {
         setShowSaveSuccess(false);
         handleReset();
@@ -132,7 +132,7 @@ const TransactionForm = ({
       onAdd(transaction);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setShowSuccess(true);
-      setSuccessCategory(category);
+      setSuccessCategory(`${category} · ${amount} ${currency}`);
       successTimerRef.current = setTimeout(() => setShowSuccess(false), 1000);
     }
     if (!editingTransaction) handleReset();
@@ -279,6 +279,11 @@ const TransactionForm = ({
           {currency !== "EUR" && amount && !isNaN(Number(amount)) && Number(amount) > 0 && (
             <p className="text-xs text-gray-400 mt-1">
               = {convert(amount)} EUR (курс {rate})
+            </p>
+          )}
+          {currency !== "EUR" && editingTransaction && (
+            <p className="text-xs text-orange-500 mt-1">
+              ⚠️ Сумата в полето е в EUR. Въведи еквивалента в {currency}.
             </p>
           )}
         </div>
