@@ -190,6 +190,7 @@ const App = () => {
   useEffect(() => {
     if (!activeProfileId || recurringItems.length === 0) return;
     if (showRecurringModal) return;
+    if (showPendingModal) return;
     const pending = getPendingTransactions();
     if (pending.length > 0) {
       setPendingRecurring(pending);

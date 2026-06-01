@@ -134,7 +134,11 @@ const RecurringModal = ({
             <p className="text-xs text-gray-400 text-center py-4">Няма зададени повтарящи се транзакции</p>
           )}
 
-          {recurringItems.map((item) => (
+          {[...recurringItems].sort((a, b) => {
+            const dayA = parseInt(a.startDate?.split("/")[0] || "0", 10);
+            const dayB = parseInt(b.startDate?.split("/")[0] || "0", 10);
+            return dayA - dayB;
+          }).map((item) => (
             <div key={item.id} className={`rounded-xl border bg-white ${confirmDeleteId === item.id ? "border-red-200" : "border-gray-200"}`}>
               {confirmDeleteId === item.id ? (
                 <div className="px-3 py-3 space-y-2">

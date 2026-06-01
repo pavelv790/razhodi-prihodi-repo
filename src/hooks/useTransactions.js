@@ -53,7 +53,8 @@ const sortByDate = (transactions) =>
     const dateA = parseDate(a.date);
     const dateB = parseDate(b.date);
     if (!dateA || !dateB) return 0;
-    return dateB - dateA;
+    if (dateB - dateA !== 0) return dateB - dateA;
+    return a.id < b.id ? 1 : -1;
   });
 
 export const useTransactions = (profileId) => {
