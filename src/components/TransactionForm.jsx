@@ -31,6 +31,8 @@ const TransactionForm = ({
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successCategory, setSuccessCategory] = useState("");
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [saveSuccessCategory, setSaveSuccessCategory] = useState("");
   const [showExtra, setShowExtra] = useState(false);
   const [showCurrencyPanel, setShowCurrencyPanel] = useState(false);
   const [newCurrency, setNewCurrency] = useState("");
@@ -118,16 +120,22 @@ const TransactionForm = ({
     };
     if (editingTransaction) {
       onEdit(editingTransaction.id, transaction);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      setShowSaveSuccess(true);
+      setSaveSuccessCategory(category);
+      successTimerRef.current = setTimeout(() => {
+        setShowSaveSuccess(false);
+        handleReset();
+      }, 1000);
+      return;
     } else {
       onAdd(transaction);
-    }
-    if (!editingTransaction) {
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setShowSuccess(true);
       setSuccessCategory(category);
       successTimerRef.current = setTimeout(() => setShowSuccess(false), 1000);
     }
-    handleReset();
+    if (!editingTransaction) handleReset();
   };
 
   const handleReset = () => {
@@ -287,7 +295,8 @@ const TransactionForm = ({
             : "bg-green-500 hover:bg-green-600"
           }`}
         >
-          {editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
+          {editingTransaction && showSaveSuccess ? <><CheckCircle className="w-4 h-4" /> Запазено в {saveSuccessCategory}!</>
+          : editingTransaction ? <><Save className="w-4 h-4" /> Запази</>
           : showSuccess ? <><CheckCircle className="w-4 h-4" /> Добавено в {successCategory}!</>
           : <><PlusCircle className="w-4 h-4" /> Добави</>}
         </button>
