@@ -167,12 +167,13 @@ export const useRecurring = (profileId) => {
   };
 
   const markAsAdded = async (id, date) => {
-    const updated = recurringItems.map((r) =>
-      r.id === id ? { ...r, lastAdded: date } : r
-    );
-    const item = updated.find((r) => r.id === id);
+    const base = recurringItems.find((r) => r.id === id);
+    if (!base) return;
+    const item = { ...base, lastAdded: date };
     await saveOne(item);
-    setRecurringItems(updated);
+    setRecurringItems((prev) =>
+      prev.map((r) => (r.id === id ? item : r))
+    );
   };
 
   const deleteAllByProfile = async (targetProfileId) => {
