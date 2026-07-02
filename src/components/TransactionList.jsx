@@ -144,7 +144,7 @@ const TransactionList = ({ transactions, onEdit, onDelete, isFiltered, profileId
                 {confirmDeleteId === t.id ? (
                   <div className="px-5 py-4 bg-red-50 flex flex-col sm:flex-row sm:items-center gap-3">
                     <p className="text-sm text-red-600 flex-1">
-                      Сигурни ли сте, че искате да изтриете тази транзакция?
+                      Сигурни ли сте, че искате да изтриете "{t.category}" ({t.type === "expense" ? "-" : "+"}{formatAmount(t.amount)} EUR)?
                     </p>
                     <div className="flex gap-2">
                       <button
