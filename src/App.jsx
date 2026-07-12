@@ -236,10 +236,11 @@ const App = () => {
       const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        driveMarkDailyDone();
         const success = await driveUploadBackup(await buildBackupData(), profileNameAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
+        } else {
+          driveMarkDailyDone();
         }
       }, 1500);
       return () => clearTimeout(timer);
@@ -265,8 +266,8 @@ const App = () => {
       const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        supabaseMarkDailyDone();
-        await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
+        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
+        if (success) supabaseMarkDailyDone();
       }, 1500);
       return () => clearTimeout(timer);
     }
