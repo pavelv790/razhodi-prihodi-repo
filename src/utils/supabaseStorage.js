@@ -40,6 +40,15 @@ function buildFilePrefix(profileName) {
   return `Finances_Backup${profileSuffix}`;
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isExactBackupFileName(fileName, prefix) {
+  const pattern = new RegExp(`^${escapeRegex(prefix)}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`);
+  return pattern.test(fileName);
+}
+
 export async function uploadBackupToSupabase(backupData, profileName) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
@@ -55,7 +64,7 @@ export async function uploadBackupToSupabase(backupData, profileName) {
 
   if (existingFiles?.length > 0) {
     const oldPaths = existingFiles
-      .filter((f) => f.name.startsWith(prefix))
+      .filter((f) => isExactBackupFileName(f.name, prefix))
       .map((f) => `${userId}/${f.name}`);
     if (oldPaths.length > 0) {
       const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
@@ -95,7 +104,7 @@ export async function downloadBackupFromSupabase(profileName) {
 
   if (listError) throw new Error("Грешка при търсене на резервното копие.");
 
-  const matching = (files || []).filter((f) => f.name.startsWith(prefix));
+  const matching = (files || []).filter((f) => isExactBackupFileName(f.name, prefix));
   if (matching.length === 0) throw new Error("Няма намерено резервно копие в Supabase.");
 
   // Вземи най-новия ако има повече от един (не би трябвало, но за сигурност)

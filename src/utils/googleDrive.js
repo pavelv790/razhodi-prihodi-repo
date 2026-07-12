@@ -56,13 +56,23 @@ async function getOrCreateFolder() {
   return folder.id;
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isExactBackupFileName(fileName, prefix) {
+  const pattern = new RegExp(`^${escapeRegex(prefix)}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`);
+  return pattern.test(fileName);
+}
+
 async function findExistingFileByProfile(prefix, folderId) {
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=1`,
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  return data.files?.[0]?.id || null;
+  const match = (data.files || []).find((f) => isExactBackupFileName(f.name, prefix));
+  return match?.id || null;
 }
 
 export async function uploadBackupToDrive(backupData, profileName) {
@@ -112,13 +122,14 @@ export async function downloadLatestBackupFromDrive(profileName) {
   const prefix = `Finances_Backup${profileSuffix}`;
 
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=1`,
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
-  if (!data.files?.length) throw new Error("Няма намерено резервно копие в Google Drive.");
+  const matches = (data.files || []).filter((f) => isExactBackupFileName(f.name, prefix));
+  if (!matches.length) throw new Error("Няма намерено резервно копие в Google Drive.");
 
-  const fileId = data.files[0].id;
+  const fileId = matches[0].id;
   const fileRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
