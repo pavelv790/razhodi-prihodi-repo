@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   uploadBackupToSupabase,
   downloadBackupFromSupabase,
@@ -11,11 +11,15 @@ import {
   resetPassword,
 } from "../utils/supabaseAuth";
 import { supabase } from "../utils/supabase";
+import { isExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "supabase_storage_settings";
 
 export function useSupabaseStorage() {
   const [connected, setConnected] = useState(false);
+  const connectedRef = useRef(false);
+  const selfDisconnectRef = useRef(false);
+  const setConnectedBoth = (val) => { connectedRef.current = val; setConnected(val); };
   const [enabled, setEnabled] = useState(
     () => localStorage.getItem("supabase_storage_enabled") === "true"
   );
@@ -42,7 +46,7 @@ export function useSupabaseStorage() {
       try {
         const session = await getCurrentSession();
         if (session?.user) {
-          setConnected(true);
+          setConnectedBoth(true);
         }
       } catch (err) {
         // няма интернет или Supabase не е достъпен
@@ -53,7 +57,17 @@ export function useSupabaseStorage() {
     let subscription;
     try {
       const { data } = supabase.auth.onAuthStateChange((event, session) => {
-        setConnected(!!session?.user);
+        const isConnected = !!session?.user;
+        if (!isConnected) {
+          const wasConnected = connectedRef.current;
+          setConnectedBoth(false);
+          if (wasConnected && !selfDisconnectRef.current && !isExpectedServiceSwitch()) {
+            showMessage("🔌 Връзката с Облака беше прекъсната. Свържете се отново, ако желаете.");
+          }
+          selfDisconnectRef.current = false;
+        } else {
+          setConnectedBoth(true);
+        }
         if (event === "PASSWORD_RECOVERY") {
           setShowNewPassword(true);
         }
@@ -168,8 +182,9 @@ export function useSupabaseStorage() {
   };
 
   const disconnectSupabase = async () => {
+    selfDisconnectRef.current = true;
     await signOutFromSupabase();
-    setConnected(false);
+    setConnectedBoth(false);
     setEnabled(false);
     setAutoSync("off");
     saveSettings("off");

@@ -29,6 +29,7 @@ import UserGuideModal from "./components/UserGuideModal";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
 import { openDB } from "./utils/db";
+import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
 
 const App = () => {
   const {
@@ -120,6 +121,7 @@ const App = () => {
   const [localTransactionCounts, setLocalTransactionCounts] = useState({});
   const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
   const [nameOnlyMatchIds, setNameOnlyMatchIds] = useState([]);
+  const [showCrossServiceWarning, setShowCrossServiceWarning] = useState(null); // 'toDrive' | 'toSupabase' | null
   const [backupReminderInterval, setBackupReminderInterval] = useState(
     () => localStorage.getItem("backup_reminder_interval") ?? "weekly"
   );
@@ -1108,7 +1110,14 @@ const App = () => {
                         ⚠️ ако браузърът поиска разрешение за cookies - разрешете и натиснете бутона "Свържи с Google Drive" отново
                       </div>
                       <button
-                        onClick={() => { setShowDataPanel(true); driveConnect(); }}
+                        onClick={() => {
+                          if (supabaseConnected) {
+                            setShowCrossServiceWarning("toDrive");
+                          } else {
+                            setShowDataPanel(true);
+                            driveConnect();
+                          }
+                        }}
                         disabled={driveUploadLoading || driveDownloadLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
                       >
@@ -1198,6 +1207,11 @@ const App = () => {
                       >
                         ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Google Drive"}
                       </button>
+                      {supabaseConnected && (
+                        <p className="text-xs text-orange-500 px-1 mb-1">
+                          ⚠️ Ще изключи и Облака (обща връзка).
+                        </p>
+                      )}
                       <button
                         onClick={driveDisconnect}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
@@ -1281,7 +1295,13 @@ const App = () => {
                         </p>
                       )}
                       <button
-                        onClick={supabaseConnectWithEmail}
+                        onClick={() => {
+                          if (driveConnected) {
+                            setShowCrossServiceWarning("toSupabase");
+                          } else {
+                            supabaseConnectWithEmail();
+                          }
+                        }}
                         disabled={supabaseAuthLoading}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition w-full"
                       >
@@ -1386,6 +1406,11 @@ const App = () => {
                       >
                         ⏸️ Деактивирай резервно копие
                       </button>
+                      {driveConnected && (
+                        <p className="text-xs text-orange-500 px-1 mb-1">
+                          ⚠️ Ще изключи и Google Drive (обща връзка).
+                        </p>
+                      )}
                       <button
                         onClick={supabaseDisconnect}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
@@ -1750,6 +1775,47 @@ const App = () => {
                 </div>
               </div>
             )}
+
+      {showCrossServiceWarning && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-orange-200">
+              <h2 className="text-base font-semibold text-orange-700">⚠️ Внимание!</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                <p className="text-sm text-orange-700">
+                  {showCrossServiceWarning === "toDrive"
+                    ? "Google Drive и Облакът споделят една и съща връзка. Свързването с Google Drive ще изключи текущата връзка с Облака."
+                    : "Google Drive и Облакът споделят една и съща връзка. Влизането в Облака ще изключи текущата връзка с Google Drive."}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const action = showCrossServiceWarning;
+                  setShowCrossServiceWarning(null);
+                  markExpectedServiceSwitch();
+                  if (action === "toDrive") {
+                    setShowDataPanel(true);
+                    driveConnect();
+                  } else {
+                    supabaseConnectWithEmail();
+                  }
+                }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Продължи и изключи другата връзка
+              </button>
+              <button
+                onClick={() => setShowCrossServiceWarning(null)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showWeeklyBackup && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

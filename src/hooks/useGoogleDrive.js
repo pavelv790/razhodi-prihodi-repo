@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   signInWithGoogle,
   signOutFromGoogle,
@@ -9,11 +9,15 @@ import {
   setAccessToken,
 } from "../utils/googleDrive";
 import { supabase } from "../utils/supabase";
+import { isExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "google_drive_settings";
 
 export function useGoogleDrive() {
   const [connected, setConnected] = useState(false);
+  const connectedRef = useRef(false);
+  const selfDisconnectRef = useRef(false);
+  const setConnectedBoth = (val) => { connectedRef.current = val; setConnected(val); };
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return "off";
@@ -38,7 +42,7 @@ export function useGoogleDrive() {
     const restore = async () => {
       try {
         const restored = await restoreSessionFromSupabase();
-        if (restored) setConnected(true);
+        if (restored) setConnectedBoth(true);
       } catch (err) {
         // няма интернет или Supabase не е достъпен
       }
@@ -51,9 +55,14 @@ export function useGoogleDrive() {
         if (_event === "PASSWORD_RECOVERY") return;
         if (session?.provider_token) {
           setAccessToken(session.provider_token);
-          setConnected(true);
+          setConnectedBoth(true);
         } else {
-          setConnected(false);
+          const wasConnected = connectedRef.current;
+          setConnectedBoth(false);
+          if (wasConnected && !selfDisconnectRef.current && !isExpectedServiceSwitch()) {
+            showMessage("🔌 Връзката с Google Drive беше прекъсната. Свържете се отново, ако желаете.");
+          }
+          selfDisconnectRef.current = false;
         }
       });
       subscription = data.subscription;
@@ -88,8 +97,9 @@ export function useGoogleDrive() {
   };
 
   const disconnect = () => {
+    selfDisconnectRef.current = true;
     signOutFromGoogle();
-    setConnected(false);
+    setConnectedBoth(false);
     setAutoSync("off");
     saveSettings("off");
     showMessage("🔌 Не сте свързани с Google Drive.");
