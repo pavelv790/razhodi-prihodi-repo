@@ -19,12 +19,20 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
   const selectAll = () => setSelected(pendingItems.map((_, i) => i));
   const deselectAll = () => setSelected([]);
 
+  const hasInvalidAmount = selected.some((i) => {
+    const item = pendingItems[i];
+    if (!item.variableAmount) return false;
+    const val = parseFloat(amounts[i]);
+    return !amounts[i] || isNaN(val) || val <= 0;
+  });
+
   const handleConfirm = () => {
+    if (hasInvalidAmount) return;
     const toAdd = selected.map((originalIndex) => {
       const item = pendingItems[originalIndex];
       return {
         ...item,
-        amount: item.variableAmount ? parseFloat(amounts[originalIndex]) || 0 : item.amount,
+        amount: item.variableAmount ? parseFloat(amounts[originalIndex]) : item.amount,
       };
     });
     onConfirm(toAdd);
@@ -100,8 +108,14 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex gap-2">
-          <button onClick={handleConfirm} disabled={selected.length === 0}
+        <div className="px-5 py-4 border-t border-gray-100 flex-shrink-0 flex flex-col gap-2">
+          {hasInvalidAmount && (
+            <p className="text-xs text-red-500 px-1">
+              ⚠️ Въведете валидна сума за всички избрани транзакции с променлива сума.
+            </p>
+          )}
+          <div className="flex gap-2">
+          <button onClick={handleConfirm} disabled={selected.length === 0 || hasInvalidAmount}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-40">
             Добави избраните ({selected.length})
           </button>
@@ -109,6 +123,7 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
             className="px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
             Затвори
           </button>
+          </div>
         </div>
       </div>
     </div>
