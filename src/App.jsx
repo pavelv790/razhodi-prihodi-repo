@@ -119,6 +119,7 @@ const App = () => {
   const [pendingMergeProfileId, setPendingMergeProfileId] = useState(null);
   const [localTransactionCounts, setLocalTransactionCounts] = useState({});
   const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
+  const [nameOnlyMatchIds, setNameOnlyMatchIds] = useState([]);
   const [backupReminderInterval, setBackupReminderInterval] = useState(
     () => localStorage.getItem("backup_reminder_interval") ?? "weekly"
   );
@@ -577,11 +578,53 @@ const App = () => {
     setLastLocalBackupDate(now);
   };
 
+  const normalizeBackupProfileIds = (data) => {
+    const idMap = {};
+    const remappedIds = [];
+    const newProfiles = (data.profiles || []).map((bp) => {
+      const lp = profiles.find((p) => p.id !== bp.id && p.name.toLowerCase() === bp.name.toLowerCase());
+      if (lp) {
+        idMap[bp.id] = lp.id;
+        remappedIds.push(lp.id);
+        return { ...bp, id: lp.id };
+      }
+      return bp;
+    });
+    if (Object.keys(idMap).length === 0) return { data, remappedIds: [] };
+    const remapId = (id) => idMap[id] || id;
+    const newData = {
+      ...data,
+      profiles: newProfiles,
+      activeProfileId: remapId(data.activeProfileId),
+      transactions: (data.transactions || []).map((t) => ({ ...t, profileId: remapId(t.profileId) })),
+      savedFilters: (data.savedFilters || []).map((f) => ({ ...f, profileId: remapId(f.profileId) })),
+      recurringItems: (data.recurringItems || []).map((r) => ({ ...r, profileId: remapId(r.profileId) })),
+    };
+    if (data.profileCategories) {
+      const remapped = {};
+      Object.entries(data.profileCategories).forEach(([id, val]) => { remapped[remapId(id)] = val; });
+      newData.profileCategories = remapped;
+    }
+    if (data.profileCurrencies) {
+      const remapped = {};
+      Object.entries(data.profileCurrencies).forEach(([id, val]) => { remapped[remapId(id)] = val; });
+      newData.profileCurrencies = remapped;
+    }
+    if (data.profileBudgets) {
+      const remapped = {};
+      Object.entries(data.profileBudgets).forEach(([id, val]) => { remapped[remapId(id)] = val; });
+      newData.profileBudgets = remapped;
+    }
+    return { data: newData, remappedIds };
+  };
+
   const handleBackupFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const data = await importBackup(file);
+      const rawData = await importBackup(file);
+      const { data, remappedIds } = normalizeBackupProfileIds(rawData);
+      setNameOnlyMatchIds(remappedIds);
       setPendingBackup(data);
 
       // Намери профили които съществуват и в приложението, и в резервнптп копие
@@ -1114,8 +1157,10 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const data = await driveDownloadBackup(activeProfile?.name);
-                          if (data) {
+                          const rawData = await driveDownloadBackup(activeProfile?.name);
+                          if (rawData) {
+                            const { data, remappedIds } = normalizeBackupProfileIds(rawData);
+                            setNameOnlyMatchIds(remappedIds);
                             setPendingBackup(data);
                             const conflicts = (data.profiles || []).filter((bp) =>
                               profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
@@ -1295,8 +1340,10 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const data = await supabaseDownloadBackup(activeProfile?.name);
-                          if (data) {
+                          const rawData = await supabaseDownloadBackup(activeProfile?.name);
+                          if (rawData) {
+                            const { data, remappedIds } = normalizeBackupProfileIds(rawData);
+                            setNameOnlyMatchIds(remappedIds);
                             setPendingBackup(data);
                             const conflicts = (data.profiles || []).filter((bp) =>
                               profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
@@ -1576,6 +1623,13 @@ const App = () => {
               {conflictProfiles.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl p-3 border border-gray-200">
                   <p className="text-sm font-semibold text-gray-700 mb-2">👤 {p.name}</p>
+                  {nameOnlyMatchIds.includes(p.id) && (
+                    <div className="bg-yellow-50 border border-yellow-300 rounded-lg px-3 py-2 mb-2">
+                      <p className="text-xs text-yellow-700">
+                        ⚠️ Забелязахме друг профил със същото име — сигурен ли си, че е един и същ човек? Ако не си сигурен, избери "Запази само локалните данни".
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1.5">
                     <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                       <input
@@ -1619,7 +1673,7 @@ const App = () => {
                 Продължи
               </button>
               <button
-                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; }}
+                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setNameOnlyMatchIds([]); }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
