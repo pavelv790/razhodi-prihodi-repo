@@ -43,6 +43,7 @@ const TransactionForm = ({
   const successTimerRef = useRef(null);
   const savedStickyDateRef = useRef(null);
   const isSubmittingRef = useRef(false);
+  const amountTouchedRef = useRef(false);
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
@@ -86,6 +87,7 @@ const TransactionForm = ({
       setDescription(editingTransaction.description || "");
       setErrors({});
       setShowExtra(true);
+      amountTouchedRef.current = false;
     }
   }, [editingTransaction]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -111,10 +113,11 @@ const TransactionForm = ({
     if (!validate()) return;
     isSubmittingRef.current = true;
     setTimeout(() => { isSubmittingRef.current = false; }, 800);
+    const shouldConvert = !editingTransaction || amountTouchedRef.current;
     const transaction = {
       type,
       category,
-      amount: convert(amount),
+      amount: shouldConvert ? convert(amount) : Number(amount),
       date,
       description: description.trim(),
     };
@@ -151,6 +154,7 @@ const TransactionForm = ({
     savedStickyDateRef.current = null;
     setDescription("");
     setErrors({});
+    amountTouchedRef.current = false;
     setShowCategoryDropdown(false);
     setShowExtra(false);
     if (onCancelEdit) onCancelEdit();
@@ -267,7 +271,7 @@ const TransactionForm = ({
             type="number"
             placeholder="0.00"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => { setAmount(e.target.value); amountTouchedRef.current = true; }}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
             min="0"
             step="0.01"
