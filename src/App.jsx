@@ -379,6 +379,34 @@ const App = () => {
           setExpenseCategoriesFromBackup(cats.expense || []);
           setIncomeCategoriesFromBackup(cats.income || []);
         }
+        // Валута
+        const profileCurrencyData = pendingBackup.profileCurrencies?.[bp.id] || (pendingBackup.currency ? { currency: pendingBackup.currency, rate: pendingBackup.rate } : null);
+        if (profileCurrencyData) {
+          if (bp.id === activeProfileId) {
+            restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
+          } else {
+            const db = await openDB();
+            await new Promise((resolve) => {
+              const tx = db.transaction("currency", "readwrite");
+              tx.objectStore("currency").put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate });
+              tx.oncomplete = resolve;
+            });
+          }
+        }
+        // Бюджети
+        const profileBudgetsData = pendingBackup.profileBudgets?.[bp.id] || pendingBackup.budgets || null;
+        if (profileBudgetsData) {
+          if (bp.id === activeProfileId) {
+            restoreBudgets(profileBudgetsData);
+          } else {
+            const db = await openDB();
+            await new Promise((resolve) => {
+              const tx = db.transaction("budgets", "readwrite");
+              tx.objectStore("budgets").put({ id: bp.id, ...profileBudgetsData });
+              tx.oncomplete = resolve;
+            });
+          }
+        }
         // Филтри
         if (pendingBackup.savedFilters) {
           const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
@@ -485,7 +513,32 @@ const App = () => {
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => resolve([]);
     });
-      
+
+    const allCurrencies = await new Promise((resolve) => {
+      const tx = db.transaction("currency", "readonly");
+      const req = tx.objectStore("currency").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+    const allProfileCurrencies = {};
+    allCurrencies.forEach((entry) => {
+      allProfileCurrencies[entry.id] = { currency: entry.currency, rate: entry.rate };
+    });
+    allProfileCurrencies[activeProfileId] = { currency, rate };
+
+    const allBudgetsRecords = await new Promise((resolve) => {
+      const tx = db.transaction("budgets", "readonly");
+      const req = tx.objectStore("budgets").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+    const allProfileBudgets = {};
+    allBudgetsRecords.forEach((entry) => {
+      const { id, ...rest } = entry;
+      allProfileBudgets[id] = rest;
+    });
+    allProfileBudgets[activeProfileId] = budgets;
+
     return {
       version: "1.5",
       date: new Date().toISOString(),
@@ -499,6 +552,8 @@ const App = () => {
       currency,
       rate,
       budgets,
+      profileCurrencies: allProfileCurrencies,
+      profileBudgets: allProfileBudgets,
       recurringItems: allRecurringItems,
     };
   };
@@ -516,7 +571,7 @@ const App = () => {
 
   const handleBackupExport = async () => {
     const data = await buildBackupData();
-    exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
+    exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories, data.profileCurrencies, data.profileBudgets);
     const now = new Date().toISOString();
     localStorage.setItem("last_local_backup_date", now);
     setLastLocalBackupDate(now);
@@ -576,30 +631,32 @@ const App = () => {
         setExpenseCategoriesFromBackup(cats.expense || []);
         setIncomeCategoriesFromBackup(cats.income || []);
       }
-      if (backupData.currency) {
+      const profileCurrencyData = backupData.profileCurrencies?.[bp.id] || (backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
+      if (profileCurrencyData) {
         if (bp.id === activeProfileId) {
-          restoreCurrency(backupData.currency, backupData.rate);
+          restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
         } else {
           const db = await openDB();
           await new Promise((resolve) => {
             const tx = db.transaction("currency", "readwrite");
-            tx.objectStore("currency").put({ id: bp.id, currency: backupData.currency, rate: backupData.rate });
+            tx.objectStore("currency").put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate });
             tx.oncomplete = resolve;
           });
         }
       }
-if (backupData.budgets) {
-  if (bp.id === activeProfileId) {
-    restoreBudgets(backupData.budgets);
-  } else {
-    const db = await openDB();
-    await new Promise((resolve) => {
-      const tx = db.transaction("budgets", "readwrite");
-      tx.objectStore("budgets").put({ id: bp.id, ...backupData.budgets });
-      tx.oncomplete = resolve;
-    });
-  }
-}
+      const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
+      if (profileBudgetsData) {
+        if (bp.id === activeProfileId) {
+          restoreBudgets(profileBudgetsData);
+        } else {
+          const db = await openDB();
+          await new Promise((resolve) => {
+            const tx = db.transaction("budgets", "readwrite");
+            tx.objectStore("budgets").put({ id: bp.id, ...profileBudgetsData });
+            tx.oncomplete = resolve;
+          });
+        }
+      }
     }
 
     if (choice === "merge") {
@@ -1655,7 +1712,7 @@ if (backupData.budgets) {
               <button
                 onClick={async () => {
                   const data = await buildBackupData();
-                  exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories);
+                  exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories, data.profileCurrencies, data.profileBudgets);
                   const now = new Date().toISOString();
                   localStorage.setItem("last_local_backup_date", now);
                   setLastLocalBackupDate(now);
