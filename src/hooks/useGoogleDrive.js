@@ -16,7 +16,7 @@ const STORAGE_KEY = "google_drive_settings";
 export function useGoogleDrive() {
   const [connected, setConnected] = useState(false);
   const connectedRef = useRef(false);
-  const selfDisconnectRef = useRef(false);
+  const selfDisconnectUntilRef = useRef(0);
   const setConnectedBoth = (val) => { connectedRef.current = val; setConnected(val); };
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -59,10 +59,10 @@ export function useGoogleDrive() {
         } else {
           const wasConnected = connectedRef.current;
           setConnectedBoth(false);
-          if (wasConnected && !selfDisconnectRef.current && !isExpectedServiceSwitch()) {
+          const isSelfDisconnect = Date.now() < selfDisconnectUntilRef.current;
+          if (wasConnected && !isSelfDisconnect && !isExpectedServiceSwitch()) {
             showMessage("🔌 Връзката с Google Drive беше прекъсната. Свържете се отново, ако желаете.");
           }
-          selfDisconnectRef.current = false;
         }
       });
       subscription = data.subscription;
@@ -97,7 +97,7 @@ export function useGoogleDrive() {
   };
 
   const disconnect = () => {
-    selfDisconnectRef.current = true;
+    selfDisconnectUntilRef.current = Date.now() + 5000;
     signOutFromGoogle();
     setConnectedBoth(false);
     setAutoSync("off");

@@ -18,7 +18,7 @@ const STORAGE_KEY = "supabase_storage_settings";
 export function useSupabaseStorage() {
   const [connected, setConnected] = useState(false);
   const connectedRef = useRef(false);
-  const selfDisconnectRef = useRef(false);
+  const selfDisconnectUntilRef = useRef(0);
   const setConnectedBoth = (val) => { connectedRef.current = val; setConnected(val); };
   const [enabled, setEnabled] = useState(
     () => localStorage.getItem("supabase_storage_enabled") === "true"
@@ -61,10 +61,10 @@ export function useSupabaseStorage() {
         if (!isConnected) {
           const wasConnected = connectedRef.current;
           setConnectedBoth(false);
-          if (wasConnected && !selfDisconnectRef.current && !isExpectedServiceSwitch()) {
+          const isSelfDisconnect = Date.now() < selfDisconnectUntilRef.current;
+          if (wasConnected && !isSelfDisconnect && !isExpectedServiceSwitch()) {
             showMessage("🔌 Връзката с Облака беше прекъсната. Свържете се отново, ако желаете.");
           }
-          selfDisconnectRef.current = false;
         } else {
           setConnectedBoth(true);
         }
@@ -182,7 +182,7 @@ export function useSupabaseStorage() {
   };
 
   const disconnectSupabase = async () => {
-    selfDisconnectRef.current = true;
+    selfDisconnectUntilRef.current = Date.now() + 5000;
     await signOutFromSupabase();
     setConnectedBoth(false);
     setEnabled(false);
