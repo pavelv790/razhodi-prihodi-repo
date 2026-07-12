@@ -164,6 +164,10 @@ const FilterBar = ({
     onFilter(filters);
   }, [filters, onFilter]);
 
+  useEffect(() => {
+    setDescriptionSearch(filters.description || "");
+  }, [filters.description]);
+
   const toggleCategory = (name, type) => {
     const key = `${name}::${type}`;
     setFilters((prev) => {
