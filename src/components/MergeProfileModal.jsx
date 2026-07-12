@@ -230,7 +230,11 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
       setSelectedDuplicates([]);
       setStep(3);
     } else {
-      onMerge(txs, backupExpenseCategories, backupIncomeCategories);
+      const toImport = txs.map((t) => ({
+        ...t,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      }));
+      onMerge(toImport, backupExpenseCategories, backupIncomeCategories);
       onClose();
     }
   };
@@ -239,7 +243,10 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     const toImport = [
       ...uniqueTransactions,
       ...duplicates.filter((t) => selectedDuplicates.includes(t.id)),
-    ];
+    ].map((t) => ({
+      ...t,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    }));
     if (toImport.length === 0) { setError("Няма избрани транзакции за импорт."); setStep(2); return; }
     onMerge(toImport, backupExpenseCategories, backupIncomeCategories);
     onClose();
