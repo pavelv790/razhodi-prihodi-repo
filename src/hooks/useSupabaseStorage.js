@@ -177,13 +177,13 @@ export function useSupabaseStorage() {
   };
 
   const shouldRunDaily = () => {
-    const key = `supabase_daily_backup_${new Date().toISOString().slice(0, 10)}`;
-    return !localStorage.getItem(key);
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem("supabase_daily_backup_last") !== today;
   };
 
   const markDailyDone = () => {
-    const key = `supabase_daily_backup_${new Date().toISOString().slice(0, 10)}`;
-    localStorage.setItem(key, "true");
+    const today = new Date().toISOString().slice(0, 10);
+    localStorage.setItem("supabase_daily_backup_last", today);
   };
 
   const toggleAutoSync = (val) => {

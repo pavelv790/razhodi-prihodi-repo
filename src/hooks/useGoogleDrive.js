@@ -69,13 +69,13 @@ export function useGoogleDrive() {
   };
 
   const shouldRunDaily = () => {
-    const key = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
-    return !localStorage.getItem(key);
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem("drive_daily_backup_last") !== today;
   };
 
   const markDailyDone = () => {
-    const key = `drive_daily_backup_${new Date().toISOString().slice(0, 10)}`;
-    localStorage.setItem(key, "true");
+    const today = new Date().toISOString().slice(0, 10);
+    localStorage.setItem("drive_daily_backup_last", today);
   };
 
   const connect = async () => {
