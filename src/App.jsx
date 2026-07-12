@@ -2,6 +2,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirectly } from "./hooks/useCategories";
+import { deleteProfileBudgets } from "./hooks/useBudgets";
+import { deleteProfileSavedFilters } from "./hooks/useSavedFilters";
+import { deleteProfileCurrency } from "./hooks/useCurrency";
 import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
@@ -327,6 +330,9 @@ const App = () => {
     await deleteAllTransactionsByProfile(id);
     await deleteAllRecurringByProfile(id);
     await deleteProfileCategories(id);
+    await deleteProfileSavedFilters(id);
+    await deleteProfileCurrency(id);
+    await deleteProfileBudgets(id);
     await deleteProfile(id);
   };
 

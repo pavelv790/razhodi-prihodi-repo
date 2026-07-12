@@ -40,6 +40,26 @@ const deleteOne = async (id) => {
   } catch { console.error("Грешка при изтриване на филтър"); }
 };
 
+export const deleteProfileSavedFilters = async (profileId) => {
+  try {
+    const db = await openDB();
+    const all = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+    const toDelete = all.filter((f) => f.profileId === profileId).map((f) => f.id);
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      toDelete.forEach((id) => store.delete(id));
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch { console.error("Грешка при изтриване на филтри на профил"); }
+};
+
 export const useSavedFilters = (profileId) => {
   const [savedFilters, setSavedFilters] = useState([]);
 

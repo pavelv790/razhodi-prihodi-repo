@@ -28,6 +28,18 @@ const save = async (profileId, data) => {
   } catch { console.error("Грешка при запис на валута"); }
 };
 
+export const deleteProfileCurrency = async (profileId) => {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(profileId);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch { console.error("Грешка при изтриване на валута на профил"); }
+};
+
 export const useCurrency = (profileId) => {
   const [currency, setCurrency] = useState("EUR");
   const [rate, setRate] = useState(1);

@@ -32,6 +32,20 @@ const saveToDB = async (profileId, data) => {
   }
 };
 
+export const deleteProfileBudgets = async (profileId) => {
+  try {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(profileId);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    console.error("Грешка при изтриване на бюджети");
+  }
+};
+
 export const useBudgets = (profileId) => {
   const today = new Date();
   const defaultBudgets = {
