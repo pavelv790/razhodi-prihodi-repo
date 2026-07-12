@@ -384,6 +384,9 @@ const App = () => {
           await restoreRecurring(profileRecurring, bp.id);
         }
       }
+      setRestoreDoneType(pendingNewProfiles.map((p) => ({ name: p.name, choice: "backup" })));
+    } else {
+      setRestoreDoneType([{ name: "", choice: "backup" }]);
     }
     setConflictProfiles([]);
     setConflictChoices({});
