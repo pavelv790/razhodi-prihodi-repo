@@ -11,7 +11,7 @@ import {
   resetPassword,
 } from "../utils/supabaseAuth";
 import { supabase } from "../utils/supabase";
-import { isExpectedServiceSwitch } from "../utils/crossServiceSwitch";
+import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "supabase_storage_settings";
 
@@ -183,12 +183,14 @@ export function useSupabaseStorage() {
 
   const disconnectSupabase = async () => {
     selfDisconnectUntilRef.current = Date.now() + 5000;
+    markExpectedServiceSwitch();
     await signOutFromSupabase();
     setConnectedBoth(false);
     setEnabled(false);
     setAutoSync("off");
     saveSettings("off");
     localStorage.setItem("supabase_storage_enabled", "false");
+    showMessage("🔌 Излязохте от Облака.");
   };
 
   const shouldRunDaily = () => {

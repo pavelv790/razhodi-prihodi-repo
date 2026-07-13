@@ -9,7 +9,7 @@ import {
   setAccessToken,
 } from "../utils/googleDrive";
 import { supabase } from "../utils/supabase";
-import { isExpectedServiceSwitch } from "../utils/crossServiceSwitch";
+import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "google_drive_settings";
 
@@ -98,6 +98,7 @@ export function useGoogleDrive() {
 
   const disconnect = () => {
     selfDisconnectUntilRef.current = Date.now() + 5000;
+    markExpectedServiceSwitch();
     signOutFromGoogle();
     setConnectedBoth(false);
     setAutoSync("off");
