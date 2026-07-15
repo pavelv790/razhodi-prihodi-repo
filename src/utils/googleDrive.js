@@ -60,14 +60,21 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Екранира стойност за вграждане в Google Drive API заявка (q=...)
+// според изискванията на синтаксиса: обратна наклонена черта и единична кавичка
+function escapeDriveQuery(str) {
+  return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
 function isExactBackupFileName(fileName, prefix) {
   const pattern = new RegExp(`^${escapeRegex(prefix)}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`);
   return pattern.test(fileName);
 }
 
 async function findExistingFileByProfile(prefix, folderId) {
+  const safePrefix = escapeDriveQuery(prefix);
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=50`,
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();
@@ -121,8 +128,9 @@ export async function downloadLatestBackupFromDrive(profileName) {
   const profileSuffix = profileName ? `_${profileName}` : "";
   const prefix = `Finances_Backup${profileSuffix}`;
 
+  const safePrefix = escapeDriveQuery(prefix);
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${prefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=50`,
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await res.json();

@@ -23,20 +23,22 @@ function transliterate(str) {
   return str.split('').map(c => map[c] ?? c).join('');
 }
 
-function buildFileName(profileName) {
+function buildFileName(profileName, profileId) {
   const today = new Date();
   const day = String(today.getDate()).padStart(2, "0");
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const year = today.getFullYear();
   const safeName = profileName ? transliterate(profileName) : "";
-  const profileSuffix = safeName ? `_${safeName}` : "";
+  const idSuffix = profileId ? `_${profileId.slice(-4)}` : "";
+  const profileSuffix = safeName ? `_${safeName}${idSuffix}` : "";
   return `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
 }
 
-// Връща prefix за търсене без датата (напр. "Finances_Backup_Павел")
-function buildFilePrefix(profileName) {
+// Връща prefix за търсене без датата (напр. "Finances_Backup_Павел_7890")
+function buildFilePrefix(profileName, profileId) {
   const safeName = profileName ? transliterate(profileName) : "";
-  const profileSuffix = safeName ? `_${safeName}` : "";
+  const idSuffix = profileId ? `_${profileId.slice(-4)}` : "";
+  const profileSuffix = safeName ? `_${safeName}${idSuffix}` : "";
   return `Finances_Backup${profileSuffix}`;
 }
 
@@ -49,13 +51,13 @@ function isExactBackupFileName(fileName, prefix) {
   return pattern.test(fileName);
 }
 
-export async function uploadBackupToSupabase(backupData, profileName) {
+export async function uploadBackupToSupabase(backupData, profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
 
   const userId = user.id;
-  const newFileName = buildFileName(profileName);
-  const prefix = buildFilePrefix(profileName);
+  const newFileName = buildFileName(profileName, profileId);
+  const prefix = buildFilePrefix(profileName, profileId);
 
   // Намери и изтрий стария файл (ако съществува) — търсим по prefix без дата
   const { data: existingFiles } = await supabase.storage
@@ -90,12 +92,12 @@ export async function uploadBackupToSupabase(backupData, profileName) {
   return newFileName;
 }
 
-export async function downloadBackupFromSupabase(profileName) {
+export async function downloadBackupFromSupabase(profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
 
   const userId = user.id;
-  const prefix = buildFilePrefix(profileName);
+  const prefix = buildFilePrefix(profileName, profileId);
 
   // Намери файла по prefix
   const { data: files, error: listError } = await supabase.storage

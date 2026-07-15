@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { User, Plus, Check, X, Trash2, Edit2, Download, Copy } from "lucide-react";
 
-const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete, onRename, onClose, onOpenMerge, onOpenCopy }) => {
+const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete, onRename, onClose, onOpenMerge, onOpenCopy, canClose = true }) => {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState("");
@@ -46,10 +46,19 @@ const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete,
             <User className="w-4 h-4 text-gray-500" />
             <h2 className="text-base font-semibold text-gray-700">Профили</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
-            <X className="w-5 h-5" />
-          </button>
+          {canClose && (
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
+        {!canClose && (
+          <div className="px-5 pt-3">
+            <p className="text-xs text-blue-600 bg-blue-50 rounded-xl px-3 py-2">
+              👋 Създайте първи профил, за да продължите.
+            </p>
+          </div>
+        )}
 
         {/* Profile list */}
         <div className="px-5 py-4 space-y-2 max-h-72 overflow-y-auto">

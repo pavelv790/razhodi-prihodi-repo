@@ -270,19 +270,25 @@ const App = () => {
     
     if (supabaseAutoSync === "onChange") {
       const profileNameAtTrigger = activeProfile?.name;
+      const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
+        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger, profileIdAtTrigger);
+        if (success) setLastSupabaseUploadDate(new Date().toISOString());
       }, 1500);
       return () => clearTimeout(timer);
     }
 
     if (supabaseAutoSync === "daily" && supabaseShouldRunDaily()) {
       const profileNameAtTrigger = activeProfile?.name;
+      const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger);
-        if (success) supabaseMarkDailyDone();
+        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger, profileIdAtTrigger);
+        if (success) {
+          supabaseMarkDailyDone();
+          setLastSupabaseUploadDate(new Date().toISOString());
+        }
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -574,7 +580,7 @@ const App = () => {
     await driveUploadBackup(await buildBackupData(), activeProfile?.name);
   };
   const handleSupabaseUpload = async () => {
-    const success = await supabaseUploadBackup(await buildBackupData(), activeProfile?.name);
+    const success = await supabaseUploadBackup(await buildBackupData(), activeProfile?.name, activeProfileId);
     if (success) {
       const now = new Date().toISOString();
       setLastSupabaseUploadDate(now);
@@ -1373,7 +1379,7 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const rawData = await supabaseDownloadBackup(activeProfile?.name);
+                          const rawData = await supabaseDownloadBackup(activeProfile?.name, activeProfileId);
                           if (rawData) {
                             const { data, remappedIds } = normalizeBackupProfileIds(rawData);
                             setNameOnlyMatchIds(remappedIds);
@@ -1910,6 +1916,7 @@ const App = () => {
           onClose={() => setShowProfileModal(false)}
           onOpenMerge={() => setShowMergeModal(true)}
           onOpenCopy={() => setShowCopyModal(true)}
+          canClose={profiles.length > 0}
         />
       )}
       {showRecurringModal && (

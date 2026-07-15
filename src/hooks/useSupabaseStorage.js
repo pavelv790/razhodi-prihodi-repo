@@ -210,7 +210,7 @@ export function useSupabaseStorage() {
     saveSettings(val);
   };
 
-  const uploadBackup = useCallback(async (backupData, profileName) => {
+  const uploadBackup = useCallback(async (backupData, profileName, profileId) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return false;
@@ -218,7 +218,7 @@ export function useSupabaseStorage() {
     setUploadLoading(true);
     setMessage("");
     try {
-      await uploadBackupToSupabase(backupData, profileName);
+      await uploadBackupToSupabase(backupData, profileName, profileId);
       localStorage.setItem("last_supabase_upload_date", new Date().toISOString());
       showMessage("✅ Качено резервно копие в облака.");
       return true;
@@ -230,7 +230,7 @@ export function useSupabaseStorage() {
     }
   }, [connected]);
 
-  const downloadBackup = useCallback(async (profileName) => {
+  const downloadBackup = useCallback(async (profileName, profileId) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return null;
@@ -238,7 +238,7 @@ export function useSupabaseStorage() {
     setDownloadLoading(true);
     setMessage("");
     try {
-      const data = await downloadBackupFromSupabase(profileName);
+      const data = await downloadBackupFromSupabase(profileName, profileId);
       showMessage("✅ Резервно копие изтеглено успешно.");
       return data;
     } catch (err) {
