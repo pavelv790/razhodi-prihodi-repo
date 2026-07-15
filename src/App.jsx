@@ -306,7 +306,10 @@ const App = () => {
 
     let shouldShow = false;
     if (!last) {
-      shouldShow = true;
+      // Първо включване на брояча — не показваме веднага, а стартираме отброяването
+      // от сега, за да не засипваме нов потребител с напомняне след първата транзакция
+      localStorage.setItem("last_backup_reminder_date", now.toISOString());
+      return;
     } else if (interval === "weekly") {
       shouldShow = (now - last) >= 7 * 24 * 60 * 60 * 1000;
     } else if (interval === "monthly") {
