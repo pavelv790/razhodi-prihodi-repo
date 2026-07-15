@@ -31,9 +31,15 @@ const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allT
       expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + Number(t.amount);
     });
 
-  const totalLimit = budgets?.totalLimit ? parseFloat(budgets.totalLimit) : null;
+  const totalLimit = budgets?.totalLimit !== "" && budgets?.totalLimit !== undefined && budgets?.totalLimit !== null
+    ? parseFloat(budgets.totalLimit)
+    : null;
   const totalExceeded = totalLimit !== null && filteredBudgetExpense > totalLimit;
-  const totalPercent = totalLimit ? Math.round((filteredBudgetExpense / totalLimit) * 100) : null;
+  const totalPercent = totalLimit === null
+    ? null
+    : totalLimit === 0
+    ? (filteredBudgetExpense > 0 ? "∞" : "0")
+    : Math.round((filteredBudgetExpense / totalLimit) * 100);
 
   const categoryLimits = budgets?.categoryLimits || {};
   const exceededCategories = Object.entries(categoryLimits)

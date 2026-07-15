@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { PlusCircle, Save, CheckCircle, ChevronDown, Calendar, Globe, User } from "lucide-react";
 import { getTodayString, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
@@ -47,26 +47,30 @@ const TransactionForm = ({
 
   const categories = type === "expense" ? expenseCategories : incomeCategories;
 
-  const oneYearAgo = new Date();
-  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+  const categoriesWithCount = useMemo(() => {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-  const recentTransactions = (transactions || []).filter((t) => {
-    const [d, m, y] = t.date.split("/");
-    return new Date(`${y}-${m}-${d}`) >= oneYearAgo;
-  });
+    const recentTransactions = (transactions || []).filter((t) => {
+      const [d, m, y] = t.date.split("/");
+      return new Date(`${y}-${m}-${d}`) >= oneYearAgo;
+    });
 
-  const categoriesWithCount = categories.map((cat) => ({
-    name: cat,
-    count: recentTransactions.filter((t) => t.category === cat && t.type === type).length,
-  }));
+    return categories.map((cat) => ({
+      name: cat,
+      count: recentTransactions.filter((t) => t.category === cat && t.type === type).length,
+    }));
+  }, [transactions, categories, type]);
 
-  const filteredCategories = categoriesWithCount
-    .filter((cat) => cat.name.toLowerCase().startsWith(categorySearch.toLowerCase()))
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, "bg", { sensitivity: "base" });
-    })
-    .map((cat) => cat.name);
+  const filteredCategories = useMemo(() => {
+    return categoriesWithCount
+      .filter((cat) => cat.name.toLowerCase().startsWith(categorySearch.toLowerCase()))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.name.localeCompare(b.name, "bg", { sensitivity: "base" });
+      })
+      .map((cat) => cat.name);
+  }, [categoriesWithCount, categorySearch]);
 
   // Показва известие при зареждане ако валутата не е EUR
   useEffect(() => {
