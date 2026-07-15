@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X, Calendar, ChevronDown, Bookmark, Trash2 } from "lucide-react";
-import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
+import { getFirstDayOfMonth, getLastDayOfMonth, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
 
 const CategoryDropdown = ({
@@ -248,6 +248,9 @@ const FilterBar = ({
             onChange={(val) => setFilters((prev) => ({ ...prev, fromDate: val }))}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
+          {filters.fromDate && !isValidDate(filters.fromDate) && (
+            <p className="text-xs text-orange-500 mt-1">⚠️ Непълна дата — не се прилага към филтъра</p>
+          )}
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">До дата</label>
@@ -256,6 +259,9 @@ const FilterBar = ({
             onChange={(val) => setFilters((prev) => ({ ...prev, toDate: val }))}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
           />
+          {filters.toDate && !isValidDate(filters.toDate) && (
+            <p className="text-xs text-orange-500 mt-1">⚠️ Непълна дата — не се прилага към филтъра</p>
+          )}
         </div>
       </div>
       {/* Търсене по описание */}
@@ -411,8 +417,8 @@ const FilterBar = ({
       {isFiltered && (
         <div className="mt-3 text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
           ⚡ Активен филтър
-          {filters.fromDate && ` • От: ${filters.fromDate}`}
-          {filters.toDate && ` • До: ${filters.toDate}`}
+          {filters.fromDate && isValidDate(filters.fromDate) && ` • От: ${filters.fromDate}`}
+          {filters.toDate && isValidDate(filters.toDate) && ` • До: ${filters.toDate}`}
           {selectedExpenses.length > 0 && ` • Разходи: ${selectedExpenses.length}`}
           {selectedIncomes.length > 0 && ` • Приходи: ${selectedIncomes.length}`}
           {filters.description?.trim() && ` • Описание: ${filters.description.trim()}`}

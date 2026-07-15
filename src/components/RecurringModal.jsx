@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Plus, Trash2, Edit2, Check, RefreshCw } from "lucide-react";
-import { getTodayString } from "../utils/formatters";
+import { getTodayString, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
 
 const PERIOD_LABELS = {
@@ -48,7 +48,8 @@ const RecurringModal = ({
   const handleSubmit = async () => {
     if (!form.category.trim()) { setError("Изберете категория."); return; }
     if (!form.variableAmount && (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)) { setError("Въведете валидна сума."); return; }
-    if (!form.startDate) { setError("Въведете начална дата."); return; }
+    if (!form.startDate || !isValidDate(form.startDate)) { setError("Въведете валидна начална дата (ДД/ММ/ГГГГ)."); return; }
+    if (form.endDate && !isValidDate(form.endDate)) { setError("Въведете валидна крайна дата (ДД/ММ/ГГГГ) или я оставете празна."); return; }
     if (form.period === "custom" && (!form.customDays || Number(form.customDays) < 1)) { setError("Въведете брой дни."); return; }
     if (form.endDate && form.startDate && form.endDate.length === 10 && form.startDate.length === 10) {
       const [ed, em, ey] = form.endDate.split("/").map(Number);

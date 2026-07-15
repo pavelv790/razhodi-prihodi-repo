@@ -45,7 +45,7 @@ export function useSupabaseStorage() {
     const check = async () => {
       try {
         const session = await getCurrentSession();
-        if (session?.user) {
+        if (session?.user && !session?.provider_token) {
           setConnectedBoth(true);
         }
       } catch (err) {
@@ -57,7 +57,9 @@ export function useSupabaseStorage() {
     let subscription;
     try {
       const { data } = supabase.auth.onAuthStateChange((event, session) => {
-        const isConnected = !!session?.user;
+        // Сесия с provider_token е вход през Google (Drive), не през имейл/парола (Облак) —
+        // не я броим като връзка с Облака, дори да е валидна сесия.
+        const isConnected = !!session?.user && !session?.provider_token;
         if (!isConnected) {
           const wasConnected = connectedRef.current;
           setConnectedBoth(false);

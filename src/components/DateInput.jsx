@@ -133,11 +133,26 @@ const DateInput = ({ value, onChange, className, hasError }) => {
     if (e.key === "ArrowLeft") { e.preventDefault(); monthRef.current?.focus(); }
   };
 
+  // Допълва деня/месеца с водеща нула (напр. "3" -> "03"), но само когато
+  // фокусът напусне ЦЯЛАТА дата (и трите полета), не при преминаване между тях.
+  // Изчакваме един "тик", защото relatedTarget не е надежден на всички браузъри/устройства.
+  const handleGroupBlur = () => {
+    setTimeout(() => {
+      const active = document.activeElement;
+      if (active === dayRef.current || active === monthRef.current || active === yearRef.current) return;
+      const paddedDay = day.length === 1 ? day.padStart(2, "0") : day;
+      const paddedMonth = month.length === 1 ? month.padStart(2, "0") : month;
+      if (paddedDay !== day || paddedMonth !== month) {
+        onChange(buildValue(paddedDay, paddedMonth, year));
+      }
+    }, 0);
+  };
+
   const baseClass = "text-center bg-transparent outline-none font-medium text-gray-700";
 
   return (
     <div>
-      <div className={`flex items-center border rounded-xl px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-emerald-300 bg-blue-50 w-full ${error || hasError ? "border-red-400" : "border-gray-200"}`}>
+      <div onBlur={handleGroupBlur} className={`flex items-center border rounded-xl px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-emerald-300 bg-blue-50 w-full ${error || hasError ? "border-red-400" : "border-gray-200"}`}>
         <input
           ref={dayRef}
           type="text"

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
-import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
+import { getFirstDayOfMonth, getLastDayOfMonth, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
 
 const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilterCategories, isFiltered }) => {
@@ -40,21 +40,13 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
   };
 
   const handleSave = () => {
-    if (fromDate && fromDate.length === 10) {
-      const [d, m, y] = fromDate.split("/").map(Number);
-      const date = new Date(y, m - 1, d);
-      if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
-        setDateError("Невалидна начална дата.");
-        return;
-      }
+    if (fromDate && !isValidDate(fromDate)) {
+      setDateError("Невалидна или непълна начална дата.");
+      return;
     }
-    if (toDate && toDate.length === 10) {
-      const [d, m, y] = toDate.split("/").map(Number);
-      const date = new Date(y, m - 1, d);
-      if (!d || !m || !y || date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
-        setDateError("Невалидна крайна дата.");
-        return;
-      }
+    if (toDate && !isValidDate(toDate)) {
+      setDateError("Невалидна или непълна крайна дата.");
+      return;
     }
     setDateError("");
     onSave({ totalLimit, categoryLimits, fromDate, toDate });

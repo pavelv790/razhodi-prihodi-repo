@@ -103,7 +103,9 @@ const App = () => {
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [pendingRecurring, setPendingRecurring] = useState([]);
-  const [showDataPanel, setShowDataPanel] = useState(false);
+  const [showDataPanel, setShowDataPanel] = useState(
+    () => localStorage.getItem("data_panel_open") === "true"
+  );
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
@@ -204,7 +206,7 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems]);
+  }, [activeProfileId, recurringItems, showRecurringModal]);
   const skipDriveSync = useRef(true);
   const skipSupabaseSync = useRef(true);
   const backupFileRef = useRef(null);
@@ -222,6 +224,9 @@ const App = () => {
     skipDriveSync.current = true;
     skipSupabaseSync.current = true;
   }, [activeProfileId]);
+  useEffect(() => {
+    localStorage.setItem("data_panel_open", String(showDataPanel));
+  }, [showDataPanel]);
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
     if (skipDriveSync.current) { skipDriveSync.current = false; return; }
@@ -929,12 +934,16 @@ const App = () => {
           ) : (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
               <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
-                <div className="px-5 py-4 border-b border-red-200">
-                  <h2 className="text-base font-semibold text-red-700">❌ Грешка</h2>
+                <div className={`px-5 py-4 border-b ${supabaseMessage.startsWith("❌") ? "border-red-200" : "border-orange-200"}`}>
+                  <h2 className={`text-base font-semibold ${supabaseMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
+                    {supabaseMessage.startsWith("❌") ? "❌ Грешка" : "⚠️ Внимание!"}
+                  </h2>
                 </div>
                 <div className="px-5 py-4 space-y-3">
-                  <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-                    <p className="text-sm text-red-700">{supabaseMessage.replace(/^❌\s*/, "")}</p>
+                  <div className={`rounded-xl p-4 border ${supabaseMessage.startsWith("❌") ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
+                    <p className={`text-sm ${supabaseMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
+                      {supabaseMessage.replace(/^❌\s*/, "").replace(/^🔌\s*/, "")}
+                    </p>
                   </div>
                   <button onClick={() => supabaseSetMessage("")} className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition">Разбрах</button>
                 </div>
@@ -1602,6 +1611,28 @@ const App = () => {
               >
                 Потвърди ({restoreUniqueTransactions.length + restoreSelectedDuplicates.length} транзакции)
               </button>
+              <p className="text-xs text-gray-400 px-1">
+                Откажи ще спре цялото възстановяване, включително останалите профили от файла.
+              </p>
+              <button
+                onClick={() => {
+                  setShowRestoreDuplicates(false);
+                  setRestoreDuplicates([]);
+                  setRestoreUniqueTransactions([]);
+                  setRestoreSelectedDuplicates([]);
+                  setPendingMergeProfileId(null);
+                  setPendingRemainingProfiles([]);
+                  setPendingBackup(null);
+                  setConflictProfiles([]);
+                  setConflictChoices({});
+                  setPendingNewProfiles([]);
+                  pendingNewProfilesRef.current = [];
+                  setNameOnlyMatchIds([]);
+                }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
             </div>
           </div>
         </div>
@@ -1978,6 +2009,13 @@ const App = () => {
                   Това действие не може да бъде отменено.
                 </p>
               </div>
+              {(driveConnected || (supabaseConnected && supabaseEnabled)) && (
+                <div className="bg-orange-50 rounded-xl p-3 border border-orange-200">
+                  <p className="text-sm text-orange-700">
+                    ⚠️ Google Drive/Облакът няма да се обнови автоматично. Ако искате изтриването да се отрази и там, натиснете „Запази" ръчно след това.
+                  </p>
+                </div>
+              )}
               <button
                 onClick={() => {
                   replaceAllTransactions([]);
