@@ -441,7 +441,7 @@ const App = () => {
       }
       setRestoreDoneType(pendingNewProfiles.map((p) => ({ name: p.name, choice: "backup" })));
     } else {
-      setRestoreDoneType([{ name: "", choice: "backup" }]);
+      setRestoreDoneType([{ name: "", choice: "skipped" }]);
     }
     setConflictProfiles([]);
     setConflictChoices({});
@@ -1961,7 +1961,9 @@ const App = () => {
                 <div className="text-sm text-green-700 font-medium mb-1">
                   {restoreDoneType.map((r, i) => (
                     <div key={i}>
-                      {r.name === ""
+                      {r.choice === "skipped"
+                        ? "ℹ️ Профилите не бяха добавени."
+                        : r.name === ""
                         ? "✅ Данните са възстановени успешно."
                         : r.choice === "merge"
                         ? `✅ Данните за ${r.name} са обединени успешно.`
