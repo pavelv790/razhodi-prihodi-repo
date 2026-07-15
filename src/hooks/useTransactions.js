@@ -193,6 +193,7 @@ export const useTransactions = (profileId) => {
 
   return {
     transactions,
+    isLoaded,
     addTransaction,
     editTransaction,
     deleteTransaction,

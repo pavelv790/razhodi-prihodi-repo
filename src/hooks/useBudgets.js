@@ -59,15 +59,18 @@ export const useBudgets = (profileId) => {
 
   useEffect(() => {
     if (!profileId) return;
+    let cancelled = false;
     setIsLoaded(false);
     setBudgets(defaultBudgets);
     loadFromDB(profileId).then((data) => {
+      if (cancelled) return;
       if (data) {
         const { id, ...rest } = data;
         setBudgets(rest);
       }
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {

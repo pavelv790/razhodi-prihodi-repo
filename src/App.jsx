@@ -45,6 +45,7 @@ const App = () => {
   } = useProfiles();
   const {
     transactions,
+    isLoaded: transactionsLoaded,
     addTransaction,
     editTransaction,
     deleteTransaction,
@@ -60,6 +61,7 @@ const App = () => {
   const {
     expenseCategories,
     incomeCategories,
+    isLoaded: categoriesLoaded,
     addCategory,
     editCategory,
     deleteCategory,
@@ -67,7 +69,7 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories(activeProfileId);
-  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters } = useSavedFilters(activeProfileId);
+  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
   const { budgets, updateBudgets, restoreBudgets } = useBudgets(activeProfileId);
   const {
@@ -221,6 +223,7 @@ const App = () => {
     skipSupabaseSync.current = true;
   }, [activeProfileId]);
   useEffect(() => {
+    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
     if (skipDriveSync.current) { skipDriveSync.current = false; return; }
     if (!driveConnected) return;
     if (transactions.length === 0) return;
@@ -254,6 +257,7 @@ const App = () => {
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
   
   useEffect(() => {
+    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
     if (skipSupabaseSync.current) { skipSupabaseSync.current = false; return; }
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0) return;
@@ -1766,7 +1770,7 @@ const App = () => {
                       Потвърди
                     </button>
                     <button
-                      onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; }}
+                      onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setConflictProfiles([]); setConflictChoices({}); setNameOnlyMatchIds([]); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                     >
                       Откажи

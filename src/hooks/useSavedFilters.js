@@ -62,14 +62,18 @@ export const deleteProfileSavedFilters = async (profileId) => {
 
 export const useSavedFilters = (profileId) => {
   const [savedFilters, setSavedFilters] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     if (!profileId) {
       setSavedFilters([]);
+      setIsLoaded(false);
       return;
     }
+    setIsLoaded(false);
     loadAll().then((all) => {
       setSavedFilters(all.filter((f) => f.profileId === profileId));
+      setIsLoaded(true);
     });
   }, [profileId]);
 
@@ -113,5 +117,5 @@ export const useSavedFilters = (profileId) => {
     } catch { console.error("Грешка при възстановяване от файл на филтри"); }
   };
 
-  return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters };
+  return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters, isLoaded };
 };

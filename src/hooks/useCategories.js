@@ -143,6 +143,7 @@ export const useCategories = (profileId) => {
   return {
     expenseCategories,
     incomeCategories,
+    isLoaded,
     addCategory,
     editCategory,
     deleteCategory,

@@ -47,14 +47,17 @@ export const useCurrency = (profileId) => {
 
   useEffect(() => {
     if (!profileId) return;
+    let cancelled = false;
     setIsLoaded(false);
     setCurrency("EUR");
     setRate(1);
     load(profileId).then((data) => {
+      if (cancelled) return;
       setCurrency(data.currency);
       setRate(data.rate);
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {
