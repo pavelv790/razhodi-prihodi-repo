@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { openDB } from "../utils/db";
+import { useState, useEffect, useRef } from "react";
+import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "currency";
 
@@ -25,7 +25,7 @@ const save = async (profileId, data) => {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  } catch { console.error("Грешка при запис на валута"); }
+  } catch { reportDBError(); console.error("Грешка при запис на валута"); }
 };
 
 export const deleteProfileCurrency = async (profileId) => {
@@ -44,6 +44,7 @@ export const useCurrency = (profileId) => {
   const [currency, setCurrency] = useState("EUR");
   const [rate, setRate] = useState(1);
   const [isLoaded, setIsLoaded] = useState(false);
+  const loadedForProfileRef = useRef(null);
 
   useEffect(() => {
     if (!profileId) return;
@@ -51,17 +52,19 @@ export const useCurrency = (profileId) => {
     setIsLoaded(false);
     setCurrency("EUR");
     setRate(1);
+    loadedForProfileRef.current = null;
     load(profileId).then((data) => {
       if (cancelled) return;
       setCurrency(data.currency);
       setRate(data.rate);
+      loadedForProfileRef.current = profileId;
       setIsLoaded(true);
     });
     return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {
-    if (isLoaded && profileId) {
+    if (isLoaded && profileId && loadedForProfileRef.current === profileId) {
       save(profileId, { currency, rate });
     }
   }, [currency, rate, isLoaded, profileId]);

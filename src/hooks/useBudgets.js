@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { openDB } from "../utils/db";
+import { useState, useEffect, useRef } from "react";
+import { openDB, reportDBError } from "../utils/db";
 import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 
 const STORE = "budgets";
@@ -28,6 +28,7 @@ const saveToDB = async (profileId, data) => {
       tx.onerror = () => reject(tx.error);
     });
   } catch {
+    reportDBError();
     console.error("Грешка при запис на бюджети в IndexedDB");
   }
 };
@@ -56,25 +57,28 @@ export const useBudgets = (profileId) => {
   };
   const [budgets, setBudgets] = useState(defaultBudgets);
   const [isLoaded, setIsLoaded] = useState(false);
+  const loadedForProfileRef = useRef(null);
 
   useEffect(() => {
     if (!profileId) return;
     let cancelled = false;
     setIsLoaded(false);
     setBudgets(defaultBudgets);
+    loadedForProfileRef.current = null;
     loadFromDB(profileId).then((data) => {
       if (cancelled) return;
       if (data) {
         const { id, ...rest } = data;
         setBudgets(rest);
       }
+      loadedForProfileRef.current = profileId;
       setIsLoaded(true);
     });
     return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {
-    if (isLoaded && profileId) {
+    if (isLoaded && profileId && loadedForProfileRef.current === profileId) {
       saveToDB(profileId, budgets);
     }
   }, [budgets, isLoaded, profileId]);

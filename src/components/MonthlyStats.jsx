@@ -176,7 +176,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
             Период за осредняване:
           </label>
           <input
-            type="text"
+          type="text"
             inputMode="numeric"
             value={inputMonths}
             onChange={handleRollingMonthsChange}
@@ -186,6 +186,9 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
           <span className="text-xs text-gray-500">месеца</span>
           {Number(inputMonths) < 1 && inputMonths !== "" && (
             <span className="text-xs text-red-500">Въведете число по-голямо от 0</span>
+          )}
+          {Number(inputMonths) > 60 && (
+            <span className="text-xs text-orange-500">⚠️ При голям период изчислението може да отнеме време</span>
           )}
         </div>
 

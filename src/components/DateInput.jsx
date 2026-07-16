@@ -17,7 +17,7 @@ const DateInput = ({ value, onChange, className, hasError }) => {
 
   const { day, month, year } = getParts(value);
 
-  const buildValue = (d, m, y) => `${d}/${m}/${y}`;
+  const buildValue = (d, m, y) => (d === "" && m === "" && y === "" ? "" : `${d}/${m}/${y}`);
 
   const isLeapYear = (y) => {
     const n = Number(y);

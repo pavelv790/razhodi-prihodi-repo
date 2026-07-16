@@ -82,7 +82,7 @@ const TransactionForm = ({
 
   useEffect(() => {
     if (editingTransaction) {
-      if (stickyDate) savedStickyDateRef.current = date;
+      if (stickyDate && savedStickyDateRef.current === null) savedStickyDateRef.current = date;
       setType(editingTransaction.type);
       setCategory(editingTransaction.category);
       setCategorySearch(editingTransaction.category);
@@ -221,7 +221,7 @@ const TransactionForm = ({
       {/* Тип */}
       <div className="flex gap-3 mb-4">
         <button
-          onClick={() => { if (!editingTransaction) { setCategory(""); setCategorySearch(""); } setType("expense"); }}
+          onClick={() => { setCategory(""); setCategorySearch(""); setType("expense"); }}
           className={`flex-1 py-2 rounded-xl font-medium text-sm transition ${
             type === "expense" ? "bg-red-500 text-white shadow" : "bg-red-50 text-red-400 hover:bg-red-100"
           }`}
@@ -229,7 +229,7 @@ const TransactionForm = ({
           Разход
         </button>
         <button
-          onClick={() => { if (!editingTransaction) { setCategory(""); setCategorySearch(""); } setType("income"); }}
+          onClick={() => { setCategory(""); setCategorySearch(""); setType("income"); }}
           className={`flex-1 py-2 rounded-xl font-medium text-sm transition ${
             type === "income" ? "bg-green-500 text-white shadow" : "bg-green-50 text-green-400 hover:bg-green-100"
           }`}

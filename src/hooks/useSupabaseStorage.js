@@ -162,13 +162,13 @@ export function useSupabaseStorage() {
     try {
       if (authMode === "register") {
         await signUpWithEmail(authEmail, authPassword);
-        setConnected(true);
+        setConnectedBoth(true);
         setEnabled(true);
         localStorage.setItem("supabase_storage_enabled", "true");
         setAuthError("✅ Регистрацията е успешна!");
       } else {
         await signInWithEmail(authEmail, authPassword);
-        setConnected(true);
+        setConnectedBoth(true);
         setEnabled(true);
         localStorage.setItem("supabase_storage_enabled", "true");
       }

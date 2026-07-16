@@ -20,6 +20,7 @@ const ImportExportModal = ({
   const [pendingTransactions, setPendingTransactions] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [noDataMessage, setNoDataMessage] = useState(false);
   const fileInputRef = useRef(null);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -34,6 +35,10 @@ const ImportExportModal = ({
 
   useEffect(() => {
     if (mode === "export") {
+      if (!filteredTransactions || filteredTransactions.length === 0) {
+        setNoDataMessage(true);
+        return;
+      }
       if (isFiltered) {
         setStep("exportWarning");
       } else {
@@ -106,6 +111,24 @@ const ImportExportModal = ({
     );
   }
 
+  if (step === "main" && mode === "export" && noDataMessage) {
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm px-5 py-6 flex flex-col items-center gap-3">
+          <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2 w-full text-center">
+            Няма данни за експорт
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+          >
+            Затвори
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
@@ -135,6 +158,11 @@ const ImportExportModal = ({
               ) : (
               <button
                 onClick={async () => {
+                  if (!filteredTransactions || filteredTransactions.length === 0) {
+                    setStep("main");
+                    setNoDataMessage(true);
+                    return;
+                  }
                   setLoading(true);
                   await exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || [], profileName);
                   onClose();

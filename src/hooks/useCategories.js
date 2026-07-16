@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
   sortCategories,
 } from "../constants/categories";
-import { openDB } from "../utils/db";
+import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "categories";
 
@@ -32,6 +32,7 @@ export const saveToDB = async (profileId, expenseCategories, incomeCategories) =
       tx.onerror = () => reject(tx.error);
     });
   } catch {
+    reportDBError();
     console.error("Грешка при запис на категории в IndexedDB");
   }
 };
@@ -54,6 +55,7 @@ export const useCategories = (profileId) => {
   const [expenseCategories, setExpenseCategories] = useState([]);
   const [incomeCategories, setIncomeCategories] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const loadedForProfileRef = useRef(null);
 
   useEffect(() => {
     if (!profileId) {
@@ -64,6 +66,7 @@ export const useCategories = (profileId) => {
     }
     let cancelled = false;
     setIsLoaded(false);
+    loadedForProfileRef.current = null;
     loadFromDB(profileId).then((data) => {
       if (cancelled) return;
       if (data) {
@@ -73,13 +76,14 @@ export const useCategories = (profileId) => {
         setExpenseCategories(sortCategories(DEFAULT_EXPENSE_CATEGORIES));
         setIncomeCategories(sortCategories(DEFAULT_INCOME_CATEGORIES));
       }
+      loadedForProfileRef.current = profileId;
       setIsLoaded(true);
     });
     return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {
-    if (isLoaded && profileId) {
+    if (isLoaded && profileId && loadedForProfileRef.current === profileId) {
       saveToDB(profileId, expenseCategories, incomeCategories);
     }
   }, [expenseCategories, incomeCategories, isLoaded, profileId]);

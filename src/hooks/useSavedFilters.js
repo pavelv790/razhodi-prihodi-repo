@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { openDB } from "../utils/db";
+import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "saved_filters";
 
@@ -25,7 +25,7 @@ const saveOne = async (filter) => {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  } catch { console.error("Грешка при запис на филтър"); }
+  } catch { reportDBError(); console.error("Грешка при запис на филтър"); }
 };
 
 const deleteOne = async (id) => {
@@ -70,11 +70,14 @@ export const useSavedFilters = (profileId) => {
       setIsLoaded(false);
       return;
     }
+    let cancelled = false;
     setIsLoaded(false);
     loadAll().then((all) => {
+      if (cancelled) return;
       setSavedFilters(all.filter((f) => f.profileId === profileId));
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   const saveFilter = async (name, filter) => {

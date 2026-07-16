@@ -28,7 +28,7 @@ import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
-import { openDB } from "./utils/db";
+import { openDB, onDBWriteError } from "./utils/db";
 import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
 
 const App = () => {
@@ -187,79 +187,7 @@ const App = () => {
     markDailyDone: supabaseMarkDailyDone,
   } = useSupabaseStorage();
 
-  // ВРЕМЕННО: осиротели транзакции без profileId (за изтриване след почистване)
-  const [orphanTransactions, setOrphanTransactions] = useState([]);
-  useEffect(() => {
-    if (!profilesLoaded || !activeProfileId) return;
-    (async () => {
-      const db = await openDB();
-      const all = await new Promise((resolve) => {
-        const tx = db.transaction("transactions", "readonly");
-        const req = tx.objectStore("transactions").getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => resolve([]);
-      });
-      const orphans = all.filter((t) => !t.profileId);
-      if (orphans.length > 0) setOrphanTransactions(orphans);
-    })();
-  }, [profilesLoaded, activeProfileId]);
-  const handleOrphanAssign = async () => {
-    const db = await openDB();
-    await new Promise((resolve) => {
-      const tx = db.transaction("transactions", "readwrite");
-      const store = tx.objectStore("transactions");
-      orphanTransactions.forEach((t) => store.put({ ...t, profileId: activeProfileId }));
-      tx.oncomplete = resolve;
-    });
-    setOrphanTransactions([]);
-    window.location.reload();
-  };
-  const handleOrphanDelete = async () => {
-    const db = await openDB();
-    await new Promise((resolve) => {
-      const tx = db.transaction("transactions", "readwrite");
-      const store = tx.objectStore("transactions");
-      orphanTransactions.forEach((t) => store.delete(t.id));
-      tx.oncomplete = resolve;
-    });
-    setOrphanTransactions([]);
-  };
-
-  {orphanTransactions.length > 0 && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-700">Намерени транзакции без профил</h2>
-            </div>
-            <div className="px-5 py-4 space-y-3">
-              <p className="text-xs text-gray-600">
-                Тези транзакции са загубили връзката с профила си (стар бъг при редактиране). Какво да направим с тях?
-              </p>
-              <div className="flex flex-col gap-1 max-h-52 overflow-y-auto">
-                {orphanTransactions.map((t) => (
-                  <div key={t.id} className="bg-white rounded-xl px-3 py-2 border border-gray-200">
-                    <p className="text-xs font-medium text-gray-700">{t.category}</p>
-                    <p className="text-xs text-gray-400">{t.date} · {Number(t.amount).toFixed(2)} EUR {t.description ? `· ${t.description}` : ""}</p>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={handleOrphanAssign}
-                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
-              >
-                Прехвърли ги в профил „{activeProfile?.name}"
-              </button>
-              <button
-                onClick={handleOrphanDelete}
-                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-50 text-red-500 hover:bg-red-100 transition"
-              >
-                Изтрий ги завинаги
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+    
   const [lastSupabaseUploadDate, setLastSupabaseUploadDate] = useState(
     () => localStorage.getItem("last_supabase_upload_date") ?? null
   );
@@ -280,8 +208,8 @@ const App = () => {
       setShowPendingModal(true);
     }
   }, [activeProfileId, recurringItems, showRecurringModal]);
-  const skipDriveSync = useRef(true);
-  const skipSupabaseSync = useRef(true);
+  const driveSnapshotRef = useRef(null);
+  const supabaseSnapshotRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
 
@@ -294,20 +222,74 @@ const App = () => {
     [filteredTransactions, getSummary]
   );
   useEffect(() => {
-    skipDriveSync.current = true;
-    skipSupabaseSync.current = true;
+    driveSnapshotRef.current = null;
+    supabaseSnapshotRef.current = null;
   }, [activeProfileId]);
+  const lastFilterLoadedForRef = useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    lastFilterLoadedForRef.current = null;
+    setFilters({ fromDate: "", toDate: "", categories: [] });
+    setActiveFilters({ fromDate: "", toDate: "", categories: [], description: "" });
+    setIsFiltered(false);
+    if (!activeProfileId) return;
+    (async () => {
+      try {
+        const db = await openDB();
+        const saved = await new Promise((resolve) => {
+          const tx = db.transaction("last_filter", "readonly");
+          const req = tx.objectStore("last_filter").get(activeProfileId);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+        if (cancelled) return;
+        if (saved) {
+          const f = {
+            fromDate: saved.fromDate || "",
+            toDate: saved.toDate || "",
+            categories: saved.categories || [],
+            description: saved.description || "",
+          };
+          setFilters(f);
+          setActiveFilters(f);
+          setIsFiltered(!!(f.fromDate || f.toDate || f.categories.length > 0 || f.description.trim()));
+        }
+        lastFilterLoadedForRef.current = activeProfileId;
+      } catch {
+        if (!cancelled) lastFilterLoadedForRef.current = activeProfileId;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeProfileId]);
+  useEffect(() => {
+    if (!activeProfileId || lastFilterLoadedForRef.current !== activeProfileId) return;
+    const timer = setTimeout(async () => {
+      try {
+        const db = await openDB();
+        const tx = db.transaction("last_filter", "readwrite");
+        tx.objectStore("last_filter").put({ id: activeProfileId, ...activeFilters });
+      } catch { /* тих провал — филтърът е удобство, не критични данни */ }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeFilters, activeProfileId]);
   useEffect(() => {
     localStorage.setItem("data_panel_open", String(showDataPanel));
   }, [showDataPanel]);
+  const [dbWriteError, setDbWriteError] = useState(false);
+  useEffect(() => {
+    onDBWriteError(() => setDbWriteError(true));
+  }, []);
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
-    if (skipDriveSync.current) { skipDriveSync.current = false; return; }
+    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
+    const prev = driveSnapshotRef.current;
+    const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
+    driveSnapshotRef.current = snap;
     if (!driveConnected) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
 
-    if (driveAutoSync === "onChange") {
+    if (driveAutoSync === "onChange" && dataChanged) {
       const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
@@ -332,16 +314,19 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected]);
   
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
-    if (skipSupabaseSync.current) { skipSupabaseSync.current = false; return; }
+    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
+    const prev = supabaseSnapshotRef.current;
+    const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
+    supabaseSnapshotRef.current = snap;
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0) return;
     if (!activeProfile?.name) return;
     
-    if (supabaseAutoSync === "onChange") {
+    if (supabaseAutoSync === "onChange" && dataChanged) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
@@ -365,7 +350,7 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -414,9 +399,10 @@ const App = () => {
 
   const handleDeleteCategory = (type, name, choice) => {
     if (choice === "delete") {
-      deleteTransactionsByCategory(name);
+      deleteTransactionsByCategory(name, type);
     } else {
-      reassignTransactionsCategory(name);
+      reassignTransactionsCategory(name, type);
+      if (name !== "Без категория") addCategory(type, "Без категория");
     }
     deleteCategory(type, name);
   };
@@ -427,6 +413,15 @@ const App = () => {
     await deleteProfileSavedFilters(id);
     await deleteProfileCurrency(id);
     await deleteProfileBudgets(id);
+    try {
+      const db = await openDB();
+      await new Promise((resolve) => {
+        const tx = db.transaction("last_filter", "readwrite");
+        tx.objectStore("last_filter").delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+      });
+    } catch { /* тихо */ }
     await deleteProfile(id);
   };
 
@@ -1033,6 +1028,12 @@ const App = () => {
             </div>
           )}
         </>
+      )}
+      {dbWriteError && (
+        <div className="fixed top-0 left-0 right-0 z-[120] bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+          <p className="text-sm font-medium">⚠️ Проблем при запазване на данните! Свалете резервно копие (Данни → Свали резервно копие) и презаредете страницата.</p>
+          <button onClick={() => setDbWriteError(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
+        </div>
       )}
       <div className="max-w-3xl mx-auto px-4 py-6">
 

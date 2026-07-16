@@ -48,6 +48,22 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
       setDateError("Невалидна или непълна крайна дата.");
       return;
     }
+    if (totalLimit !== "" && Number(totalLimit) < 0) {
+      setDateError("Лимитът не може да бъде отрицателно число.");
+      return;
+    }
+    if (Object.values(categoryLimits).some((val) => val !== "" && Number(val) < 0)) {
+      setDateError("Лимитите по категории не може да бъдат отрицателни числа.");
+      return;
+    }
+    if (fromDate && toDate && isValidDate(fromDate) && isValidDate(toDate)) {
+      const [fd, fm, fy] = fromDate.split("/").map(Number);
+      const [td, tm, ty] = toDate.split("/").map(Number);
+      if (new Date(fy, fm - 1, fd) > new Date(ty, tm - 1, td)) {
+        setDateError("Началната дата не може да бъде след крайната.");
+        return;
+      }
+    }
     setDateError("");
     onSave({ totalLimit, categoryLimits, fromDate, toDate });
     onClose();

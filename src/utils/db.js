@@ -1,5 +1,5 @@
 const DB_NAME = "finance_db";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 let dbPromise = null;
 
@@ -24,11 +24,16 @@ export const openDB = () => {
         db.createObjectStore("profiles", { keyPath: "id" });
       if (!db.objectStoreNames.contains("recurring"))
          db.createObjectStore("recurring", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("last_filter"))
+         db.createObjectStore("last_filter", { keyPath: "id" });
     } catch (err) {
       dbPromise = null;
       reject(err);
     }
   };
+    req.onblocked = () => {
+      alert("Приложението е отворено в друг раздел или прозорец със стара версия. Затворете всички други раздели с приложението и презаредете тази страница.");
+    };
     req.onsuccess = (e) => resolve(e.target.result);
     req.onerror = () => {
       dbPromise = null; // позволява retry при грешка
@@ -37,3 +42,12 @@ export const openDB = () => {
   });
   return dbPromise;
 };
+
+// Уведомяване на UI при провален запис в базата (иначе провалите са тихи)
+let dbErrorCallback = null;
+export function onDBWriteError(callback) {
+  dbErrorCallback = callback;
+}
+export function reportDBError() {
+  try { if (dbErrorCallback) dbErrorCallback(); } catch { /* никога не хвърля */ }
+}

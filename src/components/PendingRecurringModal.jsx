@@ -83,16 +83,19 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
                   <p className="text-xs text-gray-400">{item.date}</p>
                 )}
                 {item.variableAmount ? (
-                  <input
-                    type="number"
-                    placeholder="Въведи сума..."
-                    value={amounts[i]}
-                    onChange={(e) => setAmounts((prev) => ({ ...prev, [i]: e.target.value }))}
-                    onClick={(e) => e.stopPropagation()}
-                    min="0"
-                    step="0.01"
-                    className="mt-1 w-full border border-blue-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                  />
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      placeholder="Въведи сума в EUR..."
+                      value={amounts[i]}
+                      onChange={(e) => setAmounts((prev) => ({ ...prev, [i]: e.target.value }))}
+                      onClick={(e) => e.stopPropagation()}
+                      min="0"
+                      step="0.01"
+                      className="flex-1 border border-blue-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    />
+                    <span className="text-xs text-gray-400 flex-shrink-0">EUR</span>
+                  </div>
                 ) : (
                   <p className="text-xs text-gray-400">{item.date} · {Number(item.amount).toFixed(2)} EUR</p>
                 )}

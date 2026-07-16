@@ -75,6 +75,9 @@ const ProfileModal = ({ profiles, activeProfileId, onSwitch, onCreate, onDelete,
                     placeholder="Ново име..."
                   />
                   {editError && <p className="text-xs text-red-500">{editError}</p>}
+                  <p className="text-xs text-orange-500 bg-orange-50 rounded-lg px-2 py-1.5">
+                    ⚠️ Преименуването няма да засегне съществуващите облачни копия. Старите файлове ще останат в Google Drive / Supabase под предишното име. Препоръчваме: направете ново качване след преименуването, за да се създадат копия с новото име, и изтрийте ръчно старите файлове от Google Drive/Supabase, за да не се трупат ненужни копия.
+                  </p>
                   <div className="flex gap-2">
                     <button onClick={() => handleRename(p.id)} className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-medium bg-blue-500 text-white hover:bg-blue-600 transition">
                       <Check className="w-3 h-3" /> Запази

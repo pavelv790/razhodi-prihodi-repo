@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { parseDate } from "../utils/formatters";
-import { openDB } from "../utils/db";
+import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "transactions";
 
@@ -38,9 +38,10 @@ const saveAllToDB_forProfile = async (profileId, newTransactions) => {
       store.clear();
       merged.forEach((t) => store.put(t));
       tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => { reportDBError(); reject(tx.error); };
     });
   } catch {
+    reportDBError();
     console.error("Грешка при запис в IndexedDB");
   }
 };
@@ -100,14 +101,18 @@ export const useTransactions = (profileId) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const deleteTransactionsByCategory = (categoryName) => {
-    setTransactions((prev) => prev.filter((t) => t.category !== categoryName));
+  const deleteTransactionsByCategory = (categoryName, type) => {
+    setTransactions((prev) =>
+      prev.filter((t) => !(t.category === categoryName && t.type === type))
+    );
   };
 
-  const reassignTransactionsCategory = (categoryName) => {
+  const reassignTransactionsCategory = (categoryName, type) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.category === categoryName ? { ...t, category: "Без категория" } : t
+        t.category === categoryName && t.type === type
+          ? { ...t, category: "Без категория" }
+          : t
       )
     );
   };

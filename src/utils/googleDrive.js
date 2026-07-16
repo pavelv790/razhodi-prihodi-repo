@@ -44,6 +44,7 @@ async function getOrCreateFolder() {
     `https://www.googleapis.com/drive/v3/files?q=name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  await checkDriveResponse(searchRes);
   const searchData = await searchRes.json();
   if (searchData.files?.length > 0) return searchData.files[0].id;
 
@@ -52,8 +53,18 @@ async function getOrCreateFolder() {
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ name: FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" }),
   });
+  await checkDriveResponse(createRes);
   const folder = await createRes.json();
   return folder.id;
+}
+
+async function checkDriveResponse(res) {
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Сесията е изтекла. Свържете се отново с Google Drive.");
+    }
+    throw new Error(`Грешка от Google Drive (код ${res.status}).`);
+  }
 }
 
 function escapeRegex(str) {
@@ -77,6 +88,7 @@ async function findExistingFileByProfile(prefix, folderId) {
     `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  await checkDriveResponse(res);
   const data = await res.json();
   const match = (data.files || []).find((f) => isExactBackupFileName(f.name, prefix));
   return match?.id || null;
@@ -133,6 +145,7 @@ export async function downloadLatestBackupFromDrive(profileName) {
     `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=50`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
+  await checkDriveResponse(res);
   const data = await res.json();
   const matches = (data.files || []).filter((f) => isExactBackupFileName(f.name, prefix));
   if (!matches.length) throw new Error("Няма намерено резервно копие в Google Drive.");

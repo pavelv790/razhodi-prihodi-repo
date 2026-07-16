@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { openDB } from "../utils/db";
+import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "profiles";
 
@@ -24,7 +24,7 @@ const saveOne = async (profile) => {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  } catch { console.error("Грешка при запис на профил"); }
+  } catch { reportDBError(); console.error("Грешка при запис на профил"); }
 };
 
 const deleteOne = async (id) => {

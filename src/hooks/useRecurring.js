@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { openDB } from "../utils/db";
+import { openDB, reportDBError } from "../utils/db";
 import { parseDate, getTodayString } from "../utils/formatters";
 
 const STORE = "recurring";
@@ -28,7 +28,7 @@ const saveOne = async (item) => {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-  } catch { console.error("Грешка при запис на повтаряща се транзакция"); }
+  } catch { reportDBError(); console.error("Грешка при запис на повтаряща се транзакция"); }
 };
 
 const deleteOne = async (id) => {
@@ -133,11 +133,14 @@ export const useRecurring = (profileId) => {
       setIsLoaded(false);
       return;
     }
+    let cancelled = false;
     setIsLoaded(false);
     loadByProfile(profileId).then((data) => {
+      if (cancelled) return;
       setRecurringItems(data);
       setIsLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [profileId]);
 
   const addRecurring = async (item) => {

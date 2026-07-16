@@ -160,12 +160,14 @@ const CategoryManager = ({
                     Какво да стане с транзакциите в категория &quot;{cat}&quot;?
                   </p>
                   <div className="flex flex-col gap-1.5">
-                    <button
-                      onClick={() => handleDeleteConfirm("reassign")}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-600 hover:bg-orange-200 transition"
-                    >
-                      Запази транзакциите като &quot;Без категория&quot;
-                    </button>
+                    {cat !== "Без категория" && (
+                      <button
+                        onClick={() => handleDeleteConfirm("reassign")}
+                        className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-600 hover:bg-orange-200 transition"
+                      >
+                        Запази транзакциите като &quot;Без категория&quot;
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDeleteConfirm("delete")}
                       className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"

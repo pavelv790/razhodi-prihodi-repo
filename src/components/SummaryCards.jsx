@@ -45,14 +45,20 @@ const SummaryCards = ({ summary, isFiltered, budgets, filteredTransactions, allT
   const exceededCategories = Object.entries(categoryLimits)
     .filter(([cat, lim]) => {
       const limit = parseFloat(lim);
-      return !isNaN(limit) && limit > 0 && (expenseByCategory[cat] || 0) > limit;
+      if (isNaN(limit) || limit < 0) return false;
+      const spent = expenseByCategory[cat] || 0;
+      return limit === 0 ? spent > 0 : spent > limit;
     })
-    .map(([cat, lim]) => ({
-      cat,
-      spent: expenseByCategory[cat] || 0,
-      limit: parseFloat(lim),
-      percent: Math.round(((expenseByCategory[cat] || 0) / parseFloat(lim)) * 100),
-    }));
+    .map(([cat, lim]) => {
+      const limit = parseFloat(lim);
+      const spent = expenseByCategory[cat] || 0;
+      return {
+        cat,
+        spent,
+        limit,
+        percent: limit === 0 ? (spent > 0 ? "∞" : "0") : Math.round((spent / limit) * 100),
+      };
+    });
 
   return (
     <div className="grid grid-cols-2 gap-3 mb-6">
