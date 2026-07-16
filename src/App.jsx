@@ -187,6 +187,79 @@ const App = () => {
     markDailyDone: supabaseMarkDailyDone,
   } = useSupabaseStorage();
 
+  // ВРЕМЕННО: осиротели транзакции без profileId (за изтриване след почистване)
+  const [orphanTransactions, setOrphanTransactions] = useState([]);
+  useEffect(() => {
+    if (!profilesLoaded || !activeProfileId) return;
+    (async () => {
+      const db = await openDB();
+      const all = await new Promise((resolve) => {
+        const tx = db.transaction("transactions", "readonly");
+        const req = tx.objectStore("transactions").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+      const orphans = all.filter((t) => !t.profileId);
+      if (orphans.length > 0) setOrphanTransactions(orphans);
+    })();
+  }, [profilesLoaded, activeProfileId]);
+  const handleOrphanAssign = async () => {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction("transactions", "readwrite");
+      const store = tx.objectStore("transactions");
+      orphanTransactions.forEach((t) => store.put({ ...t, profileId: activeProfileId }));
+      tx.oncomplete = resolve;
+    });
+    setOrphanTransactions([]);
+    window.location.reload();
+  };
+  const handleOrphanDelete = async () => {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction("transactions", "readwrite");
+      const store = tx.objectStore("transactions");
+      orphanTransactions.forEach((t) => store.delete(t.id));
+      tx.oncomplete = resolve;
+    });
+    setOrphanTransactions([]);
+  };
+
+  {orphanTransactions.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">Намерени транзакции без профил</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-xs text-gray-600">
+                Тези транзакции са загубили връзката с профила си (стар бъг при редактиране). Какво да направим с тях?
+              </p>
+              <div className="flex flex-col gap-1 max-h-52 overflow-y-auto">
+                {orphanTransactions.map((t) => (
+                  <div key={t.id} className="bg-white rounded-xl px-3 py-2 border border-gray-200">
+                    <p className="text-xs font-medium text-gray-700">{t.category}</p>
+                    <p className="text-xs text-gray-400">{t.date} · {Number(t.amount).toFixed(2)} EUR {t.description ? `· ${t.description}` : ""}</p>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={handleOrphanAssign}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Прехвърли ги в профил „{activeProfile?.name}"
+              </button>
+              <button
+                onClick={handleOrphanDelete}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-50 text-red-500 hover:bg-red-100 transition"
+              >
+                Изтрий ги завинаги
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
   const [lastSupabaseUploadDate, setLastSupabaseUploadDate] = useState(
     () => localStorage.getItem("last_supabase_upload_date") ?? null
   );

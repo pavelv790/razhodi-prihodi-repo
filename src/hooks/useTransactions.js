@@ -92,7 +92,7 @@ export const useTransactions = (profileId) => {
 
   const editTransaction = (id, updatedTransaction) => {
     setTransactions((prev) =>
-      sortByDate(prev.map((t) => (t.id === id ? { ...updatedTransaction, id } : t)))
+      sortByDate(prev.map((t) => (t.id === id ? { ...t, ...updatedTransaction, id } : t)))
     );
   };
 
