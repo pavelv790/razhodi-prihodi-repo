@@ -1,7 +1,9 @@
+const sanitizeFileName = (name) => (name || "").replace(/[\/\\:*?"<>|]/g, "-");
+
 export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName, allProfileCategories, profileCurrencies, profileBudgets) => {
   const profileCategories = allProfileCategories || { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } };
   const backup = {
-    version: "1.5",
+    version: "1.6",
     date: new Date().toISOString(),
     profiles,
     activeProfileId,
@@ -28,7 +30,7 @@ export const exportBackup = (transactions, expenseCategories, incomeCategories, 
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const year = today.getFullYear();
   a.href = url;
-  const profileSuffix = profileName ? `_${profileName}` : "";
+  const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   a.download = `Финанси_Backup${profileSuffix}_${day}.${month}.${year}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 100);

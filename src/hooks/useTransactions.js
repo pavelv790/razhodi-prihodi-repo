@@ -62,6 +62,7 @@ export const useTransactions = (profileId) => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const skipAutoSave = useRef(false);
+  const pendingSaveRef = useRef(null);
 
   useEffect(() => {
     if (!profileId) {
@@ -81,10 +82,25 @@ export const useTransactions = (profileId) => {
 
   useEffect(() => {
     if (!isLoaded || !profileId) return;
-    if (skipAutoSave.current) { skipAutoSave.current = false; return; }
-    const timer = setTimeout(() => saveAllToDB_forProfile(profileId, transactions), 300);
+    if (skipAutoSave.current) { skipAutoSave.current = false; pendingSaveRef.current = null; return; }
+    pendingSaveRef.current = { profileId, transactions };
+    const timer = setTimeout(() => {
+      pendingSaveRef.current = null;
+      saveAllToDB_forProfile(profileId, transactions);
+    }, 300);
     return () => clearTimeout(timer);
   }, [transactions, isLoaded, profileId]);
+
+  // При смяна на профил или затваряне: ако има незаписани данни на стария профил — запиши ги веднага
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) {
+        const { profileId: pid, transactions: txs } = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        saveAllToDB_forProfile(pid, txs);
+      }
+    };
+  }, [profileId]);
 
   const addTransaction = (transaction) => {
     const newTransaction = { ...transaction, id: generateId(), profileId };

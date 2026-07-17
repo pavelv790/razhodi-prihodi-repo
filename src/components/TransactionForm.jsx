@@ -129,7 +129,7 @@ const TransactionForm = ({
       onEdit(editingTransaction.id, transaction);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       setShowSaveSuccess(true);
-      setSaveSuccessCategory(`${category} · ${amount} ${currency}`);
+      setSaveSuccessCategory(`${category} · ${amount} ${shouldConvert ? currency : "EUR"}`);
       successTimerRef.current = setTimeout(() => {
         setShowSaveSuccess(false);
         handleReset();

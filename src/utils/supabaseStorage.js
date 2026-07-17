@@ -59,24 +59,7 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
   const newFileName = buildFileName(profileName, profileId);
   const prefix = buildFilePrefix(profileName, profileId);
 
-  // Намери и изтрий стария файл (ако съществува) — търсим по prefix без дата
-  const { data: existingFiles } = await supabase.storage
-    .from(BUCKET_NAME)
-    .list(userId, { search: prefix });
-
-  if (existingFiles?.length > 0) {
-    const oldPaths = existingFiles
-      .filter((f) => isExactBackupFileName(f.name, prefix))
-      .map((f) => `${userId}/${f.name}`);
-    if (oldPaths.length > 0) {
-      const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
-      if (removeError) {
-        console.warn("Предупреждение: не успя да изтрие старото резервно копие:", removeError.message);
-      }
-    }
-  }
-
-  // Качи новия файл
+  // Качи новия файл ПЪРВО (upsert: true презаписва безопасно при съвпадащо име)
   const blob = new Blob([JSON.stringify(backupData, null, 2)], {
     type: "application/json",
   });
@@ -89,6 +72,24 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
     });
 
   if (error) throw new Error("Грешка при качване в Supabase: " + error.message);
+
+  // Едва след успешно качване — намери и изтрий старите файлове (по prefix без дата)
+  const { data: existingFiles } = await supabase.storage
+    .from(BUCKET_NAME)
+    .list(userId, { search: prefix });
+
+  if (existingFiles?.length > 0) {
+    const oldPaths = existingFiles
+      .filter((f) => isExactBackupFileName(f.name, prefix) && f.name !== newFileName)
+      .map((f) => `${userId}/${f.name}`);
+    if (oldPaths.length > 0) {
+      const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
+      if (removeError) {
+        console.warn("Предупреждение: не успя да изтрие старото резервно копие:", removeError.message);
+      }
+    }
+  }
+
   return newFileName;
 }
 

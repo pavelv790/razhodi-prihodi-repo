@@ -49,6 +49,8 @@ const colLetter = (i) => {
   return s;
 };
 
+const sanitizeFileName = (name) => (name || "").replace(/[\/\\:*?"<>|]/g, "-");
+
 const saveWorkbook = async (workbook, filename) => {
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -214,7 +216,7 @@ export const exportToExcel = (
   const d = String(today.getDate()).padStart(2, "0");
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
-  const profileSuffix = profileName ? `_${profileName}` : "";
+  const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   await saveWorkbook(workbook, "Разходи-Приходи" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
   resolve();
 }, 50));
@@ -422,7 +424,7 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
   const d = String(today.getDate()).padStart(2, "0");
   const m = String(today.getMonth() + 1).padStart(2, "0");
   const y = today.getFullYear();
-  const profileSuffix = profileName ? `_${profileName}` : "";
+  const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   await saveWorkbook(workbook, "Месечна_Статистика" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
   resolve();
 }, 50));

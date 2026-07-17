@@ -84,7 +84,7 @@ const App = () => {
   } = useRecurring(activeProfileId);
 
   const [editingTransaction, setEditingTransaction] = useState(null);
-  const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [] });
+  const [filters, setFilters] = useState({ fromDate: "", toDate: "", categories: [], description: "" });
   const [activeFilters, setActiveFilters] = useState({ fromDate: "", toDate: "", categories: [], description: "" });
   const [isFiltered, setIsFiltered] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
@@ -202,16 +202,18 @@ const App = () => {
     if (!activeProfileId || recurringItems.length === 0) return;
     if (showRecurringModal) return;
     if (showPendingModal) return;
+    if (showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm) return;
     const pending = getPendingTransactions();
     if (pending.length > 0) {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems, showRecurringModal]);
+  }, [activeProfileId, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
+  const completedRestoreProfilesRef = useRef([]);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
@@ -229,7 +231,7 @@ const App = () => {
   useEffect(() => {
     let cancelled = false;
     lastFilterLoadedForRef.current = null;
-    setFilters({ fromDate: "", toDate: "", categories: [] });
+    setFilters({ fromDate: "", toDate: "", categories: [], description: "" });
     setActiveFilters({ fromDate: "", toDate: "", categories: [], description: "" });
     setIsFiltered(false);
     if (!activeProfileId) return;
@@ -285,8 +287,9 @@ const App = () => {
     const prev = driveSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     driveSnapshotRef.current = snap;
+    if (pendingBackup) return;
     if (!driveConnected) return;
-    if (transactions.length === 0) return;
+    if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
 
     if (driveAutoSync === "onChange" && dataChanged) {
@@ -314,7 +317,7 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup]);
   
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
@@ -322,8 +325,9 @@ const App = () => {
     const prev = supabaseSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     supabaseSnapshotRef.current = snap;
+    if (pendingBackup) return;
     if (!supabaseConnected || !supabaseEnabled) return;
-    if (transactions.length === 0) return;
+    if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
     
     if (supabaseAutoSync === "onChange" && dataChanged) {
@@ -350,7 +354,7 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -544,6 +548,7 @@ const App = () => {
     if (currentBp) {
       await finishRestoreForProfile(currentBp, "merge", pendingBackup);
       await addOrUpdateProfile(currentBp);
+      completedRestoreProfilesRef.current.push({ name: currentBp.name, choice: "merge" });
     }
     setRestoreDuplicates([]);
     setRestoreUniqueTransactions([]);
@@ -629,7 +634,7 @@ const App = () => {
     allProfileBudgets[activeProfileId] = budgets;
 
     return {
-      version: "1.5",
+      version: "1.6",
       date: new Date().toISOString(),
       profiles,
       activeProfileId,
@@ -812,8 +817,23 @@ const App = () => {
 
     if (backupData.savedFilters) {
       const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
-      await restoreFilters(profileFilters, bp.id);
-      if (bp.id === activeProfileId) setSavedFilters(profileFilters.map((f) => ({ ...f, profileId: bp.id })));
+      if (choice === "merge") {
+        const db = await openDB();
+        const existingFilters = await new Promise((resolve) => {
+          const tx = db.transaction("saved_filters", "readonly");
+          const req = tx.objectStore("saved_filters").getAll();
+          req.onsuccess = () => resolve((req.result || []).filter((f) => f.profileId === bp.id));
+        });
+        const newFilters = profileFilters.filter((bf) =>
+          !existingFilters.some((ef) => ef.name === bf.name && ef.fromDate === bf.fromDate && ef.toDate === bf.toDate)
+        );
+        const merged = [...existingFilters, ...newFilters];
+        await restoreFilters(merged, bp.id);
+        if (bp.id === activeProfileId) setSavedFilters(merged.map((f) => ({ ...f, profileId: bp.id })));
+      } else {
+        await restoreFilters(profileFilters, bp.id);
+        if (bp.id === activeProfileId) setSavedFilters(profileFilters.map((f) => ({ ...f, profileId: bp.id })));
+      }
     }
     if (backupData.recurringItems) {
       const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
@@ -839,7 +859,10 @@ const App = () => {
       const isNew = pendingNewProfilesRef.current.some((np) => np.id === bp.id);
       if (isNew) continue;
       const choice = conflictChoices[bp.id] || "backup";
-      if (choice === "local") continue;
+      if (choice === "local") {
+        completedRestoreProfilesRef.current.push({ name: bp.name, choice: "local" });
+        continue;
+      }
 
       const db = await openDB();
       const localTxsForProfile = await new Promise((resolve) => {
@@ -893,6 +916,7 @@ const App = () => {
       }
       await finishRestoreForProfile(bp, choice, backupData);
       await addOrUpdateProfile(bp);
+      completedRestoreProfilesRef.current.push({ name: bp.name, choice });
     }
 
     if (pendingNewProfilesRef.current.length > 0) {
@@ -908,14 +932,16 @@ const App = () => {
     setPendingBackup(null);
     setShowRestoreConfirm(false);
     setShowConflictModal(false);
-    const summary = (remainingProfiles || [])
-      .filter((bp) => !pendingNewProfilesRef.current.some((np) => np.id === bp.id))
-      .map((bp) => ({ name: bp.name, choice: conflictChoices[bp.id] || "backup" }));
-    setRestoreDoneType(summary.length > 0 ? summary : [{ name: "", choice: "backup" }]);
+    const summary = completedRestoreProfilesRef.current.length > 0
+      ? completedRestoreProfilesRef.current
+      : [{ name: "", choice: "backup" }];
+    completedRestoreProfilesRef.current = [];
+    setRestoreDoneType(summary);
     setShowRestoreDone(true);
   };
 
   const handleRestoreConfirm = async () => {
+    completedRestoreProfilesRef.current = [];
     await finishRestore(pendingBackup.profiles || [], pendingBackup);
   };
 
@@ -1699,6 +1725,7 @@ const App = () => {
               </p>
               <button
                 onClick={() => {
+                  completedRestoreProfilesRef.current = [];
                   setShowRestoreDuplicates(false);
                   setRestoreDuplicates([]);
                   setRestoreUniqueTransactions([]);
@@ -1816,7 +1843,7 @@ const App = () => {
                 Продължи
               </button>
               <button
-                onClick={() => { setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setNameOnlyMatchIds([]); }}
+                onClick={() => { completedRestoreProfilesRef.current = []; setShowConflictModal(false); setConflictProfiles([]); setConflictChoices({}); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setNameOnlyMatchIds([]); }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
@@ -1884,7 +1911,7 @@ const App = () => {
                       Потвърди
                     </button>
                     <button
-                      onClick={() => { setShowRestoreConfirm(false); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setConflictProfiles([]); setConflictChoices({}); setNameOnlyMatchIds([]); }}
+                      onClick={() => { completedRestoreProfilesRef.current = []; setShowRestoreConfirm(false); setPendingBackup(null); setPendingNewProfiles([]); pendingNewProfilesRef.current = []; setConflictProfiles([]); setConflictChoices({}); setNameOnlyMatchIds([]); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                     >
                       Откажи
