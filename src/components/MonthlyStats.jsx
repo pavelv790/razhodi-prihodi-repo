@@ -6,7 +6,7 @@ import { exportMonthlyStatsToExcel } from "../utils/excel";
 // Връща последните rollingMonths ЗАВЪРШЕНИ месеца (текущият не се включва)
 const getWindowMonths = (rollingMonths, targetYear, targetMonth) => {
   const months = [];
-  for (let i = 1; i <= rollingMonths; i++) {
+  for (let i = 0; i < rollingMonths; i++) {
     let m = targetMonth - i;
     let y = targetYear;
     while (m <= 0) { m += 12; y--; }

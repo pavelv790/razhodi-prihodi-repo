@@ -281,6 +281,25 @@ const App = () => {
   useEffect(() => {
     onDBWriteError(() => setDbWriteError(true));
   }, []);
+  // Предупреждение при второ отворено копие на приложението (друг раздел/прозорец):
+  // едновременната работа на две места може тихо да губи данни, защото всяко копие
+  // записва в IndexedDB своята пълна снимка на транзакциите
+  const [multiTabWarning, setMultiTabWarning] = useState(false);
+  useEffect(() => {
+    if (!navigator.locks) return;
+    let releaseLock;
+    const heldWhileOpen = new Promise((resolve) => { releaseLock = resolve; });
+    navigator.locks
+      .request("finance_app_open_tab", { ifAvailable: true }, (lock) => {
+        if (!lock) {
+          setMultiTabWarning(true);
+          return;
+        }
+        return heldWhileOpen; // заключването се пази докато табът е отворен
+      })
+      .catch(() => { /* тихо — само предупреждение, не блокира работата */ });
+    return () => releaseLock();
+  }, []);
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
     const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
@@ -461,7 +480,7 @@ const App = () => {
         // Транзакции
         const backupTxs = (pendingBackup.transactions || [])
           .filter((t) => t.profileId === bp.id)
-          .map((t) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }));
+          .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
         await replaceAllTransactions(backupTxs, bp.id);
         // Категории
         const cats = pendingBackup.profileCategories?.[bp.id]
@@ -873,7 +892,7 @@ const App = () => {
 
       const backupTxs = (backupData.transactions || [])
         .filter((t) => t.profileId === bp.id)
-        .map((t) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }));
+        .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
 
       if (choice === "merge") {
         const dupes = backupTxs.filter((bt) =>
@@ -1054,6 +1073,12 @@ const App = () => {
             </div>
           )}
         </>
+      )}
+      {multiTabWarning && (
+        <div className="fixed top-0 left-0 right-0 z-[119] bg-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+          <p className="text-sm font-medium">⚠️ Приложението е отворено и в друг раздел или прозорец. Работата на две места едновременно може да доведе до загуба на данни — затворете другото копие и презаредете тази страница.</p>
+          <button onClick={() => setMultiTabWarning(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
+        </div>
       )}
       {dbWriteError && (
         <div className="fixed top-0 left-0 right-0 z-[120] bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">

@@ -26,10 +26,15 @@ const DateInput = ({ value, onChange, className, hasError }) => {
 
   const getMaxDay = (m, y) => {
     const mon = Number(m);
-    const yr = Number(y);
     if (!mon) return 31;
     if ([4, 6, 9, 11].includes(mon)) return 30;
-    if (mon === 2) return isLeapYear(yr) ? 29 : 28;
+    if (mon === 2) {
+      // Годината още не е напълно въведена (по-малко от 4 цифри) — не гадаем
+      // дали е високосна, а позволяваме 29, за да не отрежем деня преждевременно
+      // докато потребителят пише годината цифра по цифра.
+      if (!y || String(y).length < 4) return 29;
+      return isLeapYear(y) ? 29 : 28;
+    }
     return 31;
   };
 

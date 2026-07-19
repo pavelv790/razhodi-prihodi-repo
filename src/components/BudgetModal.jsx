@@ -79,7 +79,7 @@ const BudgetModal = ({ budgets, onSave, onClose, expenseCategories, activeFilter
     : expenseCategories;
 
   const availableCategories = filteredExpenseCategories.filter(
-    (cat) => !categoryLimits[cat] && cat !== "Без категория"
+    (cat) => !(cat in categoryLimits) && cat !== "Без категория"
   );
 
   const filteredCategories = availableCategories.filter((cat) =>

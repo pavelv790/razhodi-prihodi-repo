@@ -228,9 +228,9 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
       setSelectedDuplicates([]);
       setStep("duplicates");
     } else {
-      const toAdd = filtered.map((t) => ({
+      const toAdd = filtered.map((t, i) => ({
         ...t,
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
         profileId: activeProfileId,
       }));
       onAdd(toAdd);
@@ -242,9 +242,9 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
     const toAdd = [
       ...unique,
       ...duplicates.filter((t) => selectedDuplicates.includes(t.id)),
-    ].map((t) => ({
+    ].map((t, i) => ({
       ...t,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
       profileId: activeProfileId,
     }));
     onAdd(toAdd);
