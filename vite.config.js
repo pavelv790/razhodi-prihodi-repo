@@ -13,7 +13,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
+      injectRegister: false,
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,json,woff2}"],
         navigateFallback: "index.html",

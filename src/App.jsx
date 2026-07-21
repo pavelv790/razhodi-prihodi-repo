@@ -30,6 +30,7 @@ import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
 import { openDB, onDBWriteError } from "./utils/db";
 import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
+import { registerSW } from "virtual:pwa-register";
 
 const App = () => {
   const {
@@ -280,6 +281,23 @@ const App = () => {
   const [dbWriteError, setDbWriteError] = useState(false);
   useEffect(() => {
     onDBWriteError(() => setDbWriteError(true));
+  }, []);
+  // Проверка за нова версия на приложението (Service Worker)
+  const [showUpdateAvailable, setShowUpdateAvailable] = useState(false);
+  const updateSWRef = useRef(null);
+  useEffect(() => {
+    updateSWRef.current = registerSW({
+      immediate: true,
+      onNeedRefresh() {
+        setShowUpdateAvailable(true);
+      },
+      onRegisteredSW(swUrl, registration) {
+        if (!registration) return;
+        setInterval(() => {
+          registration.update().catch(() => {});
+        }, 60 * 60 * 1000);
+      },
+    });
   }, []);
   // Предупреждение при второ отворено копие на приложението (друг раздел/прозорец):
   // едновременната работа на две места може тихо да губи данни, защото всяко копие
@@ -1084,6 +1102,20 @@ const App = () => {
         <div className="fixed top-0 left-0 right-0 z-[120] bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
           <p className="text-sm font-medium">⚠️ Проблем при запазване на данните! Свалете резервно копие (Данни → Свали резервно копие) и презаредете страницата.</p>
           <button onClick={() => setDbWriteError(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
+        </div>
+      )}
+      {showUpdateAvailable && (
+        <div className="fixed top-0 left-0 right-0 z-[121] bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+          <p className="text-sm font-medium">🔄 Налична е нова версия на приложението.</p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => updateSWRef.current?.(true)}
+              className="text-xs font-semibold bg-white text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition"
+            >
+              Обнови
+            </button>
+            <button onClick={() => setShowUpdateAvailable(false)} className="text-white/80 hover:text-white text-lg leading-none">×</button>
+          </div>
         </div>
       )}
       <div className="max-w-3xl mx-auto px-4 py-6">
