@@ -192,28 +192,6 @@ const App = () => {
   const [lastSupabaseUploadDate, setLastSupabaseUploadDate] = useState(
     () => localStorage.getItem("last_supabase_upload_date") ?? null
   );
-
-  const [debugDump, setDebugDump] = useState(null);
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("debug") !== "1") return;
-    (async () => {
-      try {
-        const db = await openDB();
-        const result = {};
-        for (const name of db.objectStoreNames) {
-          result[name] = await new Promise((resolve) => {
-            const tx = db.transaction(name, "readonly");
-            const req = tx.objectStore(name).getAll();
-            req.onsuccess = () => resolve(req.result || []);
-            req.onerror = () => resolve("ГРЕШКА при четене на " + name);
-          });
-        }
-        setDebugDump(JSON.stringify(result, null, 2));
-      } catch (err) {
-        setDebugDump("ГРЕШКА: " + err.message);
-      }
-    })();
-  }, []);
   
   useEffect(() => {
     if (!profilesLoaded) return;
@@ -1003,17 +981,6 @@ const App = () => {
     completedRestoreProfilesRef.current = [];
     await finishRestore(pendingBackup.profiles || [], pendingBackup);
   };
-
-  if (debugDump !== null) {
-    return (
-      <div style={{ padding: 16, fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-        <button onClick={() => navigator.clipboard.writeText(debugDump)} style={{ marginBottom: 12, padding: "8px 12px" }}>
-          Копирай всичко
-        </button>
-        <pre>{debugDump}</pre>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-transparent">
