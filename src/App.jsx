@@ -110,6 +110,9 @@ const App = () => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
+  // Общ прозорец за изрично потвърждение преди чувствителни действия в раздел "Данни".
+  // Форма: { title, message, confirmLabel, tone: "danger" | "warning", onConfirm }
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [showRestoreDone, setShowRestoreDone] = useState(false);
   const [restoreDoneType, setRestoreDoneType] = useState([]);
   const [conflictProfiles, setConflictProfiles] = useState([]);
@@ -1270,10 +1273,16 @@ const App = () => {
                           name="backupReminder"
                           value={opt.value}
                           checked={backupReminderInterval === opt.value}
-                          onChange={() => {
-                            localStorage.setItem("backup_reminder_interval", opt.value);
-                            setBackupReminderInterval(opt.value);
-                          }}
+                          onChange={() => setConfirmDialog({
+                            title: "Смяна на напомнянето за резервно копие",
+                            message: `Напомнянето за резервно копие ще бъде променено на „${opt.label}“.`,
+                            confirmLabel: "Потвърди",
+                            tone: "warning",
+                            onConfirm: () => {
+                              localStorage.setItem("backup_reminder_interval", opt.value);
+                              setBackupReminderInterval(opt.value);
+                            },
+                          })}
                           className="accent-blue-500"
                         />
                         {opt.label}
@@ -1324,7 +1333,13 @@ const App = () => {
                               name="driveAutoSync"
                               value={opt.value}
                               checked={driveAutoSync === opt.value}
-                              onChange={() => driveToggleAutoSync(opt.value)}
+                              onChange={() => setConfirmDialog({
+                                title: "Смяна на автоматичното качване",
+                                message: `Автоматичното качване в Google Drive ще бъде променено на „${opt.label}“.`,
+                                confirmLabel: "Потвърди",
+                                tone: "warning",
+                                onConfirm: () => driveToggleAutoSync(opt.value),
+                              })}
                               className="accent-blue-500"
                             />
                             {opt.label}
@@ -1392,7 +1407,14 @@ const App = () => {
                         </p>
                       )}
                       <button
-                        onClick={driveDisconnect}
+                        onClick={() => setConfirmDialog({
+                          title: "Изключване на Google Drive",
+                          message: "Синхронизацията с Google Drive ще бъде спряна и автоматичното качване ще се изключи. Файловете в Google Drive остават непокътнати."
+                            + (supabaseConnected ? " Това ще прекъсне и връзката с Облака (обща връзка)." : ""),
+                          confirmLabel: "Изключи",
+                          tone: "danger",
+                          onConfirm: driveDisconnect,
+                        })}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
                       >
                         🔌 Изключи Google Drive
@@ -1515,7 +1537,13 @@ const App = () => {
                               name="supabaseAutoSync"
                               value={opt.value}
                               checked={supabaseAutoSync === opt.value}
-                              onChange={() => supabaseToggleAutoSync(opt.value)}
+                              onChange={() => setConfirmDialog({
+                                title: "Смяна на автоматичното качване",
+                                message: `Автоматичното качване в Облака ще бъде променено на „${opt.label}“.`,
+                                confirmLabel: "Потвърди",
+                                tone: "warning",
+                                onConfirm: () => supabaseToggleAutoSync(opt.value),
+                              })}
                               className="accent-blue-500"
                             />
                             {opt.label}
@@ -1580,7 +1608,13 @@ const App = () => {
                         ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
                       </button>
                       <button
-                        onClick={supabaseDisable}
+                        onClick={() => setConfirmDialog({
+                          title: "Деактивиране на резервното копие",
+                          message: "Автоматичното и ръчното качване в Облака ще спрат. Вписването в акаунта се запазва — можете да активирате отново по всяко време.",
+                          confirmLabel: "Деактивирай",
+                          tone: "warning",
+                          onConfirm: supabaseDisable,
+                        })}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-500 hover:bg-gray-200 transition w-full mt-1 mb-1"
                       >
                         ⏸️ Деактивирай резервно копие
@@ -1591,7 +1625,14 @@ const App = () => {
                         </p>
                       )}
                       <button
-                        onClick={supabaseDisconnect}
+                        onClick={() => setConfirmDialog({
+                          title: "Изход от Облака",
+                          message: "Ще излезете напълно от акаунта в Облака и синхронизацията ще спре. Резервните копия в Облака остават запазени и достъпни при следващо вписване."
+                            + (driveConnected ? " Това ще прекъсне и връзката с Google Drive (обща връзка)." : ""),
+                          confirmLabel: "Изход",
+                          tone: "danger",
+                          onConfirm: supabaseDisconnect,
+                        })}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-red-50 text-red-400 hover:bg-red-100 transition w-full"
                       >
                         🔌 Изход от облака
@@ -2010,6 +2051,36 @@ const App = () => {
               </button>
               <button
                 onClick={() => setShowCrossServiceWarning(null)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">{confirmDialog.title}</h2>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <div className={`rounded-xl p-4 border ${confirmDialog.tone === "danger" ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
+                <p className={`text-sm font-medium mb-1 ${confirmDialog.tone === "danger" ? "text-red-700" : "text-orange-700"}`}>⚠️ Потвърждение</p>
+                <p className={`text-sm ${confirmDialog.tone === "danger" ? "text-red-600" : "text-orange-600"}`}>
+                  {confirmDialog.message}
+                </p>
+              </div>
+              <button
+                onClick={() => { const fn = confirmDialog.onConfirm; setConfirmDialog(null); fn?.(); }}
+                className={`w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition ${confirmDialog.tone === "danger" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+              <button
+                onClick={() => setConfirmDialog(null)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
