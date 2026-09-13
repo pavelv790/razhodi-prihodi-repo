@@ -1320,6 +1320,13 @@ const App = () => {
                           Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте качване на резервно копие в Облака.
                         </p>
                       </div>
+                      {driveAutoSync === "off" && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
+                          <p className="text-xs text-orange-700">
+                            ⚠️ Свързването с Google Drive само по себе си <strong>не включва</strong> автоматично качване. То все още е <strong>изключено</strong> — изберете опция по-долу, за да се качват резервни копия автоматично.
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
                         <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
                         {[
@@ -1524,6 +1531,13 @@ const App = () => {
                           Сесията се поддържа автоматично. Не е нужно повторно вписване.
                         </p>
                       </div>
+                      {supabaseAutoSync === "off" && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
+                          <p className="text-xs text-orange-700">
+                            ⚠️ Вписването в Облака само по себе си <strong>не включва</strong> автоматично качване. То все още е <strong>изключено</strong> — изберете опция по-долу, за да се качват резервни копия автоматично.
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
                         <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
                         {[
