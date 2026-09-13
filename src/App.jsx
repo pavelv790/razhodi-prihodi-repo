@@ -113,6 +113,9 @@ const App = () => {
   // Общ прозорец за изрично потвърждение преди чувствителни действия в раздел "Данни".
   // Форма: { title, message, confirmLabel, tone: "danger" | "warning", onConfirm }
   const [confirmDialog, setConfirmDialog] = useState(null);
+  // Модален прозорец, който напомня, че свързването само по себе си не включва
+  // автоматично качване (по подразбиране е изключено) — за да не се пропусне.
+  const [autoUploadNotice, setAutoUploadNotice] = useState(null); // 'drive' | 'supabase' | null
   const [showRestoreDone, setShowRestoreDone] = useState(false);
   const [restoreDoneType, setRestoreDoneType] = useState([]);
   const [conflictProfiles, setConflictProfiles] = useState([]);
@@ -395,6 +398,26 @@ const App = () => {
       return () => clearTimeout(timer);
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup]);
+
+  // Показва модал-напомняне след РЕАЛНО свързване с Google Drive (не при обикновено
+  // презареждане на вече свързана сесия) — ако автоматичното качване все още е изключено.
+  useEffect(() => {
+    if (driveConnected && sessionStorage.getItem("pending_auto_upload_notice_drive") === "1") {
+      sessionStorage.removeItem("pending_auto_upload_notice_drive");
+      if (driveAutoSync === "off") setAutoUploadNotice("drive");
+    }
+  }, [driveConnected, driveAutoSync]);
+
+  // Показва модал-напомняне след РЕАЛНО активиране на Облака (вход/регистрация или
+  // натискане на "Активирай"), а не при обикновено презареждане на вече активна сесия.
+  const prevSupabaseEnabledRef = useRef(supabaseEnabled);
+  useEffect(() => {
+    const wasEnabled = prevSupabaseEnabledRef.current;
+    prevSupabaseEnabledRef.current = supabaseEnabled;
+    if (!wasEnabled && supabaseEnabled && supabaseAutoSync === "off") {
+      setAutoUploadNotice("supabase");
+    }
+  }, [supabaseEnabled, supabaseAutoSync]);
 
   useEffect(() => {
     if (transactions.length === 0 || expenseCategories.length === 0 || incomeCategories.length === 0) return;
@@ -1303,6 +1326,7 @@ const App = () => {
                             setShowCrossServiceWarning("toDrive");
                           } else {
                             setShowDataPanel(true);
+                            sessionStorage.setItem("pending_auto_upload_notice_drive", "1");
                             driveConnect();
                           }
                         }}
@@ -1320,13 +1344,6 @@ const App = () => {
                           Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте качване на резервно копие в Облака.
                         </p>
                       </div>
-                      {driveAutoSync === "off" && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
-                          <p className="text-xs text-orange-700">
-                            ⚠️ Свързването с Google Drive само по себе си <strong>не включва</strong> автоматично качване. То все още е <strong>изключено</strong> — изберете опция по-долу, за да се качват резервни копия автоматично.
-                          </p>
-                        </div>
-                      )}
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
                         <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
                         {[
@@ -1531,13 +1548,6 @@ const App = () => {
                           Сесията се поддържа автоматично. Не е нужно повторно вписване.
                         </p>
                       </div>
-                      {supabaseAutoSync === "off" && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
-                          <p className="text-xs text-orange-700">
-                            ⚠️ Вписването в Облака само по себе си <strong>не включва</strong> автоматично качване. То все още е <strong>изключено</strong> — изберете опция по-долу, за да се качват резервни копия автоматично.
-                          </p>
-                        </div>
-                      )}
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
                         <p className="text-xs text-gray-500 mb-1">Автоматично качване:</p>
                         {[
@@ -2098,6 +2108,32 @@ const App = () => {
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {autoUploadNotice && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">
+                {autoUploadNotice === "drive" ? "Свързано с Google Drive" : "Свързано с Облака"}
+              </h2>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <div className="rounded-xl p-4 border bg-orange-50 border-orange-200">
+                <p className="text-sm font-medium mb-1 text-orange-700">⚠️ Още една стъпка</p>
+                <p className="text-sm text-orange-600">
+                  Връзката е успешна, но <strong>автоматичното качване все още е изключено</strong> по подразбиране. Резервни копия няма да се качват сами, докато не изберете „При всяка промяна“ или „Веднъж дневно“ от опциите за автоматично качване в панела „Данни“.
+                </p>
+              </div>
+              <button
+                onClick={() => setAutoUploadNotice(null)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 transition"
+              >
+                Разбрах
               </button>
             </div>
           </div>
