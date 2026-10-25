@@ -46,6 +46,46 @@ const saveAllToDB_forProfile = async (profileId, newTransactions) => {
   }
 };
 
+// При затваряне/презареждане на страницата IndexedDB транзакциите се прекъсват (дори отворени синхронно),
+// затова чакащото се пази и в localStorage, което се записва синхронно. При следващото зареждане на
+// профила снимката се възстановява и записва в базата; изтрива се чак след успешен запис
+// (одит 2026-10, 1А-08)
+const PENDING_KEY = "pending_transactions_flush";
+
+const writePendingSnapshot = (profileId, newTransactions) => {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify({ profileId, ts: Date.now(), transactions: newTransactions }));
+  } catch { /* няма място/недостъпно — остава само обикновеният запис */ }
+};
+
+const readPendingSnapshot = (profileId) => {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    return snap && snap.profileId === profileId && Array.isArray(snap.transactions) ? snap : null;
+  } catch {
+    return null;
+  }
+};
+
+// upTo: изтрива снимката само ако е писана не по-късно от началото на записа, който току-що е успял
+const clearPendingSnapshot = (profileId, upTo = Infinity) => {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return;
+    const snap = JSON.parse(raw);
+    if (snap && snap.profileId === profileId && snap.ts <= upTo) localStorage.removeItem(PENDING_KEY);
+  } catch { /* нищо */ }
+};
+
+const saveAndSettle = (profileId, newTransactions) => {
+  const startedAt = Date.now();
+  return saveAllToDB_forProfile(profileId, newTransactions).then((ok) => {
+    if (ok) clearPendingSnapshot(profileId, startedAt);
+  });
+};
+
 const generateId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -62,6 +102,8 @@ export const useTransactions = (profileId) => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const pendingSaveRef = useRef(null);
+  // Таймерът на отложения запис — флъшът при скриване на таба го спира, за да няма двоен запис (одит 2026-10, 1А-08)
+  const saveTimerRef = useRef(null);
   // За кой профил са заредени транзакциите в паметта (null = зареждането още тече или се е провалило).
   // Без това при смяна на профил данните на стария се записваха под новия (одит 2026-10, 1А-01).
   const loadedForProfileRef = useRef(null);
@@ -83,9 +125,11 @@ export const useTransactions = (profileId) => {
     if (!profileId) return;
     loadByProfile(profileId).then((data) => {
       if (seq !== loadSeqRef.current) return;
-      const sorted = sortByDate(data);
+      // Последните промени не са стигнали до базата при затваряне — възстановяват се и се записват наново (одит 2026-10, 1А-08)
+      const recovered = readPendingSnapshot(profileId);
+      const sorted = sortByDate(recovered ? recovered.transactions : data);
       loadedForProfileRef.current = profileId;
-      savedSnapshotRef.current = sorted;
+      savedSnapshotRef.current = recovered ? null : sorted;
       // Транзакции, добавени докато трае зареждането, се пазят (одит 2026-10, 1А-03)
       setTransactions((prev) => {
         const loadedIds = new Set(sorted.map((t) => t.id));
@@ -107,8 +151,9 @@ export const useTransactions = (profileId) => {
     pendingSaveRef.current = { profileId, transactions };
     const timer = setTimeout(() => {
       pendingSaveRef.current = null;
-      saveAllToDB_forProfile(profileId, transactions);
+      saveAndSettle(profileId, transactions);
     }, 300);
+    saveTimerRef.current = timer;
     return () => clearTimeout(timer);
   }, [transactions, isLoaded, profileId]);
 
@@ -118,10 +163,32 @@ export const useTransactions = (profileId) => {
       if (pendingSaveRef.current) {
         const { profileId: pid, transactions: txs } = pendingSaveRef.current;
         pendingSaveRef.current = null;
-        saveAllToDB_forProfile(pid, txs);
+        saveAndSettle(pid, txs);
       }
     };
   }, [profileId]);
+
+  // При скриване на таба/приложението (PWA във фон) или затваряне/презареждане запиши чакащото веднага,
+  // вместо да чакаш 300-те ms на таймера, който иначе би се изгубил (одит 2026-10, 1А-08)
+  useEffect(() => {
+    const flushPending = () => {
+      if (!pendingSaveRef.current) return;
+      clearTimeout(saveTimerRef.current);
+      const { profileId: pid, transactions: txs } = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      writePendingSnapshot(pid, txs);
+      saveAndSettle(pid, txs);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushPending();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", flushPending);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", flushPending);
+    };
+  }, []);
 
   const addTransaction = (transaction) => {
     const newTransaction = { ...transaction, id: generateId(), profileId };
@@ -166,6 +233,8 @@ export const useTransactions = (profileId) => {
       setTransactions(sorted);
       setIsLoaded(true);
     }
+    // Заместването е окончателно — по-стара снимка от затваряне не бива да го презапише (одит 2026-10, 1А-08)
+    clearPendingSnapshot(targetId);
     await saveAllToDB_forProfile(targetId, sorted);
   };
 
@@ -174,6 +243,7 @@ export const useTransactions = (profileId) => {
     setTransactions((prev) => sortByDate([...prev, ...withProfile]));
   };
   const deleteAllTransactionsByProfile = async (targetProfileId) => {
+    clearPendingSnapshot(targetProfileId);
     try {
       const db = await openDB();
       const all = await new Promise((resolve, reject) => {
