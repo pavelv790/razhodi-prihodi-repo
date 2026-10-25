@@ -375,6 +375,52 @@ const App = () => {
   const uploadDropMessage = (service, drop) =>
     `Транзакциите на профил „${drop.name}“ са намалели от ${drop.prev} на ${drop.now} спрямо последното качване в ${UPLOAD_SERVICE_LABELS[service]}. Да кача ли това копие? По-старите копия се пазят.`;
 
+  // След „Изтрий всички данни“ профилът се отбелязва за всяка услуга с броя транзакции преди
+  // изтриването. Докато профилът има по-малко транзакции от тогава, качването (авто и ръчно)
+  // пита — независимо от пазача. Белезите на услугата се махат след успешно качване в нея.
+  const DELETED_ALL_KEYS = { drive: "drive_deleted_all_profiles", supabase: "supabase_deleted_all_profiles" };
+
+  const markDeletedAll = (profileId, count) => {
+    if (!profileId || !count) return;
+    Object.values(DELETED_ALL_KEYS).forEach((key) => {
+      try {
+        const marks = JSON.parse(localStorage.getItem(key) || "{}");
+        marks[profileId] = Math.max(marks[profileId] || 0, count);
+        localStorage.setItem(key, JSON.stringify(marks));
+      } catch {
+        // без белег остава само пазачът при рязък спад
+      }
+    });
+  };
+
+  const clearDeletedAll = (service) => {
+    try {
+      localStorage.removeItem(DELETED_ALL_KEYS[service]);
+    } catch {
+      // белегът ще накара следващото качване да попита пак
+    }
+  };
+
+  // Връща { name, before, now } за първия отбелязан профил, който още има по-малко транзакции, или null
+  const findDeletedAll = (service, backup) => {
+    let marks = null;
+    try {
+      marks = JSON.parse(localStorage.getItem(DELETED_ALL_KEYS[service]) || "null");
+    } catch {
+      marks = null;
+    }
+    if (!marks) return null;
+    const counts = countTransactionsByProfile(backup);
+    for (const p of backup.profiles || []) {
+      const before = marks[p.id];
+      if (before && counts[p.id] < before) return { name: p.name, before, now: counts[p.id] };
+    }
+    return null;
+  };
+
+  const deletedAllMessage = (service, deleted) =>
+    `След „Изтрий всички данни“ профил „${deleted.name}“ има ${deleted.now} ${deleted.now === 1 ? "транзакция" : "транзакции"} (преди изтриването: ${deleted.before}). Да кача ли това копие в ${UPLOAD_SERVICE_LABELS[service]}? По-старите копия се пазят.`;
+
   // Първо качване от това устройство: няма дата на последно качване, няма брой транзакции от
   // пазача и не е отговорено „Възстанови“ на въпроса за съществуващо копие. Тогава преди
   // качването се проверява дали в облака вече има копие на профила (напр. от старо устройство).
@@ -435,6 +481,7 @@ const App = () => {
     const success = await driveUploadBackup(backup, profileName);
     if (success) {
       saveUploadCounts("drive", backup);
+      clearDeletedAll("drive");
       autoUploadPausedRef.current.drive = false;
     }
     return success;
@@ -444,6 +491,7 @@ const App = () => {
     const success = await supabaseUploadBackup(backup, profileName, profileId);
     if (success) {
       saveUploadCounts("supabase", backup);
+      clearDeletedAll("supabase");
       autoUploadPausedRef.current.supabase = false;
       setLastSupabaseUploadDate(new Date().toISOString());
     }
@@ -470,13 +518,14 @@ const App = () => {
       setConfirmDialog(existingCopyDialog({ service, copies, backup, profileName, profileId, doUpload, auto: true }));
       return null;
     }
-    const drop = findUploadDrop(service, backup);
-    if (!drop) return doUpload();
+    const deleted = findDeletedAll(service, backup);
+    const drop = deleted ? null : findUploadDrop(service, backup);
+    if (!deleted && !drop) return doUpload();
     if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
     autoUploadPausedRef.current[service] = true;
     setConfirmDialog({
       title: "Автоматичното качване е спряно",
-      message: uploadDropMessage(service, drop),
+      message: deleted ? deletedAllMessage(service, deleted) : uploadDropMessage(service, drop),
       confirmLabel: "Качи",
       cancelLabel: "Не качвай",
       tone: "warning",
@@ -901,11 +950,12 @@ const App = () => {
       await doUpload();
       return;
     }
-    const drop = findUploadDrop(service, backup);
-    if (drop) {
+    const deleted = findDeletedAll(service, backup);
+    const drop = deleted ? null : findUploadDrop(service, backup);
+    if (deleted || drop) {
       setConfirmDialog({
-        title: "Рязко намаляване на данните",
-        message: uploadDropMessage(service, drop),
+        title: deleted ? "Качване след изтриване" : "Рязко намаляване на данните",
+        message: deleted ? deletedAllMessage(service, deleted) : uploadDropMessage(service, drop),
         confirmLabel: "Качи",
         tone: "warning",
         onConfirm: doUpload,
@@ -2560,12 +2610,13 @@ const App = () => {
               {(driveConnected || (supabaseConnected && supabaseEnabled)) && (
                 <div className="bg-orange-50 rounded-xl p-3 border border-orange-200">
                   <p className="text-sm text-orange-700">
-                    ⚠️ Google Drive/Облакът няма да се обнови автоматично. Ако искате изтриването да се отрази и там, натиснете „Запази" ръчно след това.
+                    ⚠️ Изтриват се само транзакциите на профил „{activeProfile?.name}“ на това устройство. Копията в {[driveConnected && "Google Drive", supabaseConnected && supabaseEnabled && "Облака"].filter(Boolean).join(" и ")} не се трият. Преди да ги замени с по-малко транзакции — автоматично или при „Запази“ — приложението ще ви попита.
                   </p>
                 </div>
               )}
               <button
                 onClick={() => {
+                  markDeletedAll(activeProfileId, transactions.length);
                   replaceAllTransactions([]);
                   setShowDeleteAll(false);
                 }}
