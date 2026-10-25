@@ -213,7 +213,8 @@ export const useTransactions = (profileId) => {
     }
     // Заместването е окончателно — по-стара снимка от затваряне не бива да го презапише (одит 2026-10, 1А-08)
     clearPendingSnapshot(targetId);
-    await saveAllToDB_forProfile(targetId, sorted);
+    // true/false — възстановяването спира при провал (одит 2026-10, 2А-01)
+    return saveAllToDB_forProfile(targetId, sorted);
   };
 
   const addTransactions = (newTransactions) => {

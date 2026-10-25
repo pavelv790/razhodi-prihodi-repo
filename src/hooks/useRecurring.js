@@ -157,15 +157,18 @@ export const useRecurring = (profileId) => {
     await deleteByProfile(targetProfileId);
   };
 
+  // Връща true/false — възстановяването спира при провал (одит 2026-10, 2А-01)
   const restoreRecurring = async (items, targetProfileId) => {
     try {
       const target = targetProfileId || profileId;
       const withProfile = items.map((r) => ({ ...r, profileId: target }));
       await replaceByProfile(STORE, target, withProfile);
       if (target === profileId) setRecurringItems(withProfile);
+      return true;
     } catch (err) {
       reportDBError();
       console.error("Грешка при възстановяване от файл на повтарящи се транзакции", err);
+      return false;
     }
   };
 

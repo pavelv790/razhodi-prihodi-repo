@@ -11,10 +11,12 @@ const withValidName = (p) => (typeof p.name === "string" && p.name.trim() ? p : 
 const loadAll = async () =>
   ((await runTx(STORE, "readonly", (store) => store.getAll())) || []).map(withValidName);
 
+// Връща true/false — възстановяването спира при провал (одит 2026-10, 2А-01)
 const saveOne = async (profile) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.put(profile));
-  } catch (err) { reportDBError(); console.error("Грешка при запис на профил", err); }
+    return true;
+  } catch (err) { reportDBError(); console.error("Грешка при запис на профил", err); return false; }
 };
 
 // При грешка отхвърля: профилът остава в списъка, щом не е изтрит от базата
@@ -104,12 +106,13 @@ export const useProfiles = () => {
     return true;
   };
   const addOrUpdateProfile = async (profile) => {
-    await saveOne(profile);
+    const ok = await saveOne(profile);
     setProfiles((prev) => {
       const exists = prev.some((p) => p.id === profile.id);
       if (exists) return prev.map((p) => p.id === profile.id ? profile : p);
       return [...prev, profile];
     });
+    return ok;
   };
 
   

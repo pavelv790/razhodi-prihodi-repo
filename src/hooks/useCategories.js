@@ -15,13 +15,16 @@ const loadFromDB = async (profileId) =>
 // Повреден запис: списък, който не е масив → празен; елементи, които не са текст, отпадат (одит 2026-10, 1А-11)
 const validList = (list) => (Array.isArray(list) ? list.filter((c) => typeof c === "string") : []);
 
+// Връща true/false — възстановяването спира при провал (одит 2026-10, 2А-01)
 export const saveToDB = async (profileId, expenseCategories, incomeCategories) => {
   try {
     await runTx(STORE, "readwrite", (store) =>
       store.put({ type: profileId, categories: { expense: expenseCategories, income: incomeCategories } }));
+    return true;
   } catch (err) {
     reportDBError();
     console.error("Грешка при запис на категории в IndexedDB", err);
+    return false;
   }
 };
 

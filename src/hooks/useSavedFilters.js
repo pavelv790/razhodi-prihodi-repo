@@ -72,15 +72,18 @@ export const useSavedFilters = (profileId) => {
     setSavedFilters((prev) => prev.filter((f) => f.id !== id));
   };
 
-  // Не отхвърля: провал тук не бива да спира възстановяването по средата (одит 2026-10, 1А-04)
+  // Не отхвърля (одит 2026-10, 1А-04), а връща true/false — възстановяването спира при провал
+  // и казва докъде е стигнало (2А-01)
   const restoreFilters = async (filters, targetProfileId) => {
     try {
       const target = targetProfileId || profileId;
       const withProfile = filters.map((f) => ({ ...f, profileId: target }));
       await replaceByProfile(STORE, target, withProfile);
+      return true;
     } catch (err) {
       reportDBError();
       console.error("Грешка при възстановяване от файл на филтри", err);
+      return false;
     }
   };
 

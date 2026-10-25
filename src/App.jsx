@@ -28,9 +28,19 @@ import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
-import { openDB, onDBWriteError } from "./utils/db";
+import { openDB, onDBWriteError, runTx, reportDBError } from "./utils/db";
 import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
 import { registerSW } from "virtual:pwa-register";
+
+// Записите на един профил от store. При грешка или прекъсната транзакция отхвърля, вместо да
+// виси завинаги (одит 2026-10, 1А-05)
+const getProfileRecords = async (storeName, profileId) =>
+  ((await runTx(storeName, "readonly", (store) => store.getAll())) || []).filter((r) => r.profileId === profileId);
+
+// Провален запис спира възстановяването, вместо то да завърши с „успешно“ (одит 2026-10, 2А-01)
+const ensureSaved = (ok) => {
+  if (ok === false) throw new Error("Записът в базата не успя.");
+};
 
 const App = () => {
   const {
@@ -119,6 +129,8 @@ const App = () => {
   const [autoUploadNotice, setAutoUploadNotice] = useState(null); // 'drive' | 'supabase' | null
   const [showRestoreDone, setShowRestoreDone] = useState(false);
   const [restoreDoneType, setRestoreDoneType] = useState([]);
+  // Възстановяването спря поради грешка: { done: [{ name, choice }], partial: име | null } (одит 2026-10, 2А-01)
+  const [restoreError, setRestoreError] = useState(null);
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -227,6 +239,8 @@ const App = () => {
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
   const completedRestoreProfilesRef = useRef([]);
+  // Профилът, който се възстановява в момента — при грешка той е приложен частично
+  const restoreCurrentProfileRef = useRef(null);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
@@ -739,67 +753,96 @@ const App = () => {
     setShowPendingModal(false);
     setPendingRecurring([]);
   };
+  // Нулира цялото състояние на възстановяването (pendingBackup ≠ null спира auto-sync)
+  const resetRestoreState = () => {
+    completedRestoreProfilesRef.current = [];
+    restoreCurrentProfileRef.current = null;
+    pendingNewProfilesRef.current = [];
+    setShowRestoreConfirm(false);
+    setShowConflictModal(false);
+    setShowRestoreDuplicates(false);
+    setShowAddNewProfilesConfirm(false);
+    setConflictProfiles([]);
+    setConflictChoices({});
+    setPendingBackup(null);
+    setPendingNewProfiles([]);
+    setAddNewProfiles(null);
+    setNameOnlyMatchIds([]);
+    setRestoreDuplicates([]);
+    setRestoreUniqueTransactions([]);
+    setRestoreSelectedDuplicates([]);
+    setPendingMergeProfileId(null);
+    setPendingRemainingProfiles([]);
+  };
+  // Грешка по време на възстановяването: казва кои профили са приложени и кой — частично (одит 2026-10, 2А-01)
+  const failRestore = (err) => {
+    console.error("Грешка при възстановяване от резервно копие", err);
+    reportDBError();
+    setRestoreError({ done: [...completedRestoreProfilesRef.current], partial: restoreCurrentProfileRef.current });
+    resetRestoreState();
+  };
+
   const handleAddNewProfilesConfirm = async (doAdd) => {
-    if (doAdd) {
-      for (const bp of pendingNewProfiles) {
-        await addOrUpdateProfile(bp);
-        // Транзакции
-        const backupTxs = (pendingBackup.transactions || [])
-          .filter((t) => t.profileId === bp.id)
-          .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
-        await replaceAllTransactions(backupTxs, bp.id);
-        // Категории
-        const cats = pendingBackup.profileCategories?.[bp.id]
-          ? pendingBackup.profileCategories[bp.id]
-          : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
-        await saveCategoriesDirectly(bp.id, cats.expense, cats.income);
-        if (bp.id === activeProfileId) {
-          setExpenseCategoriesFromBackup(cats.expense || []);
-          setIncomeCategoriesFromBackup(cats.income || []);
-        }
-        // Валута
-        const profileCurrencyData = pendingBackup.profileCurrencies?.[bp.id] || (pendingBackup.currency ? { currency: pendingBackup.currency, rate: pendingBackup.rate } : null);
-        if (profileCurrencyData) {
+    try {
+      if (doAdd) {
+        for (const bp of pendingNewProfiles) {
+          restoreCurrentProfileRef.current = bp.name;
+          ensureSaved(await addOrUpdateProfile(bp));
+          // Транзакции
+          const backupTxs = (pendingBackup.transactions || [])
+            .filter((t) => t.profileId === bp.id)
+            .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
+          ensureSaved(await replaceAllTransactions(backupTxs, bp.id));
+          // Категории
+          const cats = pendingBackup.profileCategories?.[bp.id]
+            ? pendingBackup.profileCategories[bp.id]
+            : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
+          ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
           if (bp.id === activeProfileId) {
-            restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
-          } else {
-            const db = await openDB();
-            await new Promise((resolve) => {
-              const tx = db.transaction("currency", "readwrite");
-              tx.objectStore("currency").put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate });
-              tx.oncomplete = resolve;
-            });
+            setExpenseCategoriesFromBackup(cats.expense || []);
+            setIncomeCategoriesFromBackup(cats.income || []);
           }
-        }
-        // Бюджети
-        const profileBudgetsData = pendingBackup.profileBudgets?.[bp.id] || pendingBackup.budgets || null;
-        if (profileBudgetsData) {
-          if (bp.id === activeProfileId) {
-            restoreBudgets(profileBudgetsData);
-          } else {
-            const db = await openDB();
-            await new Promise((resolve) => {
-              const tx = db.transaction("budgets", "readwrite");
-              tx.objectStore("budgets").put({ id: bp.id, ...profileBudgetsData });
-              tx.oncomplete = resolve;
-            });
+          // Валута
+          const profileCurrencyData = pendingBackup.profileCurrencies?.[bp.id] || (pendingBackup.currency ? { currency: pendingBackup.currency, rate: pendingBackup.rate } : null);
+          if (profileCurrencyData) {
+            if (bp.id === activeProfileId) {
+              restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
+            } else {
+              await runTx("currency", "readwrite", (store) =>
+                store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
+            }
           }
+          // Бюджети
+          const profileBudgetsData = pendingBackup.profileBudgets?.[bp.id] || pendingBackup.budgets || null;
+          if (profileBudgetsData) {
+            if (bp.id === activeProfileId) {
+              restoreBudgets(profileBudgetsData);
+            } else {
+              await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
+            }
+          }
+          // Филтри
+          if (pendingBackup.savedFilters) {
+            const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
+            ensureSaved(await restoreFilters(profileFilters, bp.id));
+          }
+          // Повтарящи се
+          if (pendingBackup.recurringItems) {
+            const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
+            ensureSaved(await restoreRecurring(profileRecurring, bp.id));
+          }
+          completedRestoreProfilesRef.current.push({ name: bp.name, choice: "backup" });
+          restoreCurrentProfileRef.current = null;
         }
-        // Филтри
-        if (pendingBackup.savedFilters) {
-          const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
-          await restoreFilters(profileFilters, bp.id);
-        }
-        // Повтарящи се
-        if (pendingBackup.recurringItems) {
-          const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
-          await restoreRecurring(profileRecurring, bp.id);
-        }
+        setRestoreDoneType(pendingNewProfiles.map((p) => ({ name: p.name, choice: "backup" })));
+      } else {
+        setRestoreDoneType([{ name: "", choice: "skipped" }]);
       }
-      setRestoreDoneType(pendingNewProfiles.map((p) => ({ name: p.name, choice: "backup" })));
-    } else {
-      setRestoreDoneType([{ name: "", choice: "skipped" }]);
+    } catch (err) {
+      failRestore(err);
+      return;
     }
+    completedRestoreProfilesRef.current = [];
     setConflictProfiles([]);
     setConflictChoices({});
     setPendingNewProfiles([]);
@@ -809,40 +852,38 @@ const App = () => {
     setShowRestoreDone(true);
   };
   const handleRestoreDuplicatesConfirm = async () => {
-    const toAdd = [
-      ...restoreUniqueTransactions,
-      ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
-    ];
-    if (toAdd.length > 0) {
-      const existingTxs = pendingMergeProfileId === activeProfileId
-        ? transactions
-        : await (async () => {
-            const db = await openDB();
-            return new Promise((resolve) => {
-              const tx = db.transaction("transactions", "readonly");
-              const req = tx.objectStore("transactions").getAll();
-              req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === pendingMergeProfileId));
-            });
-          })();
-      await replaceAllTransactions([...existingTxs, ...toAdd], pendingMergeProfileId);
-    }
+    try {
+      const toAdd = [
+        ...restoreUniqueTransactions,
+        ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
+      ];
+      if (toAdd.length > 0) {
+        const existingTxs = pendingMergeProfileId === activeProfileId
+          ? transactions
+          : await getProfileRecords("transactions", pendingMergeProfileId);
+        ensureSaved(await replaceAllTransactions([...existingTxs, ...toAdd], pendingMergeProfileId));
+      }
 
-    // Довърши категории, филтри, повтарящи се за текущия профил
-    if (!pendingBackup) return;
-    const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
-    if (currentBp) {
-      await finishRestoreForProfile(currentBp, "merge", pendingBackup);
-      await addOrUpdateProfile(currentBp);
-      completedRestoreProfilesRef.current.push({ name: currentBp.name, choice: "merge" });
-    }
-    setRestoreDuplicates([]);
-    setRestoreUniqueTransactions([]);
-    setRestoreSelectedDuplicates([]);
-    setPendingMergeProfileId(null);
-    setShowRestoreDuplicates(false);
+      // Довърши категории, филтри, повтарящи се за текущия профил
+      if (!pendingBackup) return;
+      const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
+      if (currentBp) {
+        await finishRestoreForProfile(currentBp, "merge", pendingBackup);
+        ensureSaved(await addOrUpdateProfile(currentBp));
+        completedRestoreProfilesRef.current.push({ name: currentBp.name, choice: "merge" });
+      }
+      restoreCurrentProfileRef.current = null;
+      setRestoreDuplicates([]);
+      setRestoreUniqueTransactions([]);
+      setRestoreSelectedDuplicates([]);
+      setPendingMergeProfileId(null);
+      setShowRestoreDuplicates(false);
 
-    // Продължи с останалите профили
-    await finishRestore(pendingRemainingProfiles, pendingBackup);
+      // Продължи с останалите профили
+      await finishRestore(pendingRemainingProfiles, pendingBackup);
+    } catch (err) {
+      failRestore(err);
+    }
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
@@ -1133,7 +1174,7 @@ const App = () => {
       : { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] };
 
     if (choice === "backup") {
-      await saveCategoriesDirectly(bp.id, cats.expense, cats.income);
+      ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
       if (bp.id === activeProfileId) {
         setExpenseCategoriesFromBackup(cats.expense || []);
         setIncomeCategoriesFromBackup(cats.income || []);
@@ -1143,12 +1184,8 @@ const App = () => {
         if (bp.id === activeProfileId) {
           restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
         } else {
-          const db = await openDB();
-          await new Promise((resolve) => {
-            const tx = db.transaction("currency", "readwrite");
-            tx.objectStore("currency").put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate });
-            tx.oncomplete = resolve;
-          });
+          await runTx("currency", "readwrite", (store) =>
+            store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
         }
       }
       const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
@@ -1156,30 +1193,18 @@ const App = () => {
         if (bp.id === activeProfileId) {
           restoreBudgets(profileBudgetsData);
         } else {
-          const db = await openDB();
-          await new Promise((resolve) => {
-            const tx = db.transaction("budgets", "readwrite");
-            tx.objectStore("budgets").put({ id: bp.id, ...profileBudgetsData });
-            tx.oncomplete = resolve;
-          });
+          await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
         }
       }
     }
 
     if (choice === "merge") {
-      const existingCats = await (async () => {
-        const db = await openDB();
-        return new Promise((resolve) => {
-          const tx = db.transaction("categories", "readonly");
-          const req = tx.objectStore("categories").get(bp.id);
-          req.onsuccess = () => resolve(req.result || null);
-        });
-      })();
+      const existingCats = await runTx("categories", "readonly", (store) => store.get(bp.id));
       const existingExpense = existingCats?.categories?.expense || [];
       const existingIncome = existingCats?.categories?.income || [];
       const mergedExpense = [...new Set([...existingExpense, ...(cats.expense || [])].map(c => c.trim()))];
       const mergedIncome = [...new Set([...existingIncome, ...(cats.income || [])].map(c => c.trim()))];
-      await saveCategoriesDirectly(bp.id, mergedExpense, mergedIncome);
+      ensureSaved(await saveCategoriesDirectly(bp.id, mergedExpense, mergedIncome));
       if (bp.id === activeProfileId) {
         setExpenseCategoriesFromBackup(mergedExpense);
         setIncomeCategoriesFromBackup(mergedIncome);
@@ -1189,42 +1214,33 @@ const App = () => {
     if (backupData.savedFilters) {
       const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
       if (choice === "merge") {
-        const db = await openDB();
-        const existingFilters = await new Promise((resolve) => {
-          const tx = db.transaction("saved_filters", "readonly");
-          const req = tx.objectStore("saved_filters").getAll();
-          req.onsuccess = () => resolve((req.result || []).filter((f) => f.profileId === bp.id));
-        });
+        const existingFilters = await getProfileRecords("saved_filters", bp.id);
         const newFilters = profileFilters.filter((bf) =>
           !existingFilters.some((ef) => ef.name === bf.name && ef.fromDate === bf.fromDate && ef.toDate === bf.toDate)
         );
         const merged = [...existingFilters, ...newFilters];
-        await restoreFilters(merged, bp.id);
+        ensureSaved(await restoreFilters(merged, bp.id));
         if (bp.id === activeProfileId) setSavedFilters(merged.map((f) => ({ ...f, profileId: bp.id })));
       } else {
-        await restoreFilters(profileFilters, bp.id);
+        ensureSaved(await restoreFilters(profileFilters, bp.id));
         if (bp.id === activeProfileId) setSavedFilters(profileFilters.map((f) => ({ ...f, profileId: bp.id })));
       }
     }
     if (backupData.recurringItems) {
       const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
       if (choice === "merge") {
-        const db = await openDB();
-        const existingRecurring = await new Promise((resolve) => {
-          const tx = db.transaction("recurring", "readonly");
-          const req = tx.objectStore("recurring").getAll();
-          req.onsuccess = () => resolve((req.result || []).filter((r) => r.profileId === bp.id));
-        });
+        const existingRecurring = await getProfileRecords("recurring", bp.id);
         const newItems = profileRecurring.filter((br) =>
           !existingRecurring.some((er) => er.description === br.description && er.category === br.category && er.period === br.period)
         );
-        await restoreRecurring([...existingRecurring, ...newItems], bp.id);
+        ensureSaved(await restoreRecurring([...existingRecurring, ...newItems], bp.id));
       } else {
-        await restoreRecurring(profileRecurring, bp.id);
+        ensureSaved(await restoreRecurring(profileRecurring, bp.id));
       }
     }
   };
 
+  // Хвърля при грешка в базата — хваща я този, който е започнал възстановяването (failRestore)
   const finishRestore = async (remainingProfiles, backupData) => {
     for (const bp of remainingProfiles) {
       const isNew = pendingNewProfilesRef.current.some((np) => np.id === bp.id);
@@ -1235,12 +1251,8 @@ const App = () => {
         continue;
       }
 
-      const db = await openDB();
-      const localTxsForProfile = await new Promise((resolve) => {
-        const tx = db.transaction("transactions", "readonly");
-        const req = tx.objectStore("transactions").getAll();
-        req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === bp.id));
-      });
+      restoreCurrentProfileRef.current = bp.name;
+      const localTxsForProfile = await getProfileRecords("transactions", bp.id);
 
       const backupTxs = (backupData.transactions || [])
         .filter((t) => t.profileId === bp.id)
@@ -1272,22 +1284,16 @@ const App = () => {
         if (unique.length > 0) {
           const existingTxs = bp.id === activeProfileId
             ? transactions
-            : await (async () => {
-                const db = await openDB();
-                return new Promise((resolve) => {
-                  const tx = db.transaction("transactions", "readonly");
-                  const req = tx.objectStore("transactions").getAll();
-                  req.onsuccess = () => resolve((req.result || []).filter((t) => t.profileId === bp.id));
-                });
-              })();
-          await replaceAllTransactions([...existingTxs, ...unique], bp.id);
+            : await getProfileRecords("transactions", bp.id);
+          ensureSaved(await replaceAllTransactions([...existingTxs, ...unique], bp.id));
         }
       } else {
-        await replaceAllTransactions(backupTxs, bp.id);
+        ensureSaved(await replaceAllTransactions(backupTxs, bp.id));
       }
       await finishRestoreForProfile(bp, choice, backupData);
-      await addOrUpdateProfile(bp);
+      ensureSaved(await addOrUpdateProfile(bp));
       completedRestoreProfilesRef.current.push({ name: bp.name, choice });
+      restoreCurrentProfileRef.current = null;
     }
 
     if (pendingNewProfilesRef.current.length > 0) {
@@ -1313,7 +1319,12 @@ const App = () => {
 
   const handleRestoreConfirm = async () => {
     completedRestoreProfilesRef.current = [];
-    await finishRestore(pendingBackup.profiles || [], pendingBackup);
+    restoreCurrentProfileRef.current = null;
+    try {
+      await finishRestore(pendingBackup.profiles || [], pendingBackup);
+    } catch (err) {
+      failRestore(err);
+    }
   };
 
   return (
@@ -2562,6 +2573,48 @@ const App = () => {
               </div>
               <button
                 onClick={() => setShowRestoreDone(false)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                Разбрах
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {restoreError && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-700">
+                Възстановяването спря поради грешка
+              </h2>
+            </div>
+            <div className="px-5 py-5 space-y-3">
+              <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700 space-y-2">
+                <p>Записът в паметта на устройството не успя и възстановяването беше прекъснато.</p>
+                {restoreError.partial && (
+                  <p className="font-medium">⚠️ Профил „{restoreError.partial}“ е възстановен само частично — проверете данните му.</p>
+                )}
+                <p>Профилите от копието, които не са изброени тук, не са променени.</p>
+              </div>
+              {restoreError.done.length > 0 && (
+                <div className="bg-green-50 rounded-xl p-4 text-sm text-green-700 font-medium">
+                  {restoreError.done.map((r, i) => (
+                    <div key={i}>
+                      {r.choice === "merge"
+                        ? `✅ Данните за ${r.name} са обединени успешно.`
+                        : r.choice === "local"
+                        ? `✅ Данните за ${r.name} са запазени локално.`
+                        : `✅ Данните за ${r.name} са възстановени успешно.`}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-gray-500">
+                Презаредете страницата, за да видите данните, които са записани. Ако грешката се повтаря, освободете място на устройството и опитайте отново.
+              </p>
+              <button
+                onClick={() => setRestoreError(null)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
                 Разбрах
