@@ -39,9 +39,18 @@ export function setAccessToken(token) {
   accessToken = token;
 }
 
+// URL за търсене на файлове; параметрите се кодират (иначе „&“, „#“, „+“ в името на профила
+// чупят или изкривяват заявката)
+function filesSearchUrl(params) {
+  return `https://www.googleapis.com/drive/v3/files?${new URLSearchParams(params)}`;
+}
+
 async function getOrCreateFolder() {
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
+    filesSearchUrl({
+      q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: "files(id,name)",
+    }),
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   await checkDriveResponse(searchRes);
@@ -90,7 +99,12 @@ const BACKUPS_TO_KEEP = 14;
 async function listProfileBackups(prefix, folderId) {
   const safePrefix = escapeDriveQuery(prefix);
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,size)&pageSize=100`,
+    filesSearchUrl({
+      q: `name contains '${safePrefix}' and '${folderId}' in parents and trashed=false`,
+      orderBy: "modifiedTime desc",
+      fields: "files(id,name,modifiedTime,size)",
+      pageSize: "100",
+    }),
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   await checkDriveResponse(res);
