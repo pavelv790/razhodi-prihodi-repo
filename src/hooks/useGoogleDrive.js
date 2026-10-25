@@ -22,11 +22,15 @@ export function useGoogleDrive() {
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return "off";
-    const parsed = JSON.parse(saved);
-    // обратна съвместимост със стара boolean стойност
-    if (parsed.autoSync === true) return "onChange";
-    if (parsed.autoSync === false) return "off";
-    return parsed.autoSync || "off";
+    try {
+      const parsed = JSON.parse(saved);
+      // обратна съвместимост със стара boolean стойност
+      if (parsed.autoSync === true) return "onChange";
+      if (parsed.autoSync === false) return "off";
+      return parsed.autoSync || "off";
+    } catch {
+      return "off"; // повреден запис в localStorage
+    }
   });
   const [uploadLoading, setUploadLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
