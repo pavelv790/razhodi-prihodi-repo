@@ -96,6 +96,21 @@ export const runTx = async (storeName, mode, fn) => {
   });
 };
 
+// Заменя записите на един профил в store с records (празен списък — само ги изтрива). Четенето и
+// записът са в ЕДНА транзакция: паралелен запис за друг профил не може да се вклини между тях и да
+// върне старото му състояние, както при отделни readonly + readwrite (одит 2026-10, 1А-10).
+// Записите на другите профили не се пипат. Грешка → отхвърля (както runTx).
+export const replaceByProfile = (storeName, profileId, records = []) =>
+  runTx(storeName, "readwrite", (store) => {
+    const req = store.getAll();
+    req.onsuccess = () => {
+      (req.result || []).forEach((r) => {
+        if (r.profileId === profileId) store.delete(r.id);
+      });
+      records.forEach((r) => store.put(r));
+    };
+  });
+
 // Уведомяване на UI при провален запис в базата (иначе провалите са тихи)
 let dbErrorCallback = null;
 export function onDBWriteError(callback) {

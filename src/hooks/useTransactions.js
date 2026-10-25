@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { parseDate } from "../utils/formatters";
-import { runTx, reportDBError } from "../utils/db";
+import { runTx, replaceByProfile, reportDBError } from "../utils/db";
 
 const STORE = "transactions";
 
@@ -14,15 +14,8 @@ const loadByProfile = async (profileId) => {
 // Връща true при успешен запис; при грешка — червена лента и false (не отхвърля)
 const saveAllToDB_forProfile = async (profileId, newTransactions) => {
   try {
-    // Зареждаме всички транзакции от всички профили
-    const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-    // Запазваме транзакциите на другите профили непокътнати
-    const otherProfiles = all.filter((t) => t.profileId !== profileId);
-    const merged = [...otherProfiles, ...newTransactions];
-    await runTx(STORE, "readwrite", (store) => {
-      store.clear();
-      merged.forEach((t) => store.put(t));
-    });
+    // Транзакциите на другите профили остават непокътнати
+    await replaceByProfile(STORE, profileId, newTransactions);
     return true;
   } catch (err) {
     reportDBError();
@@ -231,12 +224,7 @@ export const useTransactions = (profileId) => {
   const deleteAllTransactionsByProfile = async (targetProfileId) => {
     clearPendingSnapshot(targetProfileId);
     try {
-      const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-      const remaining = all.filter((t) => t.profileId !== targetProfileId);
-      await runTx(STORE, "readwrite", (store) => {
-        store.clear();
-        remaining.forEach((t) => store.put(t));
-      });
+      await replaceByProfile(STORE, targetProfileId);
     } catch (err) {
       reportDBError();
       console.error("Грешка при изтриване на транзакции по профил", err);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { runTx, reportDBError } from "../utils/db";
+import { runTx, replaceByProfile, reportDBError } from "../utils/db";
 
 const STORE = "saved_filters";
 
@@ -23,11 +23,7 @@ const deleteOne = async (id) => {
 // При грешка отхвърля, за да спре изтриването на профила
 export const deleteProfileSavedFilters = async (profileId) => {
   try {
-    const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-    const toDelete = all.filter((f) => f.profileId === profileId).map((f) => f.id);
-    await runTx(STORE, "readwrite", (store) => {
-      toDelete.forEach((id) => store.delete(id));
-    });
+    await replaceByProfile(STORE, profileId);
   } catch (err) {
     reportDBError();
     console.error("Грешка при изтриване на филтри на профил", err);
@@ -80,14 +76,8 @@ export const useSavedFilters = (profileId) => {
   const restoreFilters = async (filters, targetProfileId) => {
     try {
       const target = targetProfileId || profileId;
-      const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-      const otherProfiles = all.filter((f) => f.profileId !== target);
       const withProfile = filters.map((f) => ({ ...f, profileId: target }));
-      const merged = [...otherProfiles, ...withProfile];
-      await runTx(STORE, "readwrite", (store) => {
-        store.clear();
-        merged.forEach((f) => store.put(f));
-      });
+      await replaceByProfile(STORE, target, withProfile);
     } catch (err) {
       reportDBError();
       console.error("Грешка при възстановяване от файл на филтри", err);

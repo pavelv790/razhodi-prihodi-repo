@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { runTx, reportDBError } from "../utils/db";
+import { runTx, replaceByProfile, reportDBError } from "../utils/db";
 import { parseDate, getTodayString } from "../utils/formatters";
 
 const STORE = "recurring";
@@ -25,12 +25,7 @@ const deleteOne = async (id) => {
 // При грешка отхвърля, за да спре изтриването на профила
 const deleteByProfile = async (profileId) => {
   try {
-    const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-    const remaining = all.filter((r) => r.profileId !== profileId);
-    await runTx(STORE, "readwrite", (store) => {
-      store.clear();
-      remaining.forEach((r) => store.put(r));
-    });
+    await replaceByProfile(STORE, profileId);
   } catch (err) {
     reportDBError();
     console.error("Грешка при изтриване на повтарящи се транзакции по профил", err);
@@ -165,14 +160,8 @@ export const useRecurring = (profileId) => {
   const restoreRecurring = async (items, targetProfileId) => {
     try {
       const target = targetProfileId || profileId;
-      const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
-      const otherProfiles = all.filter((r) => r.profileId !== target);
       const withProfile = items.map((r) => ({ ...r, profileId: target }));
-      const merged = [...otherProfiles, ...withProfile];
-      await runTx(STORE, "readwrite", (store) => {
-        store.clear();
-        merged.forEach((r) => store.put(r));
-      });
+      await replaceByProfile(STORE, target, withProfile);
       if (target === profileId) setRecurringItems(withProfile);
     } catch (err) {
       reportDBError();
