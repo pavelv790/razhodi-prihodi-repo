@@ -93,6 +93,7 @@ const App = () => {
   const [importExportMode, setImportExportMode] = useState(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [pendingBackup, setPendingBackup] = useState(null);
+  const [cloudBackupChoices, setCloudBackupChoices] = useState(null);
   const [showDeleteAll, setShowDeleteAll] = useState(false);
   const [showMonthlyStats, setShowMonthlyStats] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
@@ -724,6 +725,48 @@ const App = () => {
       const now = new Date().toISOString();
       setLastSupabaseUploadDate(now);
     }
+  };
+
+  const startSupabaseRestore = async (rawData) => {
+    const { data, remappedIds } = normalizeBackupProfileIds(rawData);
+    setNameOnlyMatchIds(remappedIds);
+    setPendingBackup(data);
+    const conflicts = (data.profiles || []).filter((bp) =>
+      profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+    );
+    const newProfiles = (data.profiles || []).filter((bp) =>
+      !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
+    );
+    pendingNewProfilesRef.current = newProfiles;
+    setPendingNewProfiles(newProfiles);
+    const db2 = await openDB();
+    const allTxs2 = await new Promise((resolve) => {
+      const tx = db2.transaction("transactions", "readonly");
+      const req = tx.objectStore("transactions").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    const counts2 = {};
+    profiles.forEach((lp) => {
+      counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
+    });
+    setLocalTransactionCounts(counts2);
+    if (conflicts.length > 0) {
+      const initialChoices = {};
+      conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
+      setConflictProfiles(conflicts);
+      setConflictChoices(initialChoices);
+      setShowConflictModal(true);
+    } else {
+      setShowRestoreConfirm(true);
+    }
+  };
+
+  // Брой транзакции на профила с това име в копието от облака (или всички, ако няма такъв профил)
+  const countCloudBackupTransactions = (backup) => {
+    const name = (activeProfile?.name || "").toLowerCase();
+    const bp = (backup.profiles || []).find((p) => (p.name || "").toLowerCase() === name);
+    const txs = backup.transactions || [];
+    return bp ? txs.filter((t) => t.profileId === bp.id).length : txs.length;
   };
 
   const handleBackupExport = async () => {
@@ -1591,42 +1634,15 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const rawData = await supabaseDownloadBackup(activeProfile?.name, activeProfileId);
-                          if (rawData) {
-                            const { data, remappedIds } = normalizeBackupProfileIds(rawData);
-                            setNameOnlyMatchIds(remappedIds);
-                            setPendingBackup(data);
-                            const conflicts = (data.profiles || []).filter((bp) =>
-                              profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-                            );
-                            const newProfiles = (data.profiles || []).filter((bp) =>
-                              !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-                            );
-                            pendingNewProfilesRef.current = newProfiles;
-                            setPendingNewProfiles(newProfiles);
-                            const db2 = await openDB();
-                            const allTxs2 = await new Promise((resolve) => {
-                              const tx = db2.transaction("transactions", "readonly");
-                              const req = tx.objectStore("transactions").getAll();
-                              req.onsuccess = () => resolve(req.result || []);
-                            });
-                            const counts2 = {};
-                            profiles.forEach((lp) => {
-                              counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
-                            });
-                            setLocalTransactionCounts(counts2);
-                            if (conflicts.length > 0) {
-                              const initialChoices = {};
-                              conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
-                              setConflictProfiles(conflicts);
-                              setConflictChoices(initialChoices);
-                              setShowConflictModal(true);
-                            } else {
-                              setShowRestoreConfirm(true);
-                            }
+                          const copies = await supabaseDownloadBackup(activeProfile?.name, activeProfileId);
+                          if (!copies) return;
+                          if (copies.length === 1) {
+                            await startSupabaseRestore(copies[0].data);
+                          } else {
+                            setCloudBackupChoices(copies);
                           }
                         }}
-                        disabled={supabaseDownloadLoading || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
+                        disabled={supabaseDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
@@ -1973,6 +1989,54 @@ const App = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {cloudBackupChoices && (
+              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] flex flex-col">
+                  <div className="px-5 py-4 border-b border-gray-100 shrink-0">
+                    <h2 className="text-base font-semibold text-gray-700">
+                      Изберете резервно копие
+                    </h2>
+                  </div>
+                  <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
+                    <p className="text-sm text-gray-600">
+                      В облака има {cloudBackupChoices.length} резервни копия за профил „{activeProfile?.name}“.
+                      Ако сте на ново устройство или профилът е създаден наново, вашето копие обикновено е „от друго устройство или по-стар профил“.
+                    </p>
+                    {cloudBackupChoices.map((copy) => (
+                      <button
+                        key={copy.fileName}
+                        onClick={async () => {
+                          setCloudBackupChoices(null);
+                          await startSupabaseRestore(copy.data);
+                        }}
+                        className="w-full text-left bg-white rounded-xl p-3 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
+                      >
+                        <p className="text-sm font-medium text-gray-700">
+                          {copy.updatedAt
+                            ? new Date(copy.updatedAt).toLocaleDateString("bg-BG", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit"
+                              })
+                            : copy.fileName}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {countCloudBackupTransactions(copy.data)} {countCloudBackupTransactions(copy.data) === 1 ? "транзакция" : "транзакции"} · {copy.isSameProfile ? "от този профил" : "от друго устройство или по-стар профил"}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="px-5 pb-5 pt-2 shrink-0">
+                    <button
+                      onClick={() => setCloudBackupChoices(null)}
+                      className="w-full px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                    >
+                      Откажи
+                    </button>
+                  </div>
+                </div>
+              </div>
       )}
 
       {showRestoreConfirm && pendingBackup && (

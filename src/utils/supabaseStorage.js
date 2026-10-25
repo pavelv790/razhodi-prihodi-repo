@@ -51,6 +51,18 @@ function isExactBackupFileName(fileName, prefix) {
   return pattern.test(fileName);
 }
 
+// Копие на профил с това име при какъвто и да е profileId (или без опашка от id).
+// На ново устройство или при пресъздаден профил id-то е друго и точното име не съвпада.
+function isBackupFileForProfileName(fileName, profileName) {
+  const safeName = profileName ? transliterate(profileName) : "";
+  const namePart = safeName ? `_${escapeRegex(safeName)}(_[A-Za-z0-9]{4})?` : "";
+  const pattern = new RegExp(`^Finances_Backup${namePart}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`, "i");
+  return pattern.test(fileName);
+}
+
+// Колко копия най-много се изтеглят за избор
+const MAX_BACKUP_CHOICES = 5;
+
 export async function uploadBackupToSupabase(backupData, profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
@@ -93,34 +105,53 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
   return newFileName;
 }
 
-export async function downloadBackupFromSupabase(profileName, profileId) {
+// Връща копията на профила (по име, при всеки profileId), най-новото първо:
+// [{ fileName, updatedAt, isSameProfile, data }]. isSameProfile — копието е от профила с този id.
+export async function downloadBackupsFromSupabase(profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
 
   const userId = user.id;
-  const prefix = buildFilePrefix(profileName, profileId);
+  const namePrefix = buildFilePrefix(profileName, null);
+  const exactPrefix = buildFilePrefix(profileName, profileId);
 
-  // Намери файла по prefix
+  // Намери файловете по prefix без id
   const { data: files, error: listError } = await supabase.storage
     .from(BUCKET_NAME)
-    .list(userId, { search: prefix });
+    .list(userId, { search: namePrefix, limit: 1000 });
 
   if (listError) throw new Error("Грешка при търсене на резервното копие.");
 
-  const matching = (files || []).filter((f) => isExactBackupFileName(f.name, prefix));
+  const matching = (files || [])
+    .filter((f) => isBackupFileForProfileName(f.name, profileName))
+    .sort((a, b) =>
+      new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
+    )
+    .slice(0, MAX_BACKUP_CHOICES);
   if (matching.length === 0) throw new Error("Няма намерено резервно копие в Supabase.");
 
-  // Вземи най-новия ако има повече от един (не би трябвало, но за сигурност)
-  const latest = matching.sort((a, b) =>
-    new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
-  )[0];
+  // Повредено или недостъпно копие се прескача, ако има други; иначе се връща грешката
+  const copies = [];
+  let firstError = null;
+  for (const f of matching) {
+    try {
+      const { data, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .download(`${userId}/${f.name}`);
+      if (error) throw new Error("Грешка при изтегляне от Supabase.");
+      const text = await data.text();
+      copies.push({
+        fileName: f.name,
+        updatedAt: f.updated_at || f.created_at,
+        isSameProfile: isExactBackupFileName(f.name, exactPrefix),
+        data: JSON.parse(text),
+      });
+    } catch (err) {
+      console.warn("Пропуснато резервно копие:", f.name, err.message);
+      if (!firstError) firstError = err;
+    }
+  }
+  if (copies.length === 0) throw firstError;
 
-  const { data, error } = await supabase.storage
-    .from(BUCKET_NAME)
-    .download(`${userId}/${latest.name}`);
-
-  if (error) throw new Error("Грешка при изтегляне от Supabase.");
-
-  const text = await data.text();
-  return JSON.parse(text);
+  return copies;
 }

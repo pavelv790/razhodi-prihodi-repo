@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   uploadBackupToSupabase,
-  downloadBackupFromSupabase,
+  downloadBackupsFromSupabase,
 } from "../utils/supabaseStorage";
 import {
   signUpWithEmail,
@@ -230,6 +230,7 @@ export function useSupabaseStorage() {
     }
   }, [connected]);
 
+  // Връща масив от копия (виж downloadBackupsFromSupabase) или null при грешка
   const downloadBackup = useCallback(async (profileName, profileId) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
@@ -238,9 +239,11 @@ export function useSupabaseStorage() {
     setDownloadLoading(true);
     setMessage("");
     try {
-      const data = await downloadBackupFromSupabase(profileName, profileId);
-      showMessage("✅ Резервно копие изтеглено успешно.");
-      return data;
+      const copies = await downloadBackupsFromSupabase(profileName, profileId);
+      showMessage(copies.length > 1
+        ? `✅ Намерени са ${copies.length} резервни копия в облака — изберете кое да се възстанови.`
+        : "✅ Резервно копие изтеглено успешно.");
+      return copies;
     } catch (err) {
       showMessage("❌ " + err.message);
       return null;
