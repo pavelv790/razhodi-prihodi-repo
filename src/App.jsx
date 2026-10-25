@@ -131,6 +131,8 @@ const App = () => {
   const [restoreDoneType, setRestoreDoneType] = useState([]);
   // Възстановяването спря поради грешка: { done: [{ name, choice }], partial: име | null } (одит 2026-10, 2А-01)
   const [restoreError, setRestoreError] = useState(null);
+  // Възстановяването записва в момента: екранът е блокиран, чакащите повтарящи се изчакват (одит 2026-10, 2Б-01)
+  const [restoreInProgress, setRestoreInProgress] = useState(false);
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -224,13 +226,13 @@ const App = () => {
     if (!activeProfileId || recurringItems.length === 0) return;
     if (showRecurringModal) return;
     if (showPendingModal) return;
-    if (showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm) return;
+    if (showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm || restoreInProgress) return;
     const pending = getPendingTransactions();
     if (pending.length > 0) {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm]);
+  }, [activeProfileId, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
@@ -241,6 +243,8 @@ const App = () => {
   const completedRestoreProfilesRef = useRef([]);
   // Профилът, който се възстановява в момента — при грешка той е приложен частично
   const restoreCurrentProfileRef = useRef(null);
+  // Синхронна защита от двойно натискане (state се обновява чак при следващия рендер) (одит 2026-10, 2А-10)
+  const restoreBusyRef = useRef(false);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
@@ -781,6 +785,22 @@ const App = () => {
     setRestoreError({ done: [...completedRestoreProfilesRef.current], partial: restoreCurrentProfileRef.current });
     resetRestoreState();
   };
+  // Една стъпка на възстановяването (до следващия въпрос към потребителя или до края): докато тече,
+  // екранът е блокиран, а второ натискане не прави нищо (одит 2026-10, 2Б-01, 2А-10, 2А-19)
+  const runRestoreStep = async (step) => {
+    if (restoreBusyRef.current) return;
+    restoreBusyRef.current = true;
+    document.activeElement?.blur?.(); // Enter в поле под прозореца да не добави транзакция
+    setRestoreInProgress(true);
+    // Без finally: с него react-hooks lint спира да проверява целия компонент
+    try {
+      await step();
+    } catch (err) {
+      failRestore(err);
+    }
+    restoreBusyRef.current = false;
+    setRestoreInProgress(false);
+  };
 
   const handleAddNewProfilesConfirm = async (doAdd) => {
     try {
@@ -1035,6 +1055,7 @@ const App = () => {
 
   // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
   const startCloudRestore = async (rawData) => {
+    if (restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
     const { data, remappedIds } = normalizeBackupProfileIds(rawData);
     setNameOnlyMatchIds(remappedIds);
     setPendingBackup(data);
@@ -1125,7 +1146,7 @@ const App = () => {
 
   const handleBackupFileSelect = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
+    if (!file || restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
     try {
       const rawData = await importBackup(file);
       const { data, remappedIds } = normalizeBackupProfileIds(rawData);
@@ -1587,6 +1608,7 @@ const App = () => {
                 )}
                 <button
                   onClick={() => { backupFileRef.current.value = ""; backupFileRef.current.click(); }}
+                  disabled={restoreInProgress}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-50 text-blue-500 hover:bg-blue-100 transition"
                 >
                   <Upload className="w-4 h-4" />
@@ -1703,7 +1725,7 @@ const App = () => {
                       )}
                       <button
                         onClick={() => restoreFromCloud("drive")}
-                        disabled={driveDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
+                        disabled={driveDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm || restoreInProgress}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Google Drive"}
@@ -1874,7 +1896,7 @@ const App = () => {
                       )}
                       <button
                         onClick={() => restoreFromCloud("supabase")}
-                        disabled={supabaseDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
+                        disabled={supabaseDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm || restoreInProgress}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {supabaseDownloadLoading ? "Изтегляне..." : "Възстанови от облака"}
@@ -2085,7 +2107,7 @@ const App = () => {
                 </div>
               </div>
               <button
-                onClick={handleRestoreDuplicatesConfirm}
+                onClick={() => runRestoreStep(handleRestoreDuplicatesConfirm)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition"
               >
                 Потвърди ({restoreUniqueTransactions.length + restoreSelectedDuplicates.length} транзакции)
@@ -2135,13 +2157,13 @@ const App = () => {
                 ))}
               </div>
               <button
-                onClick={() => handleAddNewProfilesConfirm(true)}
+                onClick={() => runRestoreStep(() => handleAddNewProfilesConfirm(true))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
                 Да, добави ги
               </button>
               <button
-                onClick={() => handleAddNewProfilesConfirm(false)}
+                onClick={() => runRestoreStep(() => handleAddNewProfilesConfirm(false))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Не, пропусни ги
@@ -2332,7 +2354,7 @@ const App = () => {
                   </div>
                   <div className="px-5 pt-2 pb-5 space-y-3 shrink-0">
                     <button
-                      onClick={() => { setShowRestoreConfirm(false); handleRestoreConfirm(); }}
+                      onClick={() => { setShowRestoreConfirm(false); runRestoreStep(handleRestoreConfirm); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
                     >
                       Потвърди
@@ -2578,6 +2600,15 @@ const App = () => {
                 Разбрах
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {restoreInProgress && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[115] p-4" role="alertdialog" aria-busy="true" aria-label="Възстановяване">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-xs px-5 py-6 flex flex-col items-center gap-3 text-center">
+            <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+            <p className="text-base font-semibold text-gray-700">Възстановяване…</p>
+            <p className="text-xs text-gray-500">Данните се записват. Не затваряйте и не презареждайте приложението.</p>
           </div>
         </div>
       )}
