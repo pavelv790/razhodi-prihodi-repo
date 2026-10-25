@@ -4,19 +4,19 @@ import { openDB, reportDBError } from "../utils/db";
 
 const STORE = "transactions";
 
+// При грешка отхвърля (не връща []), за да не се приеме провалено четене за „няма транзакции“
+// и празното да не се запише върху реалните данни (одит 2026-10, 1Б-01)
 const loadByProfile = async (profileId) => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => {
-        const all = req.result || [];
-        resolve(all.filter((t) => t.profileId === profileId));
-      };
-      req.onerror = () => reject(req.error);
-    });
-  } catch { return []; }
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => {
+      const all = req.result || [];
+      resolve(all.filter((t) => t.profileId === profileId));
+    };
+    req.onerror = () => reject(req.error);
+  });
 };
 
 const saveAllToDB_forProfile = async (profileId, newTransactions) => {
@@ -61,28 +61,49 @@ const sortByDate = (transactions) =>
 export const useTransactions = (profileId) => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
-  const skipAutoSave = useRef(false);
   const pendingSaveRef = useRef(null);
+  // За кой профил са заредени транзакциите в паметта (null = зареждането още тече или се е провалило).
+  // Без това при смяна на профил данните на стария се записваха под новия (одит 2026-10, 1А-01).
+  const loadedForProfileRef = useRef(null);
+  // Масивът, който е вече в базата (от зареждането или от replaceAllTransactions) —
+  // него не го записваме отново (одит 2026-10, 1Б-04)
+  const savedSnapshotRef = useRef(null);
+  // Пореден номер на зареждането — по-старо зареждане, което завърши късно, се пренебрегва
+  const loadSeqRef = useRef(0);
 
   useEffect(() => {
-    if (!profileId) {
-      setTransactions([]);
-      setIsLoaded(false);
-      return;
-    }
-    let cancelled = false;
+    const seq = ++loadSeqRef.current;
+    // Cleanup-ът за запис на стария профил (по-долу) вече е изпълнен в тази фаза
+    pendingSaveRef.current = null;
+    loadedForProfileRef.current = null;
+    savedSnapshotRef.current = null;
     setIsLoaded(false);
+    // Да не се показват (и редактират) транзакциите на стария профил под името на новия
+    setTransactions([]);
+    if (!profileId) return;
     loadByProfile(profileId).then((data) => {
-      if (cancelled) return;
-      setTransactions(sortByDate(data));
+      if (seq !== loadSeqRef.current) return;
+      const sorted = sortByDate(data);
+      loadedForProfileRef.current = profileId;
+      savedSnapshotRef.current = sorted;
+      // Транзакции, добавени докато трае зареждането, се пазят (одит 2026-10, 1А-03)
+      setTransactions((prev) => {
+        const loadedIds = new Set(sorted.map((t) => t.id));
+        const addedWhileLoading = prev.filter((t) => t.profileId === profileId && !loadedIds.has(t.id));
+        return addedWhileLoading.length > 0 ? sortByDate([...sorted, ...addedWhileLoading]) : sorted;
+      });
       setIsLoaded(true);
+    }).catch(() => {
+      if (seq !== loadSeqRef.current) return;
+      // isLoaded остава false: нищо не се записва и не се качва в облака
+      reportDBError();
+      console.error("Грешка при зареждане на транзакции от IndexedDB");
     });
-    return () => { cancelled = true; };
   }, [profileId]);
 
   useEffect(() => {
-    if (!isLoaded || !profileId) return;
-    if (skipAutoSave.current) { skipAutoSave.current = false; pendingSaveRef.current = null; return; }
+    if (!isLoaded || !profileId || loadedForProfileRef.current !== profileId) { pendingSaveRef.current = null; return; }
+    if (transactions === savedSnapshotRef.current) { pendingSaveRef.current = null; return; }
     pendingSaveRef.current = { profileId, transactions };
     const timer = setTimeout(() => {
       pendingSaveRef.current = null;
@@ -138,8 +159,12 @@ export const useTransactions = (profileId) => {
     const withProfile = newTransactions.map((t) => ({ ...t, profileId: targetId }));
     const sorted = sortByDate(withProfile);
     if (targetId === profileId) {
-      skipAutoSave.current = true;
+      // Записът по-долу е окончателен: зареждане, което още тече, вече е остаряло
+      loadSeqRef.current++;
+      loadedForProfileRef.current = profileId;
+      savedSnapshotRef.current = sorted; // auto-save да не го записва втори път
       setTransactions(sorted);
+      setIsLoaded(true);
     }
     await saveAllToDB_forProfile(targetId, sorted);
   };
