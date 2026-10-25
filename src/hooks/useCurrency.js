@@ -10,7 +10,7 @@ const load = async (profileId) =>
 
 // Невалидна валута или курс (повреден запис/копие: липсва, 0, отрицателен, текст) → EUR с курс 1,
 // вместо суми NaN/∞ при convert (одит 2026-10, 1А-11). Курс-число като низ („1.95“) се приема.
-const validCurrency = (currency, rate) => {
+export const validCurrency = (currency, rate) => {
   if (currency === "EUR") return { currency, rate: 1 };
   const r = typeof rate === "string" ? Number(rate) : rate;
   if (typeof currency === "string" && currency && Number.isFinite(r) && r > 0) return { currency, rate: r };

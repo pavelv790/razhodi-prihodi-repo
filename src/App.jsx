@@ -6,7 +6,7 @@ import { deleteProfileBudgets } from "./hooks/useBudgets";
 import { deleteProfileSavedFilters } from "./hooks/useSavedFilters";
 import { deleteProfileCurrency } from "./hooks/useCurrency";
 import { useProfiles } from "./hooks/useProfiles";
-import { exportBackup, importBackup } from "./utils/backup";
+import { exportBackup, importBackup, validateAndMigrateBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
 import MergeProfileModal from "./components/MergeProfileModal";
 import CopyTransactionsModal from "./components/CopyTransactionsModal";
@@ -1056,9 +1056,9 @@ const App = () => {
   // Общо начало на възстановяването (файл и облак): брои локалните транзакции и показва
   // прозореца за съвпадащи профили или за потвърждение. Състоянието (вкл. pendingBackup, който
   // спира auto-sync) се задава чак след успешното четене — при грешка нищо не остава зададено
-  // (одит 2026-10, 2А-05, 1А-05)
+  // (одит 2026-10, 2А-05, 1А-05). Копието първо минава през общата проверка (2А-06, 3-15).
   const beginRestore = async (rawData) => {
-    const { data, remappedIds } = normalizeBackupProfileIds(rawData);
+    const { data, remappedIds } = normalizeBackupProfileIds(validateAndMigrateBackup(rawData));
     // Профили, които съществуват и в приложението, и в резервното копие
     const conflicts = (data.profiles || []).filter((bp) =>
       profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
@@ -2287,7 +2287,7 @@ const App = () => {
                 <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] flex flex-col">
                   <div className="px-5 py-4 border-b border-gray-100 shrink-0">
                     <h2 className="text-base font-semibold text-gray-700">
-                      Възтановяване от резервно копие
+                      Възстановяване от резервно копие
                     </h2>
                   </div>
                   <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
