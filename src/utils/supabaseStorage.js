@@ -23,23 +23,52 @@ function transliterate(str) {
   return str.split('').map(c => map[c] ?? c).join('');
 }
 
+// Име на профила за пътя в Облака: транслитерация + само безопасни знаци.
+// Supabase Storage приема в ключа само ASCII, а „/“ създава подпапка.
+function safeProfileName(profileName) {
+  return profileName ? transliterate(profileName).replace(/[^A-Za-z0-9 _\-.()]/g, "_") : "";
+}
+
+// Името, както се строеше преди (само транслитерация) — за намиране и чистене на старите копия
+function legacyProfileName(profileName) {
+  return profileName ? transliterate(profileName) : "";
+}
+
 function buildFileName(profileName, profileId) {
   const today = new Date();
   const day = String(today.getDate()).padStart(2, "0");
   const month = String(today.getMonth() + 1).padStart(2, "0");
   const year = today.getFullYear();
-  const safeName = profileName ? transliterate(profileName) : "";
-  const idSuffix = profileId ? `_${profileId.slice(-4)}` : "";
-  const profileSuffix = safeName ? `_${safeName}${idSuffix}` : "";
-  return `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
+  return `${buildFilePrefix(profileName, profileId)}_${day}.${month}.${year}.json`;
 }
 
-// Връща prefix за търсене без датата (напр. "Finances_Backup_Павел_7890")
-function buildFilePrefix(profileName, profileId) {
-  const safeName = profileName ? transliterate(profileName) : "";
+// Връща prefix за търсене без датата (напр. "Finances_Backup_Pavel_7890")
+function buildFilePrefix(profileName, profileId, nameFn = safeProfileName) {
+  const safeName = nameFn(profileName);
   const idSuffix = profileId ? `_${profileId.slice(-4)}` : "";
   const profileSuffix = safeName ? `_${safeName}${idSuffix}` : "";
   return `Finances_Backup${profileSuffix}`;
+}
+
+// Текущият prefix и, ако е различен, старият (стари копия с „/“ са в подпапка и не се търсят)
+function buildFilePrefixes(profileName, profileId) {
+  const prefixes = [buildFilePrefix(profileName, profileId)];
+  const legacy = buildFilePrefix(profileName, profileId, legacyProfileName);
+  if (legacy !== prefixes[0] && !legacy.includes("/")) prefixes.push(legacy);
+  return prefixes;
+}
+
+// Файловете на потребителя, намерени по някой от префиксите (без повторения)
+async function listByPrefixes(userId, prefixes) {
+  const byName = new Map();
+  for (const prefix of prefixes) {
+    const { data, error } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list(userId, { search: prefix, limit: 1000 });
+    if (error) return { files: [], error };
+    (data || []).forEach((f) => byName.set(f.name, f));
+  }
+  return { files: [...byName.values()], error: null };
 }
 
 function escapeRegex(str) {
@@ -54,10 +83,11 @@ function isExactBackupFileName(fileName, prefix) {
 // Копие на профил с това име при какъвто и да е profileId (или без опашка от id).
 // На ново устройство или при пресъздаден профил id-то е друго и точното име не съвпада.
 function isBackupFileForProfileName(fileName, profileName) {
-  const safeName = profileName ? transliterate(profileName) : "";
-  const namePart = safeName ? `_${escapeRegex(safeName)}(_[A-Za-z0-9]{4})?` : "";
-  const pattern = new RegExp(`^Finances_Backup${namePart}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`, "i");
-  return pattern.test(fileName);
+  return [safeProfileName(profileName), legacyProfileName(profileName)].some((name) => {
+    const namePart = name ? `_${escapeRegex(name)}(_[A-Za-z0-9]{4})?` : "";
+    const pattern = new RegExp(`^Finances_Backup${namePart}_\\d{2}\\.\\d{2}\\.\\d{4}\\.json$`, "i");
+    return pattern.test(fileName);
+  });
 }
 
 // Колко копия най-много се изтеглят за избор
@@ -69,7 +99,7 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
 
   const userId = user.id;
   const newFileName = buildFileName(profileName, profileId);
-  const prefix = buildFilePrefix(profileName, profileId);
+  const prefixes = buildFilePrefixes(profileName, profileId);
 
   // Качи новия файл ПЪРВО (upsert: true презаписва безопасно при съвпадащо име)
   const blob = new Blob([JSON.stringify(backupData, null, 2)], {
@@ -85,14 +115,13 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
 
   if (error) throw new Error("Грешка при качване в Supabase: " + error.message);
 
-  // Едва след успешно качване — намери и изтрий старите файлове (по prefix без дата)
-  const { data: existingFiles } = await supabase.storage
-    .from(BUCKET_NAME)
-    .list(userId, { search: prefix });
+  // Едва след успешно качване — намери и изтрий старите файлове (по prefix без дата,
+  // вкл. тези със старото име на профила)
+  const { files: existingFiles } = await listByPrefixes(userId, prefixes);
 
-  if (existingFiles?.length > 0) {
+  if (existingFiles.length > 0) {
     const oldPaths = existingFiles
-      .filter((f) => isExactBackupFileName(f.name, prefix) && f.name !== newFileName)
+      .filter((f) => prefixes.some((p) => isExactBackupFileName(f.name, p)) && f.name !== newFileName)
       .map((f) => `${userId}/${f.name}`);
     if (oldPaths.length > 0) {
       const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
@@ -112,17 +141,15 @@ export async function downloadBackupsFromSupabase(profileName, profileId) {
   if (!user) throw new Error("Не сте влезли в акаунт.");
 
   const userId = user.id;
-  const namePrefix = buildFilePrefix(profileName, null);
-  const exactPrefix = buildFilePrefix(profileName, profileId);
+  const namePrefixes = buildFilePrefixes(profileName, null);
+  const exactPrefixes = buildFilePrefixes(profileName, profileId);
 
-  // Намери файловете по prefix без id
-  const { data: files, error: listError } = await supabase.storage
-    .from(BUCKET_NAME)
-    .list(userId, { search: namePrefix, limit: 1000 });
+  // Намери файловете по prefix без id (текущото и старото име на профила)
+  const { files, error: listError } = await listByPrefixes(userId, namePrefixes);
 
   if (listError) throw new Error("Грешка при търсене на резервното копие.");
 
-  const matching = (files || [])
+  const matching = files
     .filter((f) => isBackupFileForProfileName(f.name, profileName))
     .sort((a, b) =>
       new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
@@ -143,7 +170,7 @@ export async function downloadBackupsFromSupabase(profileName, profileId) {
       copies.push({
         fileName: f.name,
         updatedAt: f.updated_at || f.created_at,
-        isSameProfile: isExactBackupFileName(f.name, exactPrefix),
+        isSameProfile: exactPrefixes.some((p) => isExactBackupFileName(f.name, p)),
         data: JSON.parse(text),
       });
     } catch (err) {
