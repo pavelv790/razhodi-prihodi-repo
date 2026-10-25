@@ -826,7 +826,7 @@ const App = () => {
           const profileCurrencyData = pendingBackup.profileCurrencies?.[bp.id] || (pendingBackup.currency ? { currency: pendingBackup.currency, rate: pendingBackup.rate } : null);
           if (profileCurrencyData) {
             if (bp.id === activeProfileId) {
-              restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
+              ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
             } else {
               await runTx("currency", "readwrite", (store) =>
                 store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
@@ -836,7 +836,7 @@ const App = () => {
           const profileBudgetsData = pendingBackup.profileBudgets?.[bp.id] || pendingBackup.budgets || null;
           if (profileBudgetsData) {
             if (bp.id === activeProfileId) {
-              restoreBudgets(profileBudgetsData);
+              ensureSaved(await restoreBudgets(profileBudgetsData));
             } else {
               await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
             }
@@ -1203,7 +1203,7 @@ const App = () => {
       const profileCurrencyData = backupData.profileCurrencies?.[bp.id] || (backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
       if (profileCurrencyData) {
         if (bp.id === activeProfileId) {
-          restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate);
+          ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
         } else {
           await runTx("currency", "readwrite", (store) =>
             store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
@@ -1212,7 +1212,7 @@ const App = () => {
       const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
       if (profileBudgetsData) {
         if (bp.id === activeProfileId) {
-          restoreBudgets(profileBudgetsData);
+          ensureSaved(await restoreBudgets(profileBudgetsData));
         } else {
           await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
         }

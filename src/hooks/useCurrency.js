@@ -20,7 +20,8 @@ const validCurrency = (currency, rate) => {
 const save = async (profileId, data) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.put({ id: profileId, ...data }));
-  } catch (err) { reportDBError(); console.error("Грешка при запис на валута", err); }
+    return true;
+  } catch (err) { reportDBError(); console.error("Грешка при запис на валута", err); return false; }
 };
 
 // При грешка отхвърля, за да спре изтриването на профила
@@ -79,10 +80,16 @@ export const useCurrency = (profileId) => {
     setRate(1);
   };
 
-  const restoreCurrency = (newCurrency, newRate) => {
+  // Записва директно и връща true/false, за да спре възстановяването при провал,
+  // вместо записът да остане за ефекта (одит 2026-10, 2А-01)
+  const restoreCurrency = async (newCurrency, newRate) => {
     const valid = validCurrency(newCurrency ?? "EUR", newRate ?? 1);
-    setCurrency(valid.currency);
-    setRate(valid.rate);
+    const ok = await save(profileId, valid);
+    if (ok) {
+      setCurrency(valid.currency);
+      setRate(valid.rate);
+    }
+    return ok;
   };
 
   const convert = (amount) => {

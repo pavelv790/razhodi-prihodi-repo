@@ -11,9 +11,11 @@ const loadFromDB = async (profileId) =>
 const saveToDB = async (profileId, data) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.put({ id: profileId, ...data }));
+    return true;
   } catch (err) {
     reportDBError();
     console.error("Грешка при запис на бюджети в IndexedDB", err);
+    return false;
   }
 };
 
@@ -73,8 +75,12 @@ export const useBudgets = (profileId) => {
     setBudgets(newBudgets);
   };
 
-  const restoreBudgets = (data) => {
-    setBudgets(data);
+  // Записва директно и връща true/false, за да спре възстановяването при провал,
+  // вместо записът да остане за ефекта (одит 2026-10, 2А-01)
+  const restoreBudgets = async (data) => {
+    const ok = await saveToDB(profileId, data);
+    if (ok) setBudgets(data);
+    return ok;
   };
 
   return {
