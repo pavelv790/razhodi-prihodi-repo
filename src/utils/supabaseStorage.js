@@ -96,6 +96,25 @@ const BACKUPS_TO_KEEP = 14;
 const newestFirst = (a, b) =>
   new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at);
 
+// Превежда познатите грешки на Supabase Storage; непознатите — общо съобщение (оригиналът е в конзолата)
+function translateStorageError(error) {
+  const msg = String(error?.message || error || "");
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "няма връзка с интернет или Облакът не отговаря.";
+  }
+  if (/row-level security/i.test(msg)) {
+    return "нямате права за запис. Излезте и влезте отново в облака.";
+  }
+  if (/invalid key/i.test(msg)) {
+    return "в името на профила има непозволени знаци.";
+  }
+  if (/exceeded the maximum allowed size|payload too large/i.test(msg)) {
+    return "копието е твърде голямо.";
+  }
+  console.warn("Неочаквана грешка от Облака при качване:", msg);
+  return "неочаквана грешка.";
+}
+
 export async function uploadBackupToSupabase(backupData, profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
@@ -116,7 +135,7 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
       contentType: "application/json",
     });
 
-  if (error) throw new Error("Грешка при качване в Supabase: " + error.message);
+  if (error) throw new Error("Грешка при качване в Облака: " + translateStorageError(error));
 
   // Едва след успешно качване — изтрий копията на профила, по-стари от последните
   // BACKUPS_TO_KEEP (по prefix без дата, вкл. тези със старото име на профила)
@@ -174,8 +193,12 @@ export async function downloadBackupFileFromSupabase(fileName) {
     .from(BUCKET_NAME)
     .download(`${user.id}/${fileName}`);
 
-  if (error) throw new Error("Грешка при изтегляне от Supabase.");
+  if (error) throw new Error("Грешка при изтегляне от Облака.");
 
   const text = await data.text();
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Копието в Облака е повредено и не може да се прочете.");
+  }
 }

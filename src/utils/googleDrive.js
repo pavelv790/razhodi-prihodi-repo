@@ -199,5 +199,9 @@ export async function downloadBackupFileFromDrive(fileId) {
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!fileRes.ok) throw new Error("Грешка при изтегляне от Google Drive.");
-  return await fileRes.json();
+  try {
+    return await fileRes.json();
+  } catch {
+    throw new Error("Копието в Google Drive е повредено и не може да се прочете.");
+  }
 }

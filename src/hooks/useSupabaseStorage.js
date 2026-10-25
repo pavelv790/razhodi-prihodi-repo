@@ -244,7 +244,7 @@ export function useSupabaseStorage() {
     try {
       const copies = await listBackupsFromSupabase(profileName, profileId);
       if (!copies.length && !beforeUpload) {
-        showMessage("❌ Няма намерено резервно копие в Supabase.");
+        showMessage("❌ Няма намерено резервно копие в облака.");
         return null;
       }
       return copies;
