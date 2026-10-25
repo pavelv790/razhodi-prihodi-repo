@@ -1053,31 +1053,38 @@ const App = () => {
     }
   };
 
-  // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
-  const startCloudRestore = async (rawData) => {
-    if (restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
+  // Общо начало на възстановяването (файл и облак): брои локалните транзакции и показва
+  // прозореца за съвпадащи профили или за потвърждение. Състоянието (вкл. pendingBackup, който
+  // спира auto-sync) се задава чак след успешното четене — при грешка нищо не остава зададено
+  // (одит 2026-10, 2А-05, 1А-05)
+  const beginRestore = async (rawData) => {
     const { data, remappedIds } = normalizeBackupProfileIds(rawData);
-    setNameOnlyMatchIds(remappedIds);
-    setPendingBackup(data);
+    // Профили, които съществуват и в приложението, и в резервното копие
     const conflicts = (data.profiles || []).filter((bp) =>
       profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
     );
     const newProfiles = (data.profiles || []).filter((bp) =>
       !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
     );
+    let allTxs;
+    try {
+      allTxs = (await runTx("transactions", "readonly", (store) => store.getAll())) || [];
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при четене на транзакциите преди възстановяване", err);
+      throw new Error("Данните на устройството не могат да бъдат прочетени. Възстановяването не започна.", { cause: err });
+    }
+    const counts = {};
+    profiles.forEach((lp) => {
+      counts[lp.id] = allTxs.filter((t) => t.profileId === lp.id).length;
+    });
+
+    setNameOnlyMatchIds(remappedIds);
+    setPendingBackup(data);
+    // Новите профили (само в резервното копие) — отделно
     pendingNewProfilesRef.current = newProfiles;
     setPendingNewProfiles(newProfiles);
-    const db2 = await openDB();
-    const allTxs2 = await new Promise((resolve) => {
-      const tx = db2.transaction("transactions", "readonly");
-      const req = tx.objectStore("transactions").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-    });
-    const counts2 = {};
-    profiles.forEach((lp) => {
-      counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
-    });
-    setLocalTransactionCounts(counts2);
+    setLocalTransactionCounts(counts);
     if (conflicts.length > 0) {
       const initialChoices = {};
       conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
@@ -1086,6 +1093,16 @@ const App = () => {
       setShowConflictModal(true);
     } else {
       setShowRestoreConfirm(true);
+    }
+  };
+
+  // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
+  const startCloudRestore = async (rawData) => {
+    if (restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
+    try {
+      await beginRestore(rawData);
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -1149,42 +1166,7 @@ const App = () => {
     if (!file || restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
     try {
       const rawData = await importBackup(file);
-      const { data, remappedIds } = normalizeBackupProfileIds(rawData);
-      setNameOnlyMatchIds(remappedIds);
-      setPendingBackup(data);
-
-      // Намери профили които съществуват и в приложението, и в резервнптп копие
-      const conflicts = (data.profiles || []).filter((bp) =>
-        profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-      );
-      const newProfiles = (data.profiles || []).filter((bp) =>
-        !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-      );
-      // Зареди броя транзакции за всеки профил от IndexedDB
-      const db = await openDB();
-      const allTxs = await new Promise((resolve) => {
-        const tx = db.transaction("transactions", "readonly");
-        const req = tx.objectStore("transactions").getAll();
-        req.onsuccess = () => resolve(req.result || []);
-      });
-      const counts = {};
-      profiles.forEach((lp) => {
-        counts[lp.id] = allTxs.filter((t) => t.profileId === lp.id).length;
-      });
-      setLocalTransactionCounts(counts);
-
-      if (conflicts.length > 0) {
-        const initialChoices = {};
-        conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
-        setConflictProfiles(conflicts);
-        setConflictChoices(initialChoices);
-        setShowConflictModal(true);
-      } else {
-        setShowRestoreConfirm(true);
-      }
-      // Запомни новите профили (само в резервното копие) отделно
-      pendingNewProfilesRef.current = newProfiles;
-      setPendingNewProfiles(newProfiles);
+      await beginRestore(rawData);
     } catch (err) {
       alert(err.message);
     }
