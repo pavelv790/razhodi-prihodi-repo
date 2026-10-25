@@ -375,6 +375,62 @@ const App = () => {
   const uploadDropMessage = (service, drop) =>
     `Транзакциите на профил „${drop.name}“ са намалели от ${drop.prev} на ${drop.now} спрямо последното качване в ${UPLOAD_SERVICE_LABELS[service]}. Да кача ли това копие? По-старите копия се пазят.`;
 
+  // Първо качване от това устройство: няма дата на последно качване, няма брой транзакции от
+  // пазача и не е отговорено „Възстанови“ на въпроса за съществуващо копие. Тогава преди
+  // качването се проверява дали в облака вече има копие на профила (напр. от старо устройство).
+  const LAST_UPLOAD_DATE_KEYS = { drive: "last_drive_upload_date", supabase: "last_supabase_upload_date" };
+  const EXISTING_COPY_ANSWERED_KEYS = { drive: "drive_existing_copy_answered", supabase: "supabase_existing_copy_answered" };
+
+  const isFirstUploadFromDevice = (service) => {
+    try {
+      return !localStorage.getItem(LAST_UPLOAD_DATE_KEYS[service])
+        && !localStorage.getItem(UPLOAD_COUNTS_KEYS[service])
+        && !localStorage.getItem(EXISTING_COPY_ANSWERED_KEYS[service]);
+    } catch {
+      return false;
+    }
+  };
+
+  // Копията на профила в облака ([] ако няма) или null при грешка (съобщението вече е показано)
+  const listCopiesBeforeUpload = (service, profileName, profileId) =>
+    service === "drive"
+      ? driveListBackups(profileName, { beforeUpload: true })
+      : supabaseListBackups(profileName, profileId, { beforeUpload: true });
+
+  const existingCopyDialog = ({ service, copies, backup, profileName, profileId, doUpload, auto }) => {
+    const isToday = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
+    const latest = copies[0]?.updatedAt
+      ? new Date(copies[0].updatedAt).toLocaleDateString("bg-BG", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : null;
+    // Днешното копие се презаписва (Облак — само ако е от същия профил, т.е. същия id)
+    const replacesToday = copies.some((c) => isToday(c.updatedAt) && (service === "drive" || c.isSameProfile));
+    const where = service === "drive" ? "В Google Drive" : "В Облака";
+    const count = countTransactionsByProfile(backup)[profileId] ?? 0;
+    return {
+      title: auto ? "Автоматичното качване чака" : `${where} вече има копие`,
+      message:
+        `${where} има ${copies.length === 1 ? "резервно копие" : `${copies.length} резервни копия`} на профил „${profileName}“${latest ? ` (последно от ${latest})` : ""}, а от това устройство още не е качвано. ` +
+        "Ако сте на ново устройство, първо възстановете данните. " +
+        `„Качи все пак“ качва данните от това устройство (${count} ${count === 1 ? "транзакция" : "транзакции"} на профила)` +
+        (replacesToday ? " и заменя днешното копие в облака" : "") +
+        "; по-старите копия се пазят.",
+      confirmLabel: "Възстанови",
+      onConfirm: () => {
+        try {
+          localStorage.setItem(EXISTING_COPY_ANSWERED_KEYS[service], new Date().toISOString());
+        } catch {
+          // без запис въпросът просто ще се появи пак при следващото качване
+        }
+        autoUploadPausedRef.current[service] = false;
+      },
+      restoreFrom: service, // след onConfirm прозорецът пуска restoreFromCloud(service)
+      extraLabel: "Качи все пак",
+      onExtra: doUpload,
+      cancelLabel: auto ? "Не качвай" : "Откажи",
+      tone: "warning",
+    };
+  };
+
   const uploadToDrive = async (backup, profileName) => {
     const success = await driveUploadBackup(backup, profileName);
     if (success) {
@@ -394,10 +450,26 @@ const App = () => {
     return success;
   };
 
-  // Авто-качване през пазача. При рязък спад не качва, а пита веднъж; при „Не качвай“
-  // авто-качването към услугата спира до следващо отваряне или успешно ръчно качване.
+  // Авто-качване през пазача. При рязък спад (или при първо качване, когато в облака има копие)
+  // не качва, а пита веднъж; при „Не качвай“ авто-качването към услугата спира до следващо
+  // отваряне или успешно ръчно качване.
   // Връща резултата от doUpload, или null, ако качването е пропуснато.
-  const autoUploadWithGuard = async (service, backup, doUpload) => {
+  const autoUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
+    if (isFirstUploadFromDevice(service)) {
+      if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
+      autoUploadPausedRef.current[service] = true; // без втора проверка, докато тази чака облака
+      const copies = await listCopiesBeforeUpload(service, profileName, profileId);
+      if (!copies?.length) {
+        autoUploadPausedRef.current[service] = false;
+        return copies ? doUpload() : null;
+      }
+      if (confirmDialogRef.current) { // друг прозорец се е отворил междувременно — пак при следваща промяна
+        autoUploadPausedRef.current[service] = false;
+        return null;
+      }
+      setConfirmDialog(existingCopyDialog({ service, copies, backup, profileName, profileId, doUpload, auto: true }));
+      return null;
+    }
     const drop = findUploadDrop(service, backup);
     if (!drop) return doUpload();
     if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
@@ -426,10 +498,11 @@ const App = () => {
 
     if (driveAutoSync === "onChange" && dataChanged) {
       const profileNameAtTrigger = activeProfile?.name;
+      const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
         const backup = await buildBackupData();
-        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger));
+        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
@@ -439,6 +512,7 @@ const App = () => {
 
     if (driveAutoSync === "daily" && driveShouldRunDaily()) {
       const profileNameAtTrigger = activeProfile?.name;
+      const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
         const backup = await buildBackupData();
@@ -446,7 +520,7 @@ const App = () => {
           const ok = await uploadToDrive(backup, profileNameAtTrigger);
           if (ok) driveMarkDailyDone();
           return ok;
-        });
+        }, profileNameAtTrigger, profileIdAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
@@ -472,7 +546,7 @@ const App = () => {
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
         const backup = await buildBackupData();
-        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger));
+        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -487,7 +561,7 @@ const App = () => {
           const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger);
           if (ok) supabaseMarkDailyDone();
           return ok;
-        });
+        }, profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -814,38 +888,58 @@ const App = () => {
     };
   };
   
-  const handleDriveUpload = async () => {
-    const backup = await buildBackupData();
-    const profileName = activeProfile?.name;
-    const drop = findUploadDrop("drive", backup);
+  // Ръчно „Запази в Google Drive / облака“: при първо качване от устройството и съществуващо
+  // копие в облака — въпрос „Възстанови / Качи все пак“; при рязък спад — потвърждение.
+  const manualUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
+    if (isFirstUploadFromDevice(service)) {
+      const copies = await listCopiesBeforeUpload(service, profileName, profileId);
+      if (!copies) return;
+      if (copies.length) {
+        setConfirmDialog(existingCopyDialog({ service, copies, backup, profileName, profileId, doUpload, auto: false }));
+        return;
+      }
+      await doUpload();
+      return;
+    }
+    const drop = findUploadDrop(service, backup);
     if (drop) {
       setConfirmDialog({
         title: "Рязко намаляване на данните",
-        message: uploadDropMessage("drive", drop),
+        message: uploadDropMessage(service, drop),
         confirmLabel: "Качи",
         tone: "warning",
-        onConfirm: () => uploadToDrive(backup, profileName),
+        onConfirm: doUpload,
       });
       return;
     }
-    await uploadToDrive(backup, profileName);
+    await doUpload();
+  };
+  const handleDriveUpload = async () => {
+    const backup = await buildBackupData();
+    const profileName = activeProfile?.name;
+    await manualUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileName), profileName, activeProfileId);
   };
   const handleSupabaseUpload = async () => {
     const backup = await buildBackupData();
     const profileName = activeProfile?.name;
     const profileId = activeProfileId;
-    const drop = findUploadDrop("supabase", backup);
-    if (drop) {
-      setConfirmDialog({
-        title: "Рязко намаляване на данните",
-        message: uploadDropMessage("supabase", drop),
-        confirmLabel: "Качи",
-        tone: "warning",
-        onConfirm: () => uploadToSupabase(backup, profileName, profileId),
-      });
-      return;
+    await manualUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileName, profileId), profileName, profileId);
+  };
+
+  // „Възстанови от Google Drive / облака“: 1 копие — направо, повече — избор на дата
+  const restoreFromCloud = async (service) => {
+    const copies = service === "drive"
+      ? await driveListBackups(activeProfile?.name)
+      : await supabaseListBackups(activeProfile?.name, activeProfileId);
+    if (!copies) return;
+    if (copies.length === 1) {
+      const data = service === "drive"
+        ? await driveDownloadBackup(copies[0].fileId)
+        : await supabaseDownloadBackup(copies[0].fileName);
+      if (data) await startCloudRestore(data);
+    } else {
+      setCloudBackupChoices({ source: service, copies });
     }
-    await uploadToSupabase(backup, profileName, profileId);
   };
 
   // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
@@ -1547,16 +1641,7 @@ const App = () => {
                         </p>
                       )}
                       <button
-                        onClick={async () => {
-                          const copies = await driveListBackups(activeProfile?.name);
-                          if (!copies) return;
-                          if (copies.length === 1) {
-                            const data = await driveDownloadBackup(copies[0].fileId);
-                            if (data) await startCloudRestore(data);
-                          } else {
-                            setCloudBackupChoices({ source: "drive", copies });
-                          }
-                        }}
+                        onClick={() => restoreFromCloud("drive")}
                         disabled={driveDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
@@ -1727,16 +1812,7 @@ const App = () => {
                         </p>
                       )}
                       <button
-                        onClick={async () => {
-                          const copies = await supabaseListBackups(activeProfile?.name, activeProfileId);
-                          if (!copies) return;
-                          if (copies.length === 1) {
-                            const data = await supabaseDownloadBackup(copies[0].fileName);
-                            if (data) await startCloudRestore(data);
-                          } else {
-                            setCloudBackupChoices({ source: "supabase", copies });
-                          }
-                        }}
+                        onClick={() => restoreFromCloud("supabase")}
                         disabled={supabaseDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
@@ -2266,11 +2342,24 @@ const App = () => {
                 </p>
               </div>
               <button
-                onClick={() => { const fn = confirmDialog.onConfirm; setConfirmDialog(null); fn?.(); }}
+                onClick={() => {
+                  const { onConfirm: fn, restoreFrom } = confirmDialog;
+                  setConfirmDialog(null);
+                  fn?.();
+                  if (restoreFrom) restoreFromCloud(restoreFrom);
+                }}
                 className={`w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white transition ${confirmDialog.tone === "danger" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}
               >
                 {confirmDialog.confirmLabel}
               </button>
+              {confirmDialog.extraLabel && (
+                <button
+                  onClick={() => { const fn = confirmDialog.onExtra; setConfirmDialog(null); fn?.(); }}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 transition"
+                >
+                  {confirmDialog.extraLabel}
+                </button>
+              )}
               <button
                 onClick={() => setConfirmDialog(null)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"

@@ -132,21 +132,28 @@ export function useGoogleDrive() {
     }
   }, []);
 
-  // Връща списъка с копия (виж listBackupsFromDrive) или null при грешка
-  const listBackups = useCallback(async (profileName) => {
+  // Връща списъка с копия (виж listBackupsFromDrive) или null при грешка.
+  // При 0 копия — съобщение и null; с beforeUpload (проверка преди първо качване) — [] без
+  // съобщение и без „Изтегляне...“ на бутона за възстановяване.
+  const listBackups = useCallback(async (profileName, { beforeUpload = false } = {}) => {
     if (!isSignedIn()) {
       showMessage("❌ Първо се свържете с Google Drive.");
       return null;
     }
-    setDownloadLoading(true);
+    if (!beforeUpload) setDownloadLoading(true);
     setMessage("");
     try {
-      return await listBackupsFromDrive(profileName);
+      const copies = await listBackupsFromDrive(profileName);
+      if (!copies.length && !beforeUpload) {
+        showMessage("❌ Няма намерено резервно копие в Google Drive.");
+        return null;
+      }
+      return copies;
     } catch (err) {
       showMessage("❌ " + err.message);
       return null;
     } finally {
-      setDownloadLoading(false);
+      if (!beforeUpload) setDownloadLoading(false);
     }
   }, []);
 

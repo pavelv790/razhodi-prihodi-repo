@@ -231,21 +231,28 @@ export function useSupabaseStorage() {
     }
   }, [connected]);
 
-  // Връща списъка с копия (виж listBackupsFromSupabase) или null при грешка
-  const listBackups = useCallback(async (profileName, profileId) => {
+  // Връща списъка с копия (виж listBackupsFromSupabase) или null при грешка.
+  // При 0 копия — съобщение и null; с beforeUpload (проверка преди първо качване) — [] без
+  // съобщение и без „Изтегляне...“ на бутона за възстановяване.
+  const listBackups = useCallback(async (profileName, profileId, { beforeUpload = false } = {}) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return null;
     }
-    setDownloadLoading(true);
+    if (!beforeUpload) setDownloadLoading(true);
     setMessage("");
     try {
-      return await listBackupsFromSupabase(profileName, profileId);
+      const copies = await listBackupsFromSupabase(profileName, profileId);
+      if (!copies.length && !beforeUpload) {
+        showMessage("❌ Няма намерено резервно копие в Supabase.");
+        return null;
+      }
+      return copies;
     } catch (err) {
       showMessage("❌ " + err.message);
       return null;
     } finally {
-      setDownloadLoading(false);
+      if (!beforeUpload) setDownloadLoading(false);
     }
   }, [connected]);
 

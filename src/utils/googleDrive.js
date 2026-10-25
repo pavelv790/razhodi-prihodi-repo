@@ -174,7 +174,7 @@ export async function uploadBackupToDrive(backupData, profileName) {
 }
 
 // Връща копията на профила, най-новото първо, без да ги изтегля:
-// [{ fileId, fileName, updatedAt, size }]
+// [{ fileId, fileName, updatedAt, size }] (празен, ако няма)
 export async function listBackupsFromDrive(profileName) {
   if (!accessToken) throw new Error("Не сте влезли в Google акаунт.");
 
@@ -182,7 +182,6 @@ export async function listBackupsFromDrive(profileName) {
 
   const profileSuffix = profileName ? `_${profileName}` : "";
   const matches = await listProfileBackups(`Finances_Backup${profileSuffix}`, folderId);
-  if (!matches.length) throw new Error("Няма намерено резервно копие в Google Drive.");
 
   return matches.map((f) => ({
     fileId: f.id,

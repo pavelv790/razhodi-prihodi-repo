@@ -140,7 +140,7 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
 }
 
 // Връща копията на профила (по име, при всеки profileId), най-новото първо, без да ги изтегля:
-// [{ fileName, updatedAt, size, isSameProfile }]. isSameProfile — копието е от профила с този id.
+// [{ fileName, updatedAt, size, isSameProfile }] (празен, ако няма). isSameProfile — копието е от профила с този id.
 export async function listBackupsFromSupabase(profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
@@ -157,7 +157,6 @@ export async function listBackupsFromSupabase(profileName, profileId) {
   const matching = files
     .filter((f) => isBackupFileForProfileName(f.name, profileName))
     .sort(newestFirst);
-  if (matching.length === 0) throw new Error("Няма намерено резервно копие в Supabase.");
 
   return matching.map((f) => ({
     fileName: f.name,
