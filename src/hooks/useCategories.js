@@ -12,6 +12,9 @@ const STORE = "categories";
 const loadFromDB = async (profileId) =>
   (await runTx(STORE, "readonly", (store) => store.get(profileId))) || null;
 
+// Повреден запис: списък, който не е масив → празен; елементи, които не са текст, отпадат (одит 2026-10, 1А-11)
+const validList = (list) => (Array.isArray(list) ? list.filter((c) => typeof c === "string") : []);
+
 export const saveToDB = async (profileId, expenseCategories, incomeCategories) => {
   try {
     await runTx(STORE, "readwrite", (store) =>
@@ -51,9 +54,10 @@ export const useCategories = (profileId) => {
     loadedForProfileRef.current = null;
     loadFromDB(profileId).then((data) => {
       if (cancelled) return;
-      if (data) {
-        setExpenseCategories(sortCategories(data.categories.expense || []));
-        setIncomeCategories(sortCategories(data.categories.income || []));
+      // Запис без categories (повреден) — като липсващ запис: категориите по подразбиране
+      if (data?.categories && typeof data.categories === "object") {
+        setExpenseCategories(sortCategories(validList(data.categories.expense)));
+        setIncomeCategories(sortCategories(validList(data.categories.income)));
       } else {
         setExpenseCategories(sortCategories(DEFAULT_EXPENSE_CATEGORIES));
         setIncomeCategories(sortCategories(DEFAULT_INCOME_CATEGORIES));

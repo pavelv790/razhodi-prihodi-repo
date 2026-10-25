@@ -3,9 +3,13 @@ import { runTx, reportDBError } from "../utils/db";
 
 const STORE = "profiles";
 
+// Профил без име (повреден запис) чупеше създаването и преименуването — p.name.toLowerCase() (одит 2026-10, 1А-11)
+const UNNAMED_PROFILE = "Без име";
+const withValidName = (p) => (typeof p.name === "string" && p.name.trim() ? p : { ...p, name: UNNAMED_PROFILE });
+
 // При грешка отхвърля: провалено четене не е „няма профили“ (иначе приложението иска нов профил)
 const loadAll = async () =>
-  (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
+  ((await runTx(STORE, "readonly", (store) => store.getAll())) || []).map(withValidName);
 
 const saveOne = async (profile) => {
   try {

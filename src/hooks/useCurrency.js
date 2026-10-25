@@ -8,6 +8,15 @@ const STORE = "currency";
 const load = async (profileId) =>
   (await runTx(STORE, "readonly", (store) => store.get(profileId))) || { id: profileId, currency: "EUR", rate: 1 };
 
+// Невалидна валута или курс (повреден запис/копие: липсва, 0, отрицателен, текст) → EUR с курс 1,
+// вместо суми NaN/∞ при convert (одит 2026-10, 1А-11). Курс-число като низ („1.95“) се приема.
+const validCurrency = (currency, rate) => {
+  if (currency === "EUR") return { currency, rate: 1 };
+  const r = typeof rate === "string" ? Number(rate) : rate;
+  if (typeof currency === "string" && currency && Number.isFinite(r) && r > 0) return { currency, rate: r };
+  return { currency: "EUR", rate: 1 };
+};
+
 const save = async (profileId, data) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.put({ id: profileId, ...data }));
@@ -40,8 +49,9 @@ export const useCurrency = (profileId) => {
     loadedForProfileRef.current = null;
     load(profileId).then((data) => {
       if (cancelled) return;
-      setCurrency(data.currency);
-      setRate(data.rate);
+      const valid = validCurrency(data.currency, data.rate);
+      setCurrency(valid.currency);
+      setRate(valid.rate);
       loadedForProfileRef.current = profileId;
       setIsLoaded(true);
     }).catch((err) => {
@@ -70,8 +80,9 @@ export const useCurrency = (profileId) => {
   };
 
   const restoreCurrency = (newCurrency, newRate) => {
-    setCurrency(newCurrency ?? "EUR");
-    setRate(newRate ?? 1);
+    const valid = validCurrency(newCurrency ?? "EUR", newRate ?? 1);
+    setCurrency(valid.currency);
+    setRate(valid.rate);
   };
 
   const convert = (amount) => {
