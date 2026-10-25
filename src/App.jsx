@@ -221,6 +221,9 @@ const App = () => {
   }, [activeProfileId, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
+  // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
+  const autoUploadPausedRef = useRef({ drive: false, supabase: false });
+  const confirmDialogRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
   const completedRestoreProfilesRef = useRef([]);
@@ -327,6 +330,89 @@ const App = () => {
       .catch(() => { /* тихо — само предупреждение, не блокира работата */ });
     return () => releaseLock();
   }, []);
+
+  // Пазач при рязък спад: броят транзакции по профил при последното успешно качване се пази
+  // отделно за всяка услуга. Спад до 0 или с над 50% (при поне 10 преди) → въпрос преди качване.
+  const UPLOAD_COUNTS_KEYS = { drive: "drive_last_upload_counts", supabase: "supabase_last_upload_counts" };
+  const UPLOAD_SERVICE_LABELS = { drive: "Google Drive", supabase: "Облака" };
+
+  const countTransactionsByProfile = (backup) => {
+    const counts = {};
+    (backup.profiles || []).forEach((p) => { counts[p.id] = 0; });
+    (backup.transactions || []).forEach((t) => {
+      if (t.profileId in counts) counts[t.profileId]++;
+    });
+    return counts;
+  };
+
+  // Връща { name, prev, now } за първия профил с рязък спад или null. Изтрити профили не се броят.
+  const findUploadDrop = (service, backup) => {
+    let prevCounts = null;
+    try {
+      prevCounts = JSON.parse(localStorage.getItem(UPLOAD_COUNTS_KEYS[service]) || "null");
+    } catch {
+      prevCounts = null;
+    }
+    if (!prevCounts) return null;
+    const counts = countTransactionsByProfile(backup);
+    for (const p of backup.profiles || []) {
+      const prev = prevCounts[p.id];
+      const now = counts[p.id];
+      if (!prev) continue;
+      if (now === 0 || (prev >= 10 && now < prev * 0.5)) return { name: p.name, prev, now };
+    }
+    return null;
+  };
+
+  const saveUploadCounts = (service, backup) => {
+    try {
+      localStorage.setItem(UPLOAD_COUNTS_KEYS[service], JSON.stringify(countTransactionsByProfile(backup)));
+    } catch {
+      // без запис пазачът просто няма с какво да сравни следващия път
+    }
+  };
+
+  const uploadDropMessage = (service, drop) =>
+    `Транзакциите на профил „${drop.name}“ са намалели от ${drop.prev} на ${drop.now} спрямо последното качване в ${UPLOAD_SERVICE_LABELS[service]}. Да кача ли това копие? По-старите копия се пазят.`;
+
+  const uploadToDrive = async (backup, profileName) => {
+    const success = await driveUploadBackup(backup, profileName);
+    if (success) {
+      saveUploadCounts("drive", backup);
+      autoUploadPausedRef.current.drive = false;
+    }
+    return success;
+  };
+
+  const uploadToSupabase = async (backup, profileName, profileId) => {
+    const success = await supabaseUploadBackup(backup, profileName, profileId);
+    if (success) {
+      saveUploadCounts("supabase", backup);
+      autoUploadPausedRef.current.supabase = false;
+      setLastSupabaseUploadDate(new Date().toISOString());
+    }
+    return success;
+  };
+
+  // Авто-качване през пазача. При рязък спад не качва, а пита веднъж; при „Не качвай“
+  // авто-качването към услугата спира до следващо отваряне или успешно ръчно качване.
+  // Връща резултата от doUpload, или null, ако качването е пропуснато.
+  const autoUploadWithGuard = async (service, backup, doUpload) => {
+    const drop = findUploadDrop(service, backup);
+    if (!drop) return doUpload();
+    if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
+    autoUploadPausedRef.current[service] = true;
+    setConfirmDialog({
+      title: "Автоматичното качване е спряно",
+      message: uploadDropMessage(service, drop),
+      confirmLabel: "Качи",
+      cancelLabel: "Не качвай",
+      tone: "warning",
+      onConfirm: doUpload,
+    });
+    return null;
+  };
+
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
     const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
@@ -342,7 +428,8 @@ const App = () => {
       const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const success = await driveUploadBackup(await buildBackupData(), profileNameAtTrigger);
+        const backup = await buildBackupData();
+        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger));
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
@@ -354,11 +441,14 @@ const App = () => {
       const profileNameAtTrigger = activeProfile?.name;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const success = await driveUploadBackup(await buildBackupData(), profileNameAtTrigger);
+        const backup = await buildBackupData();
+        const success = await autoUploadWithGuard("drive", backup, async () => {
+          const ok = await uploadToDrive(backup, profileNameAtTrigger);
+          if (ok) driveMarkDailyDone();
+          return ok;
+        });
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
-        } else {
-          driveMarkDailyDone();
         }
       }, 1500);
       return () => clearTimeout(timer);
@@ -381,8 +471,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger, profileIdAtTrigger);
-        if (success) setLastSupabaseUploadDate(new Date().toISOString());
+        const backup = await buildBackupData();
+        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger));
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -392,15 +482,21 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const success = await supabaseUploadBackup(await buildBackupData(), profileNameAtTrigger, profileIdAtTrigger);
-        if (success) {
-          supabaseMarkDailyDone();
-          setLastSupabaseUploadDate(new Date().toISOString());
-        }
+        const backup = await buildBackupData();
+        await autoUploadWithGuard("supabase", backup, async () => {
+          const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger);
+          if (ok) supabaseMarkDailyDone();
+          return ok;
+        });
       }, 1500);
       return () => clearTimeout(timer);
     }
   }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup]);
+
+  // За авто-качването: да не покрива вече отворен прозорец за потвърждение
+  useEffect(() => {
+    confirmDialogRef.current = confirmDialog;
+  }, [confirmDialog]);
 
   // Показва модал-напомняне след РЕАЛНО свързване с Google Drive (не при обикновено
   // презареждане на вече свързана сесия) — ако автоматичното качване все още е изключено.
@@ -719,14 +815,37 @@ const App = () => {
   };
   
   const handleDriveUpload = async () => {
-    await driveUploadBackup(await buildBackupData(), activeProfile?.name);
+    const backup = await buildBackupData();
+    const profileName = activeProfile?.name;
+    const drop = findUploadDrop("drive", backup);
+    if (drop) {
+      setConfirmDialog({
+        title: "Рязко намаляване на данните",
+        message: uploadDropMessage("drive", drop),
+        confirmLabel: "Качи",
+        tone: "warning",
+        onConfirm: () => uploadToDrive(backup, profileName),
+      });
+      return;
+    }
+    await uploadToDrive(backup, profileName);
   };
   const handleSupabaseUpload = async () => {
-    const success = await supabaseUploadBackup(await buildBackupData(), activeProfile?.name, activeProfileId);
-    if (success) {
-      const now = new Date().toISOString();
-      setLastSupabaseUploadDate(now);
+    const backup = await buildBackupData();
+    const profileName = activeProfile?.name;
+    const profileId = activeProfileId;
+    const drop = findUploadDrop("supabase", backup);
+    if (drop) {
+      setConfirmDialog({
+        title: "Рязко намаляване на данните",
+        message: uploadDropMessage("supabase", drop),
+        confirmLabel: "Качи",
+        tone: "warning",
+        onConfirm: () => uploadToSupabase(backup, profileName, profileId),
+      });
+      return;
     }
+    await uploadToSupabase(backup, profileName, profileId);
   };
 
   // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
@@ -2156,7 +2275,7 @@ const App = () => {
                 onClick={() => setConfirmDialog(null)}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
-                Откажи
+                {confirmDialog.cancelLabel || "Откажи"}
               </button>
             </div>
           </div>
