@@ -1977,13 +1977,13 @@ const App = () => {
 
       {showRestoreConfirm && pendingBackup && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
-                  <div className="px-5 py-4 border-b border-gray-100">
+                <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90vh] flex flex-col">
+                  <div className="px-5 py-4 border-b border-gray-100 shrink-0">
                     <h2 className="text-base font-semibold text-gray-700">
                       Възтановяване от резервно копие
                     </h2>
                   </div>
-                  <div className="px-5 py-5 space-y-3">
+                  <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
                     {conflictProfiles.length === 0 && (
                       <div className="bg-orange-50 rounded-xl p-4">
                         <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
@@ -2026,6 +2026,8 @@ const App = () => {
                         </div>
                       );
                     })}
+                  </div>
+                  <div className="px-5 pt-2 pb-5 space-y-3 shrink-0">
                     <button
                       onClick={() => { setShowRestoreConfirm(false); handleRestoreConfirm(); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
