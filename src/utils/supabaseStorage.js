@@ -90,8 +90,11 @@ function isBackupFileForProfileName(fileName, profileName) {
   });
 }
 
-// Колко копия най-много се изтеглят за избор
-const MAX_BACKUP_CHOICES = 5;
+// Колко датирани копия на профил се пазят в Облака (по едно на ден, вкл. днешното)
+const BACKUPS_TO_KEEP = 14;
+
+const newestFirst = (a, b) =>
+  new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at);
 
 export async function uploadBackupToSupabase(backupData, profileName, profileId) {
   const user = await getCurrentUser();
@@ -115,13 +118,15 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
 
   if (error) throw new Error("Грешка при качване в Supabase: " + error.message);
 
-  // Едва след успешно качване — намери и изтрий старите файлове (по prefix без дата,
-  // вкл. тези със старото име на профила)
+  // Едва след успешно качване — изтрий копията на профила, по-стари от последните
+  // BACKUPS_TO_KEEP (по prefix без дата, вкл. тези със старото име на профила)
   const { files: existingFiles } = await listByPrefixes(userId, prefixes);
 
   if (existingFiles.length > 0) {
     const oldPaths = existingFiles
       .filter((f) => prefixes.some((p) => isExactBackupFileName(f.name, p)) && f.name !== newFileName)
+      .sort(newestFirst)
+      .slice(BACKUPS_TO_KEEP - 1)
       .map((f) => `${userId}/${f.name}`);
     if (oldPaths.length > 0) {
       const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove(oldPaths);
@@ -134,9 +139,9 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
   return newFileName;
 }
 
-// Връща копията на профила (по име, при всеки profileId), най-новото първо:
-// [{ fileName, updatedAt, isSameProfile, data }]. isSameProfile — копието е от профила с този id.
-export async function downloadBackupsFromSupabase(profileName, profileId) {
+// Връща копията на профила (по име, при всеки profileId), най-новото първо, без да ги изтегля:
+// [{ fileName, updatedAt, size, isSameProfile }]. isSameProfile — копието е от профила с този id.
+export async function listBackupsFromSupabase(profileName, profileId) {
   const user = await getCurrentUser();
   if (!user) throw new Error("Не сте влезли в акаунт.");
 
@@ -151,34 +156,27 @@ export async function downloadBackupsFromSupabase(profileName, profileId) {
 
   const matching = files
     .filter((f) => isBackupFileForProfileName(f.name, profileName))
-    .sort((a, b) =>
-      new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
-    )
-    .slice(0, MAX_BACKUP_CHOICES);
+    .sort(newestFirst);
   if (matching.length === 0) throw new Error("Няма намерено резервно копие в Supabase.");
 
-  // Повредено или недостъпно копие се прескача, ако има други; иначе се връща грешката
-  const copies = [];
-  let firstError = null;
-  for (const f of matching) {
-    try {
-      const { data, error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .download(`${userId}/${f.name}`);
-      if (error) throw new Error("Грешка при изтегляне от Supabase.");
-      const text = await data.text();
-      copies.push({
-        fileName: f.name,
-        updatedAt: f.updated_at || f.created_at,
-        isSameProfile: exactPrefixes.some((p) => isExactBackupFileName(f.name, p)),
-        data: JSON.parse(text),
-      });
-    } catch (err) {
-      console.warn("Пропуснато резервно копие:", f.name, err.message);
-      if (!firstError) firstError = err;
-    }
-  }
-  if (copies.length === 0) throw firstError;
+  return matching.map((f) => ({
+    fileName: f.name,
+    updatedAt: f.updated_at || f.created_at,
+    size: f.metadata?.size ?? null,
+    isSameProfile: exactPrefixes.some((p) => isExactBackupFileName(f.name, p)),
+  }));
+}
 
-  return copies;
+export async function downloadBackupFileFromSupabase(fileName) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Не сте влезли в акаунт.");
+
+  const { data, error } = await supabase.storage
+    .from(BUCKET_NAME)
+    .download(`${user.id}/${fileName}`);
+
+  if (error) throw new Error("Грешка при изтегляне от Supabase.");
+
+  const text = await data.text();
+  return JSON.parse(text);
 }

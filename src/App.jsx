@@ -190,6 +190,7 @@ const App = () => {
     updatePassword: supabaseUpdatePassword,
     toggleAutoSync: supabaseToggleAutoSync,
     uploadBackup: supabaseUploadBackup,
+    listBackups: supabaseListBackups,
     downloadBackup: supabaseDownloadBackup,
     shouldRunDaily: supabaseShouldRunDaily,
     markDailyDone: supabaseMarkDailyDone,
@@ -761,12 +762,11 @@ const App = () => {
     }
   };
 
-  // Брой транзакции на профила с това име в копието от облака (или всички, ако няма такъв профил)
-  const countCloudBackupTransactions = (backup) => {
-    const name = (activeProfile?.name || "").toLowerCase();
-    const bp = (backup.profiles || []).find((p) => (p.name || "").toLowerCase() === name);
-    const txs = backup.transactions || [];
-    return bp ? txs.filter((t) => t.profileId === bp.id).length : txs.length;
+  // Размер на копие от облака за списъка за избор (null, ако облакът не го е върнал)
+  const formatBackupSize = (bytes) => {
+    if (bytes == null) return null;
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const handleBackupExport = async () => {
@@ -1634,10 +1634,11 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const copies = await supabaseDownloadBackup(activeProfile?.name, activeProfileId);
+                          const copies = await supabaseListBackups(activeProfile?.name, activeProfileId);
                           if (!copies) return;
                           if (copies.length === 1) {
-                            await startSupabaseRestore(copies[0].data);
+                            const data = await supabaseDownloadBackup(copies[0].fileName);
+                            if (data) await startSupabaseRestore(data);
                           } else {
                             setCloudBackupChoices(copies);
                           }
@@ -2001,7 +2002,7 @@ const App = () => {
                   </div>
                   <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
                     <p className="text-sm text-gray-600">
-                      В облака има {cloudBackupChoices.length} резервни копия за профил „{activeProfile?.name}“.
+                      В облака има {cloudBackupChoices.length} резервни копия за профил „{activeProfile?.name}“ (по едно на ден). Изберете от коя дата да се възстанови.
                       Ако сте на ново устройство или профилът е създаден наново, вашето копие обикновено е „от друго устройство или по-стар профил“.
                     </p>
                     {cloudBackupChoices.map((copy) => (
@@ -2009,7 +2010,8 @@ const App = () => {
                         key={copy.fileName}
                         onClick={async () => {
                           setCloudBackupChoices(null);
-                          await startSupabaseRestore(copy.data);
+                          const data = await supabaseDownloadBackup(copy.fileName);
+                          if (data) await startSupabaseRestore(data);
                         }}
                         className="w-full text-left bg-white rounded-xl p-3 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
                       >
@@ -2022,7 +2024,7 @@ const App = () => {
                             : copy.fileName}
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {countCloudBackupTransactions(copy.data)} {countCloudBackupTransactions(copy.data) === 1 ? "транзакция" : "транзакции"} · {copy.isSameProfile ? "от този профил" : "от друго устройство или по-стар профил"}
+                          {formatBackupSize(copy.size) && `${formatBackupSize(copy.size)} · `}{copy.isSameProfile ? "от този профил" : "от друго устройство или по-стар профил"}
                         </p>
                       </button>
                     ))}

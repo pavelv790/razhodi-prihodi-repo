@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   uploadBackupToSupabase,
-  downloadBackupsFromSupabase,
+  listBackupsFromSupabase,
+  downloadBackupFileFromSupabase,
 } from "../utils/supabaseStorage";
 import {
   signUpWithEmail,
@@ -230,8 +231,8 @@ export function useSupabaseStorage() {
     }
   }, [connected]);
 
-  // Връща масив от копия (виж downloadBackupsFromSupabase) или null при грешка
-  const downloadBackup = useCallback(async (profileName, profileId) => {
+  // Връща списъка с копия (виж listBackupsFromSupabase) или null при грешка
+  const listBackups = useCallback(async (profileName, profileId) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return null;
@@ -239,11 +240,26 @@ export function useSupabaseStorage() {
     setDownloadLoading(true);
     setMessage("");
     try {
-      const copies = await downloadBackupsFromSupabase(profileName, profileId);
-      showMessage(copies.length > 1
-        ? `✅ Намерени са ${copies.length} резервни копия в облака — изберете кое да се възстанови.`
-        : "✅ Резервно копие изтеглено успешно.");
-      return copies;
+      return await listBackupsFromSupabase(profileName, profileId);
+    } catch (err) {
+      showMessage("❌ " + err.message);
+      return null;
+    } finally {
+      setDownloadLoading(false);
+    }
+  }, [connected]);
+
+  const downloadBackup = useCallback(async (fileName) => {
+    if (!connected) {
+      showMessage("❌ Не сте вписани в облака.");
+      return null;
+    }
+    setDownloadLoading(true);
+    setMessage("");
+    try {
+      const data = await downloadBackupFileFromSupabase(fileName);
+      showMessage("✅ Резервно копие изтеглено успешно.");
+      return data;
     } catch (err) {
       showMessage("❌ " + err.message);
       return null;
@@ -286,6 +302,7 @@ export function useSupabaseStorage() {
     setMessage,
     toggleAutoSync,
     uploadBackup,
+    listBackups,
     downloadBackup,
     shouldRunDaily,
     markDailyDone,
