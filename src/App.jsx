@@ -151,6 +151,7 @@ const App = () => {
     disconnect: driveDisconnect,
     toggleAutoSync: driveToggleAutoSync,
     uploadBackup: driveUploadBackup,
+    listBackups: driveListBackups,
     downloadBackup: driveDownloadBackup,
     shouldRunDaily: driveShouldRunDaily,
     markDailyDone: driveMarkDailyDone,
@@ -728,7 +729,8 @@ const App = () => {
     }
   };
 
-  const startSupabaseRestore = async (rawData) => {
+  // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
+  const startCloudRestore = async (rawData) => {
     const { data, remappedIds } = normalizeBackupProfileIds(rawData);
     setNameOnlyMatchIds(remappedIds);
     setPendingBackup(data);
@@ -1427,43 +1429,16 @@ const App = () => {
                       )}
                       <button
                         onClick={async () => {
-                          const rawData = await driveDownloadBackup(activeProfile?.name);
-                          if (rawData) {
-                            const { data, remappedIds } = normalizeBackupProfileIds(rawData);
-                            setNameOnlyMatchIds(remappedIds);
-                            setPendingBackup(data);
-                            const conflicts = (data.profiles || []).filter((bp) =>
-                              profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-                            );
-                            const newProfiles = (data.profiles || []).filter((bp) =>
-                              !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-                            );
-                            pendingNewProfilesRef.current = newProfiles;
-                            setPendingNewProfiles(newProfiles);
-                            // Зареди броя транзакции за всеки профил от IndexedDB
-                            const db2 = await openDB();
-                            const allTxs2 = await new Promise((resolve) => {
-                              const tx = db2.transaction("transactions", "readonly");
-                              const req = tx.objectStore("transactions").getAll();
-                              req.onsuccess = () => resolve(req.result || []);
-                            });
-                            const counts2 = {};
-                            profiles.forEach((lp) => {
-                              counts2[lp.id] = allTxs2.filter((t) => t.profileId === lp.id).length;
-                            });
-                            setLocalTransactionCounts(counts2);
-                            if (conflicts.length > 0) {
-                              const initialChoices = {};
-                              conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
-                              setConflictProfiles(conflicts);
-                              setConflictChoices(initialChoices);
-                              setShowConflictModal(true);
-                            } else {
-                              setShowRestoreConfirm(true);
-                            }
+                          const copies = await driveListBackups(activeProfile?.name);
+                          if (!copies) return;
+                          if (copies.length === 1) {
+                            const data = await driveDownloadBackup(copies[0].fileId);
+                            if (data) await startCloudRestore(data);
+                          } else {
+                            setCloudBackupChoices({ source: "drive", copies });
                           }
                         }}
-                        disabled={driveDownloadLoading || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
+                        disabled={driveDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-green-50 text-green-600 hover:bg-green-100 transition w-full mb-1"
                       >
                         ⬇️ {driveDownloadLoading ? "Изтегляне..." : "Възстанови от Google Drive"}
@@ -1638,9 +1613,9 @@ const App = () => {
                           if (!copies) return;
                           if (copies.length === 1) {
                             const data = await supabaseDownloadBackup(copies[0].fileName);
-                            if (data) await startSupabaseRestore(data);
+                            if (data) await startCloudRestore(data);
                           } else {
-                            setCloudBackupChoices(copies);
+                            setCloudBackupChoices({ source: "supabase", copies });
                           }
                         }}
                         disabled={supabaseDownloadLoading || !!cloudBackupChoices || showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm}
@@ -2002,16 +1977,19 @@ const App = () => {
                   </div>
                   <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
                     <p className="text-sm text-gray-600">
-                      В облака има {cloudBackupChoices.length} резервни копия за профил „{activeProfile?.name}“ (по едно на ден). Изберете от коя дата да се възстанови.
-                      Ако сте на ново устройство или профилът е създаден наново, вашето копие обикновено е „от друго устройство или по-стар профил“.
+                      {cloudBackupChoices.source === "drive" ? "В Google Drive" : "В облака"} има {cloudBackupChoices.copies.length} резервни копия за профил „{activeProfile?.name}“ (по едно на ден). Изберете от коя дата да се възстанови.
+                      {cloudBackupChoices.source === "supabase" && " Ако сте на ново устройство или профилът е създаден наново, вашето копие обикновено е „от друго устройство или по-стар профил“."}
                     </p>
-                    {cloudBackupChoices.map((copy) => (
+                    {cloudBackupChoices.copies.map((copy) => (
                       <button
-                        key={copy.fileName}
+                        key={copy.fileId || copy.fileName}
                         onClick={async () => {
+                          const source = cloudBackupChoices.source;
                           setCloudBackupChoices(null);
-                          const data = await supabaseDownloadBackup(copy.fileName);
-                          if (data) await startSupabaseRestore(data);
+                          const data = source === "drive"
+                            ? await driveDownloadBackup(copy.fileId)
+                            : await supabaseDownloadBackup(copy.fileName);
+                          if (data) await startCloudRestore(data);
                         }}
                         className="w-full text-left bg-white rounded-xl p-3 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
                       >
@@ -2024,7 +2002,10 @@ const App = () => {
                             : copy.fileName}
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          {formatBackupSize(copy.size) && `${formatBackupSize(copy.size)} · `}{copy.isSameProfile ? "от този профил" : "от друго устройство или по-стар профил"}
+                          {[
+                            formatBackupSize(copy.size),
+                            cloudBackupChoices.source === "supabase" && (copy.isSameProfile ? "от този профил" : "от друго устройство или по-стар профил"),
+                          ].filter(Boolean).join(" · ")}
                         </p>
                       </button>
                     ))}

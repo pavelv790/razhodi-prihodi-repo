@@ -82,16 +82,31 @@ function isExactBackupFileName(fileName, prefix) {
   return pattern.test(fileName);
 }
 
-async function findExistingFileByProfile(prefix, folderId) {
+// Колко датирани копия на профил се пазят в Google Drive (по едно на ден, вкл. днешното).
+// По-старите отиват в кошчето на Drive, не се трият окончателно.
+const BACKUPS_TO_KEEP = 14;
+
+// Копията на профила в папката, най-новото първо
+async function listProfileBackups(prefix, folderId) {
   const safePrefix = escapeDriveQuery(prefix);
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name)&pageSize=50`,
+    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime,size)&pageSize=100`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   await checkDriveResponse(res);
   const data = await res.json();
-  const match = (data.files || []).find((f) => isExactBackupFileName(f.name, prefix));
-  return match?.id || null;
+  return (data.files || []).filter((f) => isExactBackupFileName(f.name, prefix));
+}
+
+async function moveToTrash(fileId) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ trashed: true }),
+  });
+  if (!res.ok) {
+    console.warn("Предупреждение: не успя да премести старо резервно копие в кошчето:", res.status);
+  }
 }
 
 export async function uploadBackupToDrive(backupData, profileName) {
@@ -105,7 +120,9 @@ export async function uploadBackupToDrive(backupData, profileName) {
   const fileName = `Finances_Backup${profileSuffix}_${day}.${month}.${year}.json`;
 
   const folderId = await getOrCreateFolder();
-  const existingFileId = await findExistingFileByProfile(`Finances_Backup${profileSuffix}`, folderId);
+  // Днешното копие се презаписва, иначе се създава ново — по едно копие на ден
+  const existingFiles = await listProfileBackups(`Finances_Backup${profileSuffix}`, folderId);
+  const existingFileId = existingFiles.find((f) => f.name === fileName)?.id || null;
 
   const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
 
@@ -129,28 +146,41 @@ export async function uploadBackupToDrive(backupData, profileName) {
   });
 
   if (!res.ok) throw new Error("Грешка при качване в Google Drive.");
-  return await res.json();
+  const uploaded = await res.json();
+
+  // Едва след успешно качване — копията, по-стари от последните BACKUPS_TO_KEEP, в кошчето
+  const oldFiles = existingFiles
+    .filter((f) => f.id !== existingFileId)
+    .slice(BACKUPS_TO_KEEP - 1);
+  for (const f of oldFiles) {
+    await moveToTrash(f.id);
+  }
+
+  return uploaded;
 }
 
-export async function downloadLatestBackupFromDrive(profileName) {
+// Връща копията на профила, най-новото първо, без да ги изтегля:
+// [{ fileId, fileName, updatedAt, size }]
+export async function listBackupsFromDrive(profileName) {
   if (!accessToken) throw new Error("Не сте влезли в Google акаунт.");
 
   const folderId = await getOrCreateFolder();
 
   const profileSuffix = profileName ? `_${profileName}` : "";
-  const prefix = `Finances_Backup${profileSuffix}`;
-
-  const safePrefix = escapeDriveQuery(prefix);
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name contains '${safePrefix}' and '${folderId}' in parents and trashed=false&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)&pageSize=50`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  await checkDriveResponse(res);
-  const data = await res.json();
-  const matches = (data.files || []).filter((f) => isExactBackupFileName(f.name, prefix));
+  const matches = await listProfileBackups(`Finances_Backup${profileSuffix}`, folderId);
   if (!matches.length) throw new Error("Няма намерено резервно копие в Google Drive.");
 
-  const fileId = matches[0].id;
+  return matches.map((f) => ({
+    fileId: f.id,
+    fileName: f.name,
+    updatedAt: f.modifiedTime,
+    size: f.size != null ? Number(f.size) : null,
+  }));
+}
+
+export async function downloadBackupFileFromDrive(fileId) {
+  if (!accessToken) throw new Error("Не сте влезли в Google акаунт.");
+
   const fileRes = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${accessToken}` } }

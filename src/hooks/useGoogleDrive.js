@@ -4,7 +4,8 @@ import {
   signOutFromGoogle,
   isSignedIn,
   uploadBackupToDrive,
-  downloadLatestBackupFromDrive,
+  listBackupsFromDrive,
+  downloadBackupFileFromDrive,
   restoreSessionFromSupabase,
   setAccessToken,
 } from "../utils/googleDrive";
@@ -131,7 +132,8 @@ export function useGoogleDrive() {
     }
   }, []);
 
-  const downloadBackup = useCallback(async (profileName) => {
+  // Връща списъка с копия (виж listBackupsFromDrive) или null при грешка
+  const listBackups = useCallback(async (profileName) => {
     if (!isSignedIn()) {
       showMessage("❌ Първо се свържете с Google Drive.");
       return null;
@@ -139,7 +141,24 @@ export function useGoogleDrive() {
     setDownloadLoading(true);
     setMessage("");
     try {
-      const data = await downloadLatestBackupFromDrive(profileName);
+      return await listBackupsFromDrive(profileName);
+    } catch (err) {
+      showMessage("❌ " + err.message);
+      return null;
+    } finally {
+      setDownloadLoading(false);
+    }
+  }, []);
+
+  const downloadBackup = useCallback(async (fileId) => {
+    if (!isSignedIn()) {
+      showMessage("❌ Първо се свържете с Google Drive.");
+      return null;
+    }
+    setDownloadLoading(true);
+    setMessage("");
+    try {
+      const data = await downloadBackupFileFromDrive(fileId);
       showMessage("✅ Резервно копие изтеглено успешно.");
       return data;
     } catch (err) {
@@ -161,6 +180,7 @@ export function useGoogleDrive() {
     disconnect,
     toggleAutoSync,
     uploadBackup,
+    listBackups,
     downloadBackup,
     shouldRunDaily,
     markDailyDone,
