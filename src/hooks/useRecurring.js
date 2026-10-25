@@ -1,67 +1,41 @@
 import { useState, useEffect, useCallback } from "react";
-import { openDB, reportDBError } from "../utils/db";
+import { runTx, reportDBError } from "../utils/db";
 import { parseDate, getTodayString } from "../utils/formatters";
 
 const STORE = "recurring";
 
+// При грешка отхвърля: провалено четене не е „няма повтарящи се“ (одит 2026-10, 1А-04)
 const loadByProfile = async (profileId) => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => {
-        const all = req.result || [];
-        resolve(all.filter((r) => r.profileId === profileId));
-      };
-      req.onerror = () => reject(req.error);
-    });
-  } catch { return []; }
+  const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
+  return all.filter((r) => r.profileId === profileId);
 };
 
 const saveOne = async (item) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(item);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { reportDBError(); console.error("Грешка при запис на повтаряща се транзакция"); }
+    await runTx(STORE, "readwrite", (store) => store.put(item));
+  } catch (err) { reportDBError(); console.error("Грешка при запис на повтаряща се транзакция", err); }
 };
 
 const deleteOne = async (id) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(id);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { console.error("Грешка при изтриване на повтаряща се транзакция"); }
+    await runTx(STORE, "readwrite", (store) => store.delete(id));
+  } catch (err) { reportDBError(); console.error("Грешка при изтриване на повтаряща се транзакция", err); }
 };
 
+// При грешка отхвърля, за да спре изтриването на профила
 const deleteByProfile = async (profileId) => {
   try {
-    const db = await openDB();
-    const all = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
+    const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
     const remaining = all.filter((r) => r.profileId !== profileId);
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
+    await runTx(STORE, "readwrite", (store) => {
       store.clear();
       remaining.forEach((r) => store.put(r));
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
     });
-  } catch { console.error("Грешка при изтриване на повтарящи се транзакции по профил"); }
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при изтриване на повтарящи се транзакции по профил", err);
+    throw err;
+  }
 };
 
 // Изчислява всички чакащи дати за дадена повтаряща се транзакция
@@ -139,6 +113,11 @@ export const useRecurring = (profileId) => {
       if (cancelled) return;
       setRecurringItems(data);
       setIsLoaded(true);
+    }).catch((err) => {
+      if (cancelled) return;
+      // isLoaded остава false
+      reportDBError();
+      console.error("Грешка при зареждане на повтарящи се транзакции от IndexedDB", err);
     });
     return () => { cancelled = true; };
   }, [profileId]);
@@ -185,27 +164,20 @@ export const useRecurring = (profileId) => {
 
   const restoreRecurring = async (items, targetProfileId) => {
     try {
-      const db = await openDB();
       const target = targetProfileId || profileId;
-      const all = await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, "readonly");
-        const req = tx.objectStore(STORE).getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
       const otherProfiles = all.filter((r) => r.profileId !== target);
       const withProfile = items.map((r) => ({ ...r, profileId: target }));
       const merged = [...otherProfiles, ...withProfile];
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, "readwrite");
-        const store = tx.objectStore(STORE);
+      await runTx(STORE, "readwrite", (store) => {
         store.clear();
         merged.forEach((r) => store.put(r));
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
       });
       if (target === profileId) setRecurringItems(withProfile);
-    } catch { console.error("Грешка при възстановяване от файл на повтарящи се транзакции"); }
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при възстановяване от файл на повтарящи се транзакции", err);
+    }
   };
 
   // Изчислява всички чакащи транзакции за днес

@@ -1,48 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { parseDate } from "../utils/formatters";
-import { openDB, reportDBError } from "../utils/db";
+import { runTx, reportDBError } from "../utils/db";
 
 const STORE = "transactions";
 
 // При грешка отхвърля (не връща []), за да не се приеме провалено четене за „няма транзакции“
 // и празното да не се запише върху реалните данни (одит 2026-10, 1Б-01)
 const loadByProfile = async (profileId) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => {
-      const all = req.result || [];
-      resolve(all.filter((t) => t.profileId === profileId));
-    };
-    req.onerror = () => reject(req.error);
-  });
+  const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
+  return all.filter((t) => t.profileId === profileId);
 };
 
+// Връща true при успешен запис; при грешка — червена лента и false (не отхвърля)
 const saveAllToDB_forProfile = async (profileId, newTransactions) => {
   try {
-    const db = await openDB();
     // Зареждаме всички транзакции от всички профили
-    const all = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
+    const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
     // Запазваме транзакциите на другите профили непокътнати
     const otherProfiles = all.filter((t) => t.profileId !== profileId);
     const merged = [...otherProfiles, ...newTransactions];
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
+    await runTx(STORE, "readwrite", (store) => {
       store.clear();
       merged.forEach((t) => store.put(t));
-      tx.oncomplete = resolve;
-      tx.onerror = () => { reportDBError(); reject(tx.error); };
     });
-  } catch {
+    return true;
+  } catch (err) {
     reportDBError();
-    console.error("Грешка при запис в IndexedDB");
+    console.error("Грешка при запис в IndexedDB", err);
+    return false;
   }
 };
 
@@ -242,27 +227,20 @@ export const useTransactions = (profileId) => {
     const withProfile = newTransactions.map((t) => ({ ...t, profileId }));
     setTransactions((prev) => sortByDate([...prev, ...withProfile]));
   };
+  // При грешка отхвърля, за да спре изтриването на профила (иначе профилът изчезва, а транзакциите му остават)
   const deleteAllTransactionsByProfile = async (targetProfileId) => {
     clearPendingSnapshot(targetProfileId);
     try {
-      const db = await openDB();
-      const all = await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, "readonly");
-        const req = tx.objectStore(STORE).getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
+      const all = (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
       const remaining = all.filter((t) => t.profileId !== targetProfileId);
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE, "readwrite");
-        const store = tx.objectStore(STORE);
+      await runTx(STORE, "readwrite", (store) => {
         store.clear();
         remaining.forEach((t) => store.put(t));
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
       });
-    } catch {
-      console.error("Грешка при изтриване на транзакции по профил");
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при изтриване на транзакции по профил", err);
+      throw err;
     }
   };
 

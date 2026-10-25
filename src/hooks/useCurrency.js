@@ -1,43 +1,28 @@
 import { useState, useEffect, useRef } from "react";
-import { openDB, reportDBError } from "../utils/db";
+import { runTx, reportDBError } from "../utils/db";
 
 const STORE = "currency";
 
 
-const load = async (profileId) => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).get(profileId);
-      req.onsuccess = () => resolve(req.result || { id: profileId, currency: "EUR", rate: 1 });
-      req.onerror = () => reject(req.error);
-    });
-  } catch { return { id: profileId, currency: "EUR", rate: 1 }; }
-};
+// При грешка отхвърля: EUR по подразбиране не бива да се запише върху реалната валута (одит 2026-10, 1А-04)
+const load = async (profileId) =>
+  (await runTx(STORE, "readonly", (store) => store.get(profileId))) || { id: profileId, currency: "EUR", rate: 1 };
 
 const save = async (profileId, data) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put({ id: profileId, ...data });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { reportDBError(); console.error("Грешка при запис на валута"); }
+    await runTx(STORE, "readwrite", (store) => store.put({ id: profileId, ...data }));
+  } catch (err) { reportDBError(); console.error("Грешка при запис на валута", err); }
 };
 
+// При грешка отхвърля, за да спре изтриването на профила
 export const deleteProfileCurrency = async (profileId) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(profileId);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { console.error("Грешка при изтриване на валута на профил"); }
+    await runTx(STORE, "readwrite", (store) => store.delete(profileId));
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при изтриване на валута на профил", err);
+    throw err;
+  }
 };
 
 export const useCurrency = (profileId) => {
@@ -59,6 +44,11 @@ export const useCurrency = (profileId) => {
       setRate(data.rate);
       loadedForProfileRef.current = profileId;
       setIsLoaded(true);
+    }).catch((err) => {
+      if (cancelled) return;
+      // isLoaded остава false: нищо не се записва
+      reportDBError();
+      console.error("Грешка при зареждане на валута от IndexedDB", err);
     });
     return () => { cancelled = true; };
   }, [profileId]);

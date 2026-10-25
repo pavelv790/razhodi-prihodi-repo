@@ -1,42 +1,27 @@
 import { useState, useEffect } from "react";
-import { openDB, reportDBError } from "../utils/db";
+import { runTx, reportDBError } from "../utils/db";
 
 const STORE = "profiles";
 
-const loadAll = async () => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
-  } catch { return []; }
-};
+// При грешка отхвърля: провалено четене не е „няма профили“ (иначе приложението иска нов профил)
+const loadAll = async () =>
+  (await runTx(STORE, "readonly", (store) => store.getAll())) || [];
 
 const saveOne = async (profile) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(profile);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { reportDBError(); console.error("Грешка при запис на профил"); }
+    await runTx(STORE, "readwrite", (store) => store.put(profile));
+  } catch (err) { reportDBError(); console.error("Грешка при запис на профил", err); }
 };
 
+// При грешка отхвърля: профилът остава в списъка, щом не е изтрит от базата
 const deleteOne = async (id) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(id);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch { console.error("Грешка при изтриване на профил"); }
+    await runTx(STORE, "readwrite", (store) => store.delete(id));
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при изтриване на профил", err);
+    throw err;
+  }
 };
 
 const ACTIVE_PROFILE_KEY = "active_profile_id";
@@ -57,6 +42,10 @@ export const useProfiles = () => {
         localStorage.setItem(ACTIVE_PROFILE_KEY, data[0].id);
       }
       setIsLoaded(true);
+    }).catch((err) => {
+      // isLoaded остава false: приложението не предлага нов профил и нищо не се записва (одит 2026-10, 1А-04)
+      reportDBError();
+      console.error("Грешка при зареждане на профилите от IndexedDB", err);
     });
   }, []);
 

@@ -4,50 +4,32 @@ import {
   DEFAULT_INCOME_CATEGORIES,
   sortCategories,
 } from "../constants/categories";
-import { openDB, reportDBError } from "../utils/db";
+import { runTx, reportDBError } from "../utils/db";
 
 const STORE = "categories";
 
-const loadFromDB = async (profileId) => {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const req = tx.objectStore(STORE).get(profileId);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    return null;
-  }
-};
+// При грешка отхвърля: категориите по подразбиране не бива да се запишат върху реалните (одит 2026-10, 1А-04)
+const loadFromDB = async (profileId) =>
+  (await runTx(STORE, "readonly", (store) => store.get(profileId))) || null;
 
 export const saveToDB = async (profileId, expenseCategories, incomeCategories) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put({ type: profileId, categories: { expense: expenseCategories, income: incomeCategories } });
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
+    await runTx(STORE, "readwrite", (store) =>
+      store.put({ type: profileId, categories: { expense: expenseCategories, income: incomeCategories } }));
+  } catch (err) {
     reportDBError();
-    console.error("Грешка при запис на категории в IndexedDB");
+    console.error("Грешка при запис на категории в IndexedDB", err);
   }
 };
 
+// При грешка отхвърля, за да спре изтриването на профила по средата, вместо да изтрие профила без данните му
 export const deleteProfileCategories = async (profileId) => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).delete(profileId);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
-    console.error("Грешка при изтриване на категории на профил");
+    await runTx(STORE, "readwrite", (store) => store.delete(profileId));
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при изтриване на категории на профил", err);
+    throw err;
   }
 };
 
@@ -78,6 +60,11 @@ export const useCategories = (profileId) => {
       }
       loadedForProfileRef.current = profileId;
       setIsLoaded(true);
+    }).catch((err) => {
+      if (cancelled) return;
+      // isLoaded остава false: нищо не се записва и не се качва в облака
+      reportDBError();
+      console.error("Грешка при зареждане на категории от IndexedDB", err);
     });
     return () => { cancelled = true; };
   }, [profileId]);
