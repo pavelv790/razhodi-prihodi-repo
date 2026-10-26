@@ -123,7 +123,7 @@ const App = () => {
   const [showWeeklyBackup, setShowWeeklyBackup] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   // Общ прозорец за изрично потвърждение преди чувствителни действия в раздел "Данни".
-  // Форма: { title, message, confirmLabel, tone: "danger" | "warning", onConfirm }
+  // Форма: { title, message, confirmLabel, tone: "danger" | "warning", onConfirm, onCancel? }
   const [confirmDialog, setConfirmDialog] = useState(null);
   // Модален прозорец, който напомня, че свързването само по себе си не включва
   // автоматично качване (по подразбиране е изключено) — за да не се пропусне.
@@ -241,6 +241,14 @@ const App = () => {
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
   const autoUploadPausedRef = useRef({ drive: false, supabase: false });
+  // Възстановяването течеше при предишното изпълнение на ефекта за авто-качване — промените от него
+  // не се качват сами, а след прозореца „…е завършено“ се пита (одит 2026-10, 2А-09)
+  const autoUploadRestoringRef = useRef({ drive: false, supabase: false });
+  // Услугите с „При всяка промяна“, за които да се пита след прозореца „…е завършено“, или null
+  const restoreUploadAskRef = useRef(null);
+  // „Не качвай“ след възстановяване: авто-качването към услугата спира до следващо отваряне
+  // или успешно ръчно качване (2А-09)
+  const autoUploadStoppedRef = useRef({ drive: false, supabase: false });
   const confirmDialogRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
@@ -507,6 +515,7 @@ const App = () => {
       saveUploadCounts("drive", backup);
       clearDeletedAll("drive");
       autoUploadPausedRef.current.drive = false;
+      autoUploadStoppedRef.current.drive = false;
     }
     return success;
   };
@@ -517,6 +526,7 @@ const App = () => {
       saveUploadCounts("supabase", backup);
       clearDeletedAll("supabase");
       autoUploadPausedRef.current.supabase = false;
+      autoUploadStoppedRef.current.supabase = false;
       setLastSupabaseUploadDate(new Date().toISOString());
     }
     return success;
@@ -527,6 +537,7 @@ const App = () => {
   // отваряне или успешно ръчно качване.
   // Връща резултата от doUpload, или null, ако качването е пропуснато.
   const autoUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
+    if (autoUploadStoppedRef.current[service]) return null;
     if (isFirstUploadFromDevice(service)) {
       if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
       autoUploadPausedRef.current[service] = true; // без втора проверка, докато тази чака облака
@@ -564,12 +575,14 @@ const App = () => {
     const prev = driveSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     driveSnapshotRef.current = snap;
+    const restoreEnded = autoUploadRestoringRef.current.drive && !pendingBackup;
+    autoUploadRestoringRef.current.drive = !!pendingBackup;
     if (pendingBackup) return;
     if (!driveConnected) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
 
-    if (driveAutoSync === "onChange" && dataChanged) {
+    if (driveAutoSync === "onChange" && dataChanged && !restoreEnded) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
@@ -608,12 +621,14 @@ const App = () => {
     const prev = supabaseSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     supabaseSnapshotRef.current = snap;
+    const restoreEnded = autoUploadRestoringRef.current.supabase && !pendingBackup;
+    autoUploadRestoringRef.current.supabase = !!pendingBackup;
     if (pendingBackup) return;
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
-    
-    if (supabaseAutoSync === "onChange" && dataChanged) {
+
+    if (supabaseAutoSync === "onChange" && dataChanged && !restoreEnded) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
@@ -799,6 +814,14 @@ const App = () => {
   const finalizeRestore = (extra = []) => {
     const summary = [...completedRestoreProfilesRef.current, ...extra];
     if (summary.some((r) => r.id === activeProfileId && r.choice !== "local")) handleClearFilter();
+    // Авто-качването пропуска промените от възстановяването; при „При всяка промяна“ се пита,
+    // ако нещо е записано (одит 2026-10, 2А-09)
+    const changed = summary.length === 0 || summary.some((r) => r.choice !== "local" && r.choice !== "skipped");
+    const askServices = [
+      driveConnected && driveAutoSync === "onChange" && "drive",
+      supabaseConnected && supabaseEnabled && supabaseAutoSync === "onChange" && "supabase",
+    ].filter(Boolean);
+    restoreUploadAskRef.current = changed && askServices.length > 0 ? askServices : null;
     resetRestoreState();
     setRestoreDoneType(summary.length > 0 ? summary : [{ name: "", choice: "backup" }]);
     setShowRestoreDone(true);
@@ -1071,6 +1094,45 @@ const App = () => {
     const profileName = activeProfile?.name;
     const profileId = activeProfileId;
     await manualUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileName, profileId), profileName, profileId);
+  };
+
+  // След прозореца „Възстановяването … е завършено“: въпрос дали възстановените данни да се качат
+  // (при „При всяка промяна“). „Не качвай“ спира авто-качването до следващото отваряне, за да не
+  // качи възстановеното при първата промяна (одит 2026-10, 2А-09)
+  const closeRestoreDone = async () => {
+    setShowRestoreDone(false);
+    const services = restoreUploadAskRef.current;
+    restoreUploadAskRef.current = null;
+    if (!services || !activeProfile?.name) return;
+    const backup = await buildBackupData();
+    const profileName = activeProfile.name;
+    const profileId = activeProfileId;
+    const where = services.map((s) => UPLOAD_SERVICE_LABELS[s]).join(" и в ");
+    const warnings = services.map((s) => {
+      const deleted = findDeletedAll(s, backup);
+      if (deleted) return ` След „Изтрий всички данни“ профил „${deleted.name}“ има ${deleted.now} ${deleted.now === 1 ? "транзакция" : "транзакции"} (преди изтриването: ${deleted.before}).`;
+      const drop = findUploadDrop(s, backup);
+      return drop ? ` Транзакциите на профил „${drop.name}“ са намалели от ${drop.prev} на ${drop.now} спрямо последното качване в ${UPLOAD_SERVICE_LABELS[s]}.` : "";
+    });
+    setConfirmDialog({
+      title: "Да кача ли възстановените данни?",
+      message:
+        `Автоматичното качване е включено. „Качи“ качва данните от това устройство в ${where} като днешно копие на профил „${profileName}“ и заменя днешното копие там; по-старите копия се пазят.` +
+        [...new Set(warnings)].join("") +
+        " „Не качвай“ оставя облака непроменен и спира автоматичното качване до следващото отваряне на приложението.",
+      confirmLabel: "Качи",
+      cancelLabel: "Не качвай",
+      tone: "warning",
+      onConfirm: async () => {
+        for (const s of services) {
+          if (s === "drive") await uploadToDrive(backup, profileName);
+          else await uploadToSupabase(backup, profileName, profileId);
+        }
+      },
+      onCancel: () => {
+        services.forEach((s) => { autoUploadStoppedRef.current[s] = true; });
+      },
+    });
   };
 
   // „Възстанови от Google Drive / облака“: 1 копие — направо, повече — избор на дата
@@ -2438,7 +2500,7 @@ const App = () => {
                 </button>
               )}
               <button
-                onClick={() => setConfirmDialog(null)}
+                onClick={() => { const fn = confirmDialog.onCancel; setConfirmDialog(null); fn?.(); }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 {confirmDialog.cancelLabel || "Откажи"}
@@ -2588,7 +2650,7 @@ const App = () => {
                 </div>
               </div>
               <button
-                onClick={() => setShowRestoreDone(false)}
+                onClick={closeRestoreDone}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
                 Разбрах
