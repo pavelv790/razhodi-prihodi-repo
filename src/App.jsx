@@ -150,6 +150,7 @@ const App = () => {
   const [localTransactionCounts, setLocalTransactionCounts] = useState({});
   const [pendingRemainingProfiles, setPendingRemainingProfiles] = useState([]);
   const [nameOnlyMatchIds, setNameOnlyMatchIds] = useState([]);
+  const [restoreBackupNames, setRestoreBackupNames] = useState({}); // id → името в копието, когато е различно от локалното
   const [showCrossServiceWarning, setShowCrossServiceWarning] = useState(null); // 'toDrive' | 'toSupabase' | null
   const [backupReminderInterval, setBackupReminderInterval] = useState(
     () => localStorage.getItem("backup_reminder_interval") ?? "weekly"
@@ -778,6 +779,7 @@ const App = () => {
     setPendingNewProfiles([]);
     setAddNewProfiles(null);
     setNameOnlyMatchIds([]);
+    setRestoreBackupNames({});
     setRestoreDuplicates([]);
     setRestoreUniqueTransactions([]);
     setRestoreSelectedDuplicates([]);
@@ -1092,7 +1094,19 @@ const App = () => {
   // спира auto-sync) се задава чак след успешното четене — при грешка нищо не остава зададено
   // (одит 2026-10, 2А-05, 1А-05). Копието първо минава през общата проверка (2А-06, 3-15).
   const beginRestore = async (rawData, source) => {
-    const { data, remappedIds } = normalizeBackupProfileIds(validateAndMigrateBackup(rawData));
+    const { data: normalized, remappedIds } = normalizeBackupProfileIds(validateAndMigrateBackup(rawData));
+    // Профил, който го има и на устройството, запазва локалното си име и дата на създаване — в
+    // прозорците и при запис („Замести“ / „Обедини“); името от копието само се показва (одит 2026-10, 2А-13, 2Б-03)
+    const backupNames = {};
+    const data = {
+      ...normalized,
+      profiles: normalized.profiles.map((bp) => {
+        const lp = profiles.find((p) => p.id === bp.id);
+        if (!lp) return bp;
+        if (lp.name !== bp.name) backupNames[bp.id] = bp.name;
+        return { ...bp, ...lp };
+      }),
+    };
     // Профили, които съществуват и в приложението, и в резервното копие
     const conflicts = (data.profiles || []).filter((bp) =>
       profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
@@ -1115,6 +1129,7 @@ const App = () => {
 
     setRestoreSource(source);
     setNameOnlyMatchIds(remappedIds);
+    setRestoreBackupNames(backupNames);
     setPendingBackup(data);
     // Новите профили (само в резервното копие) — отделно
     pendingNewProfilesRef.current = newProfiles;
@@ -2159,6 +2174,11 @@ const App = () => {
               {conflictProfiles.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl p-3 border border-gray-200">
                   <p className="text-sm font-semibold text-gray-700 mb-2">👤 {p.name}</p>
+                  {restoreBackupNames[p.id] && (
+                    <p className="text-xs text-gray-500 -mt-1 mb-2">
+                      В резервното копие: „{restoreBackupNames[p.id]}“. Името на устройството остава „{p.name}“.
+                    </p>
+                  )}
                   {nameOnlyMatchIds.includes(p.id) && (
                     <div className="bg-yellow-50 border border-yellow-300 rounded-lg px-3 py-2 mb-2">
                       <p className="text-xs text-yellow-700">
