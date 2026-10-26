@@ -2382,12 +2382,14 @@ const App = () => {
                     </h2>
                   </div>
                   <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
+                    {/* Без съвпадащи профили всички профили от копието са нови — локалните данни не се пипат (одит 2026-10, 2Б-02) */}
                     {conflictProfiles.length === 0 && (
-                      <div className="bg-orange-50 rounded-xl p-4">
-                        <p className="text-sm text-orange-700 font-medium mb-1">⚠️ Внимание!</p>
-                        <p className="text-sm text-orange-600">
-                          Данните от резервното копие ще бъдат заредени. Съществуващите данни може да бъдат засегнати.
+                      <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                        <p className="text-sm text-blue-700 font-medium mb-1">ℹ️ Само нови профили</p>
+                        <p className="text-sm text-blue-600">
+                          Резервното копие съдържа само профили, които ги няма на устройството ({pendingNewProfiles.length}): {pendingNewProfiles.map((p) => p.name).join(", ")}. След „Потвърди“ ще бъдете попитани дали да ги добавите.
                         </p>
+                        <p className="text-sm text-blue-600 mt-2">Данните на устройството няма да бъдат променени.</p>
                       </div>
                     )}
                     {conflictProfiles.map((bp) => {
