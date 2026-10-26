@@ -129,6 +129,8 @@ const App = () => {
   const [autoUploadNotice, setAutoUploadNotice] = useState(null); // 'drive' | 'supabase' | null
   const [showRestoreDone, setShowRestoreDone] = useState(false);
   const [restoreDoneType, setRestoreDoneType] = useState([]);
+  // Откъде е текущото възстановяване — за заглавието на прозореца в края (одит 2026-10, 2А-18)
+  const [restoreSource, setRestoreSource] = useState("file"); // 'file' | 'drive' | 'supabase'
   // Възстановяването спря поради грешка: { done: [{ name, choice }], partial: име | null } (одит 2026-10, 2А-01)
   const [restoreError, setRestoreError] = useState(null);
   // Възстановяването записва в момента: екранът е блокиран, чакащите повтарящи се изчакват (одит 2026-10, 2Б-01)
@@ -785,6 +787,16 @@ const App = () => {
     setRestoreError({ done: [...completedRestoreProfilesRef.current], partial: restoreCurrentProfileRef.current });
     resetRestoreState();
   };
+  // Успешен край на възстановяването (без нови профили и след въпроса за тях): обобщението съдържа
+  // всички профили, филтърът се изчиства само ако данните на активния профил са сменени, а
+  // състоянието се нулира изцяло (одит 2026-10, 2А-07, 2А-18, 2Б-04)
+  const finalizeRestore = (extra = []) => {
+    const summary = [...completedRestoreProfilesRef.current, ...extra];
+    if (summary.some((r) => r.id === activeProfileId && r.choice !== "local")) handleClearFilter();
+    resetRestoreState();
+    setRestoreDoneType(summary.length > 0 ? summary : [{ name: "", choice: "backup" }]);
+    setShowRestoreDone(true);
+  };
   // Една стъпка на възстановяването (до следващия въпрос към потребителя или до края): докато тече,
   // екранът е блокиран, а второ натискане не прави нищо (одит 2026-10, 2Б-01, 2А-10, 2А-19)
   const runRestoreStep = async (step) => {
@@ -851,25 +863,16 @@ const App = () => {
             const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
             ensureSaved(await restoreRecurring(profileRecurring, bp.id));
           }
-          completedRestoreProfilesRef.current.push({ name: bp.name, choice: "backup" });
+          completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice: "backup" });
           restoreCurrentProfileRef.current = null;
         }
-        setRestoreDoneType(pendingNewProfiles.map((p) => ({ name: p.name, choice: "backup" })));
+        finalizeRestore();
       } else {
-        setRestoreDoneType([{ name: "", choice: "skipped" }]);
+        finalizeRestore([{ name: pendingNewProfiles.map((p) => p.name).join(", "), choice: "skipped" }]);
       }
     } catch (err) {
       failRestore(err);
-      return;
     }
-    completedRestoreProfilesRef.current = [];
-    setConflictProfiles([]);
-    setConflictChoices({});
-    setPendingNewProfiles([]);
-    setAddNewProfiles(null);
-    setPendingBackup(null);
-    setShowAddNewProfilesConfirm(false);
-    setShowRestoreDone(true);
   };
   const handleRestoreDuplicatesConfirm = async () => {
     try {
@@ -890,7 +893,7 @@ const App = () => {
       if (currentBp) {
         await finishRestoreForProfile(currentBp, "merge", pendingBackup);
         ensureSaved(await addOrUpdateProfile(currentBp));
-        completedRestoreProfilesRef.current.push({ name: currentBp.name, choice: "merge" });
+        completedRestoreProfilesRef.current.push({ id: currentBp.id, name: currentBp.name, choice: "merge" });
       }
       restoreCurrentProfileRef.current = null;
       setRestoreDuplicates([]);
@@ -1047,7 +1050,7 @@ const App = () => {
       const data = service === "drive"
         ? await driveDownloadBackup(copies[0].fileId)
         : await supabaseDownloadBackup(copies[0].fileName);
-      if (data) await startCloudRestore(data);
+      if (data) await startCloudRestore(data, service);
     } else {
       setCloudBackupChoices({ source: service, copies });
     }
@@ -1057,7 +1060,7 @@ const App = () => {
   // прозореца за съвпадащи профили или за потвърждение. Състоянието (вкл. pendingBackup, който
   // спира auto-sync) се задава чак след успешното четене — при грешка нищо не остава зададено
   // (одит 2026-10, 2А-05, 1А-05). Копието първо минава през общата проверка (2А-06, 3-15).
-  const beginRestore = async (rawData) => {
+  const beginRestore = async (rawData, source) => {
     const { data, remappedIds } = normalizeBackupProfileIds(validateAndMigrateBackup(rawData));
     // Профили, които съществуват и в приложението, и в резервното копие
     const conflicts = (data.profiles || []).filter((bp) =>
@@ -1079,6 +1082,7 @@ const App = () => {
       counts[lp.id] = allTxs.filter((t) => t.profileId === lp.id).length;
     });
 
+    setRestoreSource(source);
     setNameOnlyMatchIds(remappedIds);
     setPendingBackup(data);
     // Новите профили (само в резервното копие) — отделно
@@ -1097,10 +1101,10 @@ const App = () => {
   };
 
   // Начало на възстановяване от Google Drive или Облака (след изтегляне на избраното копие)
-  const startCloudRestore = async (rawData) => {
+  const startCloudRestore = async (rawData, source) => {
     if (restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
     try {
-      await beginRestore(rawData);
+      await beginRestore(rawData, source);
     } catch (err) {
       alert(err.message);
     }
@@ -1166,7 +1170,7 @@ const App = () => {
     if (!file || restoreBusyRef.current) return; // друго възстановяване още записва (одит 2026-10, 2А-19)
     try {
       const rawData = await importBackup(file);
-      await beginRestore(rawData);
+      await beginRestore(rawData, "file");
     } catch (err) {
       alert(err.message);
     }
@@ -1250,7 +1254,7 @@ const App = () => {
       if (isNew) continue;
       const choice = conflictChoices[bp.id] || "backup";
       if (choice === "local") {
-        completedRestoreProfilesRef.current.push({ name: bp.name, choice: "local" });
+        completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice: "local" });
         continue;
       }
 
@@ -1295,7 +1299,7 @@ const App = () => {
       }
       await finishRestoreForProfile(bp, choice, backupData);
       ensureSaved(await addOrUpdateProfile(bp));
-      completedRestoreProfilesRef.current.push({ name: bp.name, choice });
+      completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice });
       restoreCurrentProfileRef.current = null;
     }
 
@@ -1304,20 +1308,7 @@ const App = () => {
       return;
     }
 
-    handleClearFilter();
-    setConflictProfiles([]);
-    setConflictChoices({});
-    setPendingNewProfiles([]);
-    setAddNewProfiles(null);
-    setPendingBackup(null);
-    setShowRestoreConfirm(false);
-    setShowConflictModal(false);
-    const summary = completedRestoreProfilesRef.current.length > 0
-      ? completedRestoreProfilesRef.current
-      : [{ name: "", choice: "backup" }];
-    completedRestoreProfilesRef.current = [];
-    setRestoreDoneType(summary);
-    setShowRestoreDone(true);
+    finalizeRestore();
   };
 
   const handleRestoreConfirm = async () => {
@@ -2249,7 +2240,7 @@ const App = () => {
                           const data = source === "drive"
                             ? await driveDownloadBackup(copy.fileId)
                             : await supabaseDownloadBackup(copy.fileName);
-                          if (data) await startCloudRestore(data);
+                          if (data) await startCloudRestore(data, source);
                         }}
                         className="w-full text-left bg-white rounded-xl p-3 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition"
                       >
@@ -2554,7 +2545,7 @@ const App = () => {
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
-                Възстановяването от файла е завършено
+                Възстановяването {restoreSource === "drive" ? "от Google Drive" : restoreSource === "supabase" ? "от облака" : "от файла"} е завършено
               </h2>
             </div>
             <div className="px-5 py-5 space-y-3">
@@ -2563,7 +2554,7 @@ const App = () => {
                   {restoreDoneType.map((r, i) => (
                     <div key={i}>
                       {r.choice === "skipped"
-                        ? "ℹ️ Профилите не бяха добавени."
+                        ? `ℹ️ Новите профили не бяха добавени${r.name ? `: ${r.name}` : ""}.`
                         : r.name === ""
                         ? "✅ Данните са възстановени успешно."
                         : r.choice === "merge"
