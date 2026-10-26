@@ -245,6 +245,8 @@ const App = () => {
   const completedRestoreProfilesRef = useRef([]);
   // Профилът, който се възстановява в момента — при грешка той е приложен частично
   const restoreCurrentProfileRef = useRef(null);
+  // Отговорите за „Обедини“ профилите: id → транзакции за добавяне (записват се накрая, одит 2026-10, 2А-08)
+  const restoreMergePlanRef = useRef({});
   // Синхронна защита от двойно натискане (state се обновява чак при следващия рендер) (одит 2026-10, 2А-10)
   const restoreBusyRef = useRef(false);
 
@@ -764,6 +766,7 @@ const App = () => {
     completedRestoreProfilesRef.current = [];
     restoreCurrentProfileRef.current = null;
     pendingNewProfilesRef.current = [];
+    restoreMergePlanRef.current = {};
     setShowRestoreConfirm(false);
     setShowConflictModal(false);
     setShowRestoreDuplicates(false);
@@ -814,99 +817,74 @@ const App = () => {
     setRestoreInProgress(false);
   };
 
-  const handleAddNewProfilesConfirm = async (doAdd) => {
-    try {
-      if (doAdd) {
-        for (const bp of pendingNewProfiles) {
-          restoreCurrentProfileRef.current = bp.name;
-          ensureSaved(await addOrUpdateProfile(bp));
-          // Транзакции
-          const backupTxs = (pendingBackup.transactions || [])
-            .filter((t) => t.profileId === bp.id)
-            .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
-          ensureSaved(await replaceAllTransactions(backupTxs, bp.id));
-          // Категории
-          const cats = pendingBackup.profileCategories?.[bp.id]
-            ? pendingBackup.profileCategories[bp.id]
-            : { expense: pendingBackup.expenseCategories || [], income: pendingBackup.incomeCategories || [] };
-          ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
-          if (bp.id === activeProfileId) {
-            setExpenseCategoriesFromBackup(cats.expense || []);
-            setIncomeCategoriesFromBackup(cats.income || []);
-          }
-          // Валута
-          const profileCurrencyData = pendingBackup.profileCurrencies?.[bp.id] || (pendingBackup.currency ? { currency: pendingBackup.currency, rate: pendingBackup.rate } : null);
-          if (profileCurrencyData) {
-            if (bp.id === activeProfileId) {
-              ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
-            } else {
-              await runTx("currency", "readwrite", (store) =>
-                store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
-            }
-          }
-          // Бюджети
-          const profileBudgetsData = pendingBackup.profileBudgets?.[bp.id] || pendingBackup.budgets || null;
-          if (profileBudgetsData) {
-            if (bp.id === activeProfileId) {
-              ensureSaved(await restoreBudgets(profileBudgetsData));
-            } else {
-              await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
-            }
-          }
-          // Филтри
-          if (pendingBackup.savedFilters) {
-            const profileFilters = pendingBackup.savedFilters.filter((f) => f.profileId === bp.id);
-            ensureSaved(await restoreFilters(profileFilters, bp.id));
-          }
-          // Повтарящи се
-          if (pendingBackup.recurringItems) {
-            const profileRecurring = pendingBackup.recurringItems.filter((r) => r.profileId === bp.id);
-            ensureSaved(await restoreRecurring(profileRecurring, bp.id));
-          }
-          completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice: "backup" });
-          restoreCurrentProfileRef.current = null;
-        }
-        finalizeRestore();
-      } else {
-        finalizeRestore([{ name: pendingNewProfiles.map((p) => p.name).join(", "), choice: "skipped" }]);
+  // Транзакциите на профила от резервното копие, с нови id-та
+  const restoreBackupTxs = (backupData, profileId) => (backupData.transactions || [])
+    .filter((t) => t.profileId === profileId)
+    .map((t, i) => ({ ...t, profileId, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
+  // Добавя новите профили (само в резервното копие) заедно с данните им
+  const restoreNewProfiles = async (backupData) => {
+    for (const bp of pendingNewProfilesRef.current) {
+      restoreCurrentProfileRef.current = bp.name;
+      ensureSaved(await addOrUpdateProfile(bp));
+      // Транзакции
+      ensureSaved(await replaceAllTransactions(restoreBackupTxs(backupData, bp.id), bp.id));
+      // Категории
+      const cats = backupData.profileCategories?.[bp.id]
+        ? backupData.profileCategories[bp.id]
+        : { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] };
+      ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
+      if (bp.id === activeProfileId) {
+        setExpenseCategoriesFromBackup(cats.expense || []);
+        setIncomeCategoriesFromBackup(cats.income || []);
       }
-    } catch (err) {
-      failRestore(err);
+      // Валута
+      const profileCurrencyData = backupData.profileCurrencies?.[bp.id] || (backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
+      if (profileCurrencyData) {
+        if (bp.id === activeProfileId) {
+          ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
+        } else {
+          await runTx("currency", "readwrite", (store) =>
+            store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
+        }
+      }
+      // Бюджети
+      const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
+      if (profileBudgetsData) {
+        if (bp.id === activeProfileId) {
+          ensureSaved(await restoreBudgets(profileBudgetsData));
+        } else {
+          await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
+        }
+      }
+      // Филтри
+      if (backupData.savedFilters) {
+        const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
+        ensureSaved(await restoreFilters(profileFilters, bp.id));
+      }
+      // Повтарящи се
+      if (backupData.recurringItems) {
+        const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
+        ensureSaved(await restoreRecurring(profileRecurring, bp.id));
+      }
+      completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice: "backup" });
+      restoreCurrentProfileRef.current = null;
     }
   };
+  // Отговор за „Вероятни дубликати“: само се запомня, записът е накрая (одит 2026-10, 2А-08)
   const handleRestoreDuplicatesConfirm = async () => {
-    try {
-      const toAdd = [
-        ...restoreUniqueTransactions,
-        ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
-      ];
-      if (toAdd.length > 0) {
-        const existingTxs = pendingMergeProfileId === activeProfileId
-          ? transactions
-          : await getProfileRecords("transactions", pendingMergeProfileId);
-        ensureSaved(await replaceAllTransactions([...existingTxs, ...toAdd], pendingMergeProfileId));
-      }
+    if (!pendingBackup) return;
+    restoreMergePlanRef.current[pendingMergeProfileId] = [
+      ...restoreUniqueTransactions,
+      ...restoreDuplicates.filter((t) => restoreSelectedDuplicates.includes(t.id)),
+    ];
+    setRestoreDuplicates([]);
+    setRestoreUniqueTransactions([]);
+    setRestoreSelectedDuplicates([]);
+    setPendingMergeProfileId(null);
+    setShowRestoreDuplicates(false);
 
-      // Довърши категории, филтри, повтарящи се за текущия профил
-      if (!pendingBackup) return;
-      const currentBp = (pendingBackup.profiles || []).find((p) => p.id === pendingMergeProfileId);
-      if (currentBp) {
-        await finishRestoreForProfile(currentBp, "merge", pendingBackup);
-        ensureSaved(await addOrUpdateProfile(currentBp));
-        completedRestoreProfilesRef.current.push({ id: currentBp.id, name: currentBp.name, choice: "merge" });
-      }
-      restoreCurrentProfileRef.current = null;
-      setRestoreDuplicates([]);
-      setRestoreUniqueTransactions([]);
-      setRestoreSelectedDuplicates([]);
-      setPendingMergeProfileId(null);
-      setShowRestoreDuplicates(false);
-
-      // Продължи с останалите профили
-      await finishRestore(pendingRemainingProfiles, pendingBackup);
-    } catch (err) {
-      failRestore(err);
-    }
+    // Продължи с въпросите за останалите профили
+    await askRestoreQuestions(pendingRemainingProfiles, pendingBackup);
   };
   const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
     addTransactions(transactions);
@@ -1247,9 +1225,52 @@ const App = () => {
     }
   };
 
-  // Хвърля при грешка в базата — хваща я този, който е започнал възстановяването (failRestore)
-  const finishRestore = async (remainingProfiles, backupData) => {
-    for (const bp of remainingProfiles) {
+  // Първо всички въпроси, после един запис: „Обедини“ профилите с вероятни дубликати се питат един
+  // след друг, после — за новите профили; до последния отговор нищо не е записано, така че „Откажи“
+  // не оставя частично възстановяване (одит 2026-10, 2А-08). Хвърля при грешка в базата — хваща я
+  // runRestoreStep (failRestore)
+  const askRestoreQuestions = async (remainingProfiles, backupData) => {
+    for (const [idx, bp] of remainingProfiles.entries()) {
+      const isNew = pendingNewProfilesRef.current.some((np) => np.id === bp.id);
+      if (isNew || conflictChoices[bp.id] !== "merge") continue;
+
+      const localTxsForProfile = await getProfileRecords("transactions", bp.id);
+      const backupTxs = restoreBackupTxs(backupData, bp.id);
+      const dupes = backupTxs.filter((bt) =>
+        localTxsForProfile.some(
+          (e) =>
+            e.date === bt.date &&
+            e.category === bt.category &&
+            e.type === bt.type &&
+            Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
+        )
+      );
+      const unique = backupTxs.filter((bt) => !dupes.includes(bt));
+      if (dupes.length > 0) {
+        setRestoreUniqueTransactions(unique);
+        setRestoreDuplicates(dupes);
+        setRestoreSelectedDuplicates([]);
+        setPendingMergeProfileId(bp.id);
+        setPendingRemainingProfiles(remainingProfiles.slice(idx + 1));
+        setShowRestoreConfirm(false);
+        setShowConflictModal(false);
+        setShowRestoreDuplicates(true);
+        return;
+      }
+      restoreMergePlanRef.current[bp.id] = unique;
+    }
+
+    if (pendingNewProfilesRef.current.length > 0) {
+      setShowAddNewProfilesConfirm(true);
+      return;
+    }
+
+    await applyRestore(backupData, false);
+  };
+
+  // Записва всичко наведнъж, след последния отговор. Хвърля при грешка в базата (failRestore)
+  const applyRestore = async (backupData, addNew) => {
+    for (const bp of backupData.profiles || []) {
       const isNew = pendingNewProfilesRef.current.some((np) => np.id === bp.id);
       if (isNew) continue;
       const choice = conflictChoices[bp.id] || "backup";
@@ -1259,43 +1280,16 @@ const App = () => {
       }
 
       restoreCurrentProfileRef.current = bp.name;
-      const localTxsForProfile = await getProfileRecords("transactions", bp.id);
-
-      const backupTxs = (backupData.transactions || [])
-        .filter((t) => t.profileId === bp.id)
-        .map((t, i) => ({ ...t, profileId: bp.id, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
-
       if (choice === "merge") {
-        const dupes = backupTxs.filter((bt) =>
-          localTxsForProfile.some(
-            (e) =>
-              e.date === bt.date &&
-              e.category === bt.category &&
-              e.type === bt.type &&
-              Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
-          )
-        );
-        const unique = backupTxs.filter((bt) => !dupes.includes(bt));
-        if (dupes.length > 0) {
-          setRestoreUniqueTransactions(unique);
-          setRestoreDuplicates(dupes);
-          setRestoreSelectedDuplicates([]);
-          setPendingMergeProfileId(bp.id);
-          const idx = remainingProfiles.findIndex((p) => p.id === bp.id);
-          setPendingRemainingProfiles(remainingProfiles.slice(idx + 1));
-          setShowRestoreConfirm(false);
-          setShowConflictModal(false);
-          setShowRestoreDuplicates(true);
-          return;
-        }
-        if (unique.length > 0) {
+        const toAdd = restoreMergePlanRef.current[bp.id] || [];
+        if (toAdd.length > 0) {
           const existingTxs = bp.id === activeProfileId
             ? transactions
             : await getProfileRecords("transactions", bp.id);
-          ensureSaved(await replaceAllTransactions([...existingTxs, ...unique], bp.id));
+          ensureSaved(await replaceAllTransactions([...existingTxs, ...toAdd], bp.id));
         }
       } else {
-        ensureSaved(await replaceAllTransactions(backupTxs, bp.id));
+        ensureSaved(await replaceAllTransactions(restoreBackupTxs(backupData, bp.id), bp.id));
       }
       await finishRestoreForProfile(bp, choice, backupData);
       ensureSaved(await addOrUpdateProfile(bp));
@@ -1303,22 +1297,20 @@ const App = () => {
       restoreCurrentProfileRef.current = null;
     }
 
-    if (pendingNewProfilesRef.current.length > 0) {
-      setShowAddNewProfilesConfirm(true);
-      return;
+    const newProfiles = pendingNewProfilesRef.current;
+    if (addNew) {
+      await restoreNewProfiles(backupData);
+      finalizeRestore();
+    } else {
+      finalizeRestore(newProfiles.length > 0 ? [{ name: newProfiles.map((p) => p.name).join(", "), choice: "skipped" }] : []);
     }
-
-    finalizeRestore();
   };
 
   const handleRestoreConfirm = async () => {
     completedRestoreProfilesRef.current = [];
     restoreCurrentProfileRef.current = null;
-    try {
-      await finishRestore(pendingBackup.profiles || [], pendingBackup);
-    } catch (err) {
-      failRestore(err);
-    }
+    restoreMergePlanRef.current = {};
+    await askRestoreQuestions(pendingBackup.profiles || [], pendingBackup);
   };
 
   return (
@@ -2086,24 +2078,10 @@ const App = () => {
                 Потвърди ({restoreUniqueTransactions.length + restoreSelectedDuplicates.length} транзакции)
               </button>
               <p className="text-xs text-gray-400 px-1">
-                Откажи ще спре цялото възстановяване, включително останалите профили от файла.
+                Откажи ще спре цялото възстановяване — нищо от резервното копие няма да бъде записано.
               </p>
               <button
-                onClick={() => {
-                  completedRestoreProfilesRef.current = [];
-                  setShowRestoreDuplicates(false);
-                  setRestoreDuplicates([]);
-                  setRestoreUniqueTransactions([]);
-                  setRestoreSelectedDuplicates([]);
-                  setPendingMergeProfileId(null);
-                  setPendingRemainingProfiles([]);
-                  setPendingBackup(null);
-                  setConflictProfiles([]);
-                  setConflictChoices({});
-                  setPendingNewProfiles([]);
-                  pendingNewProfilesRef.current = [];
-                  setNameOnlyMatchIds([]);
-                }}
+                onClick={resetRestoreState}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
@@ -2130,16 +2108,25 @@ const App = () => {
                 ))}
               </div>
               <button
-                onClick={() => runRestoreStep(() => handleAddNewProfilesConfirm(true))}
+                onClick={() => runRestoreStep(() => applyRestore(pendingBackup, true))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
                 Да, добави ги
               </button>
               <button
-                onClick={() => runRestoreStep(() => handleAddNewProfilesConfirm(false))}
+                onClick={() => runRestoreStep(() => applyRestore(pendingBackup, false))}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Не, пропусни ги
+              </button>
+              <p className="text-xs text-gray-400 px-1">
+                Откажи ще спре цялото възстановяване — нищо от резервното копие няма да бъде записано.
+              </p>
+              <button
+                onClick={resetRestoreState}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Откажи
               </button>
             </div>
           </div>
