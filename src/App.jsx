@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions } from "./hooks/useTransactions";
 import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirectly } from "./hooks/useCategories";
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./constants/categories";
 import { deleteProfileBudgets } from "./hooks/useBudgets";
 import { deleteProfileSavedFilters } from "./hooks/useSavedFilters";
 import { deleteProfileCurrency } from "./hooks/useCurrency";
@@ -821,6 +822,83 @@ const App = () => {
   const restoreBackupTxs = (backupData, profileId) => (backupData.transactions || [])
     .filter((t) => t.profileId === profileId)
     .map((t, i) => ({ ...t, profileId, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
+  // Настройките на профила в резервното копие (одит 2026-10, 2А-02). Общите полета на копието
+  // (currency, rate, budgets, expenseCategories, incomeCategories) са на профила, активен при
+  // свалянето: до 1.6 валутата и лимитите, а в ранните 1.5 и категориите, са записани само за него.
+  // null → копието няма данни за профила и той остава с каквото има (нов профил — подразбиращите се)
+  const backupProfileSettings = (backupData, profileId) => {
+    const isBackupActive = profileId === backupData.activeProfileId;
+    // Преди 1.5 (без profileCategories) категориите са общи за всички профили
+    const categories = backupData.profileCategories?.[profileId]
+      || (!backupData.profileCategories || isBackupActive
+        ? { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] }
+        : null);
+    const currency = backupData.profileCurrencies?.[profileId]
+      || (isBackupActive && backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
+    const budgets = backupData.profileBudgets?.[profileId] || (isBackupActive ? backupData.budgets || null : null);
+    return { categories, currency, budgets };
+  };
+  // Без празни и повторения (главни/малки букви не се различават, както в addCategory)
+  const uniqueCategories = (list) => {
+    const seen = new Set();
+    return list.filter((c) => typeof c === "string").map((c) => c.trim()).filter((c) => {
+      const key = c.toLowerCase();
+      if (!c || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  // Категориите на профила: „Замести“ / нов профил — от копието, ако ги има там, иначе остават
+  // локалните (нов профил — подразбиращите се); „Обедини“ — локалните + от копието. Добавят се и
+  // категориите на транзакциите и повтарящите се на профила в копието, които липсват в списъка (2А-02)
+  const restoreProfileCategories = async (bp, choice, backupData) => {
+    const fromBackup = backupProfileSettings(backupData, bp.id).categories;
+    let expense;
+    let income;
+    if (choice === "backup" && fromBackup) {
+      expense = fromBackup.expense;
+      income = fromBackup.income;
+    } else {
+      // Както useCategories при зареждане: без запис → подразбиращите се
+      const local = (await runTx("categories", "readonly", (store) => store.get(bp.id)))?.categories;
+      const hasLocal = local && typeof local === "object";
+      expense = hasLocal ? (Array.isArray(local.expense) ? local.expense : []) : DEFAULT_EXPENSE_CATEGORIES;
+      income = hasLocal ? (Array.isArray(local.income) ? local.income : []) : DEFAULT_INCOME_CATEGORIES;
+      if (fromBackup) {
+        expense = [...expense, ...fromBackup.expense];
+        income = [...income, ...fromBackup.income];
+      }
+    }
+    const used = [...(backupData.transactions || []), ...(backupData.recurringItems || [])]
+      .filter((item) => item.profileId === bp.id);
+    const usedOfType = (type) => used.filter((item) => item.type === type).map((item) => item.category);
+    expense = uniqueCategories([...expense, ...usedOfType("expense")]);
+    income = uniqueCategories([...income, ...usedOfType("income")]);
+    ensureSaved(await saveCategoriesDirectly(bp.id, expense, income));
+    if (bp.id === activeProfileId) {
+      setExpenseCategoriesFromBackup(expense);
+      setIncomeCategoriesFromBackup(income);
+    }
+  };
+  // Валутата и лимитите на профила от копието; ако ги няма там — не се пипат (2А-02)
+  const restoreProfileCurrencyAndBudgets = async (bp, backupData) => {
+    const { currency: profileCurrencyData, budgets: profileBudgetsData } = backupProfileSettings(backupData, bp.id);
+    if (profileCurrencyData) {
+      if (bp.id === activeProfileId) {
+        ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
+      } else {
+        await runTx("currency", "readwrite", (store) =>
+          store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
+      }
+    }
+    if (profileBudgetsData) {
+      if (bp.id === activeProfileId) {
+        ensureSaved(await restoreBudgets(profileBudgetsData));
+      } else {
+        await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
+      }
+    }
+  };
   // Добавя новите профили (само в резервното копие) заедно с данните им
   const restoreNewProfiles = async (backupData) => {
     for (const bp of pendingNewProfilesRef.current) {
@@ -828,34 +906,9 @@ const App = () => {
       ensureSaved(await addOrUpdateProfile(bp));
       // Транзакции
       ensureSaved(await replaceAllTransactions(restoreBackupTxs(backupData, bp.id), bp.id));
-      // Категории
-      const cats = backupData.profileCategories?.[bp.id]
-        ? backupData.profileCategories[bp.id]
-        : { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] };
-      ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
-      if (bp.id === activeProfileId) {
-        setExpenseCategoriesFromBackup(cats.expense || []);
-        setIncomeCategoriesFromBackup(cats.income || []);
-      }
-      // Валута
-      const profileCurrencyData = backupData.profileCurrencies?.[bp.id] || (backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
-      if (profileCurrencyData) {
-        if (bp.id === activeProfileId) {
-          ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
-        } else {
-          await runTx("currency", "readwrite", (store) =>
-            store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
-        }
-      }
-      // Бюджети
-      const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
-      if (profileBudgetsData) {
-        if (bp.id === activeProfileId) {
-          ensureSaved(await restoreBudgets(profileBudgetsData));
-        } else {
-          await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
-        }
-      }
+      // Категории, валута, бюджети
+      await restoreProfileCategories(bp, "backup", backupData);
+      await restoreProfileCurrencyAndBudgets(bp, backupData);
       // Филтри
       if (backupData.savedFilters) {
         const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
@@ -1154,47 +1207,8 @@ const App = () => {
     }
   };
   const finishRestoreForProfile = async (bp, choice, backupData) => {
-    const cats = backupData.profileCategories?.[bp.id]
-      ? backupData.profileCategories[bp.id]
-      : { expense: backupData.expenseCategories || [], income: backupData.incomeCategories || [] };
-
-    if (choice === "backup") {
-      ensureSaved(await saveCategoriesDirectly(bp.id, cats.expense, cats.income));
-      if (bp.id === activeProfileId) {
-        setExpenseCategoriesFromBackup(cats.expense || []);
-        setIncomeCategoriesFromBackup(cats.income || []);
-      }
-      const profileCurrencyData = backupData.profileCurrencies?.[bp.id] || (backupData.currency ? { currency: backupData.currency, rate: backupData.rate } : null);
-      if (profileCurrencyData) {
-        if (bp.id === activeProfileId) {
-          ensureSaved(await restoreCurrency(profileCurrencyData.currency, profileCurrencyData.rate));
-        } else {
-          await runTx("currency", "readwrite", (store) =>
-            store.put({ id: bp.id, currency: profileCurrencyData.currency, rate: profileCurrencyData.rate }));
-        }
-      }
-      const profileBudgetsData = backupData.profileBudgets?.[bp.id] || backupData.budgets || null;
-      if (profileBudgetsData) {
-        if (bp.id === activeProfileId) {
-          ensureSaved(await restoreBudgets(profileBudgetsData));
-        } else {
-          await runTx("budgets", "readwrite", (store) => store.put({ id: bp.id, ...profileBudgetsData }));
-        }
-      }
-    }
-
-    if (choice === "merge") {
-      const existingCats = await runTx("categories", "readonly", (store) => store.get(bp.id));
-      const existingExpense = existingCats?.categories?.expense || [];
-      const existingIncome = existingCats?.categories?.income || [];
-      const mergedExpense = [...new Set([...existingExpense, ...(cats.expense || [])].map(c => c.trim()))];
-      const mergedIncome = [...new Set([...existingIncome, ...(cats.income || [])].map(c => c.trim()))];
-      ensureSaved(await saveCategoriesDirectly(bp.id, mergedExpense, mergedIncome));
-      if (bp.id === activeProfileId) {
-        setExpenseCategoriesFromBackup(mergedExpense);
-        setIncomeCategoriesFromBackup(mergedIncome);
-      }
-    }
+    await restoreProfileCategories(bp, choice, backupData);
+    if (choice === "backup") await restoreProfileCurrencyAndBudgets(bp, backupData);
 
     if (backupData.savedFilters) {
       const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
