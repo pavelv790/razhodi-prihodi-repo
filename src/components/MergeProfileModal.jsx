@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { X, Upload, ChevronDown, Search, Calendar } from "lucide-react";
 import { importBackup } from "../utils/backup";
 import { parseDate } from "../utils/formatters";
+import { copyWithNewIds } from "../hooks/useTransactions";
 import DateInput from "./DateInput";
 import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 
@@ -230,23 +231,16 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
       setSelectedDuplicates([]);
       setStep(3);
     } else {
-      const toImport = txs.map((t, i) => ({
-        ...t,
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
-      }));
-      onMerge(toImport, backupExpenseCategories, backupIncomeCategories);
+      onMerge(copyWithNewIds(txs),backupExpenseCategories, backupIncomeCategories);
       onClose();
     }
   };
 
   const handleConfirmMerge = () => {
-    const toImport = [
+    const toImport = copyWithNewIds([
       ...uniqueTransactions,
       ...duplicates.filter((t) => selectedDuplicates.includes(t.id)),
-    ].map((t, i) => ({
-      ...t,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
-    }));
+    ]);
     if (toImport.length === 0) { setError("Няма избрани транзакции за импорт."); setStep(2); return; }
     onMerge(toImport, backupExpenseCategories, backupIncomeCategories);
     onClose();

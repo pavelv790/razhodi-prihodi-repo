@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
-import { useTransactions } from "./hooks/useTransactions";
+import { useTransactions, copyWithNewIds } from "./hooks/useTransactions";
 import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirectly } from "./hooks/useCategories";
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./constants/categories";
 import { deleteProfileBudgets } from "./hooks/useBudgets";
@@ -844,9 +844,10 @@ const App = () => {
   };
 
   // Транзакциите на профила от резервното копие, с нови id-та
-  const restoreBackupTxs = (backupData, profileId) => (backupData.transactions || [])
-    .filter((t) => t.profileId === profileId)
-    .map((t, i) => ({ ...t, profileId, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}` }));
+  const restoreBackupTxs = (backupData, profileId) => copyWithNewIds(
+    (backupData.transactions || []).filter((t) => t.profileId === profileId),
+    { profileId },
+  );
   // Настройките на профила в резервното копие (одит 2026-10, 2А-02). Общите полета на копието
   // (currency, rate, budgets, expenseCategories, incomeCategories) са на профила, активен при
   // свалянето: до 1.6 валутата и лимитите, а в ранните 1.5 и категориите, са записани само за него.

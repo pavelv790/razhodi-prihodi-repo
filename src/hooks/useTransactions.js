@@ -76,6 +76,21 @@ const sortByDate = (transactions) =>
     return a.id < b.id ? 1 : -1;
   });
 
+// Нови id-та за поредица копирани/възстановени транзакции с пазен ред: при равна дата sortByDate
+// подрежда по id (по-голямото отгоре), затова най-горната в източника получава най-голямото id.
+// Поредният номер е преди случайната част — иначе редът в рамките на деня се решава от нея
+// (одит 2026-10, 2А-16). Началото е 13-цифрен Date.now() като при generateId.
+export const copyWithNewIds = (transactions, extraFields = {}) => {
+  const ordered = sortByDate(transactions);
+  const base = Date.now();
+  const width = String(ordered.length).length;
+  return ordered.map((t, i) => ({
+    ...t,
+    ...extraFields,
+    id: `${base}-${String(ordered.length - 1 - i).padStart(width, "0")}-${Math.random().toString(36).slice(2, 8)}`,
+  }));
+};
+
 export const useTransactions = (profileId) => {
   const [transactions, setTransactions] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);

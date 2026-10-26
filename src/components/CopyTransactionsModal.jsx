@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Copy, ChevronDown, Search, Calendar } from "lucide-react";
 import { openDB } from "../utils/db";
+import { copyWithNewIds } from "../hooks/useTransactions";
 import { parseDate, getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 import DateInput from "./DateInput";
 
@@ -228,26 +229,16 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
       setSelectedDuplicates([]);
       setStep("duplicates");
     } else {
-      const toAdd = filtered.map((t, i) => ({
-        ...t,
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
-        profileId: activeProfileId,
-      }));
-      onAdd(toAdd);
+      onAdd(copyWithNewIds(filtered, { profileId: activeProfileId }));
       setStep("done");
     }
   };
 
   const handleConfirmDuplicates = () => {
-    const toAdd = [
-      ...unique,
-      ...duplicates.filter((t) => selectedDuplicates.includes(t.id)),
-    ].map((t, i) => ({
-      ...t,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${i}`,
-      profileId: activeProfileId,
-    }));
-    onAdd(toAdd);
+    onAdd(copyWithNewIds(
+      [...unique, ...duplicates.filter((t) => selectedDuplicates.includes(t.id))],
+      { profileId: activeProfileId },
+    ));
     setStep("done");
   };
 
