@@ -1169,13 +1169,10 @@ const App = () => {
         return { ...bp, ...lp };
       }),
     };
-    // Профили, които съществуват и в приложението, и в резервното копие
-    const conflicts = (data.profiles || []).filter((bp) =>
-      profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-    );
-    const newProfiles = (data.profiles || []).filter((bp) =>
-      !profiles.some((lp) => lp.id === bp.id || lp.name.toLowerCase() === bp.name.toLowerCase())
-    );
+    // Профили, които съществуват и в приложението, и в резервното копие — само по id: съвпаденията
+    // по име вече са с локалния id, а несвързаните при сблъсък са нови (одит 2026-10, 2А-14)
+    const conflicts = (data.profiles || []).filter((bp) => profiles.some((lp) => lp.id === bp.id));
+    const newProfiles = (data.profiles || []).filter((bp) => !profiles.some((lp) => lp.id === bp.id));
     let allTxs;
     try {
       allTxs = (await runTx("transactions", "readonly", (store) => store.getAll())) || [];
@@ -1236,16 +1233,35 @@ const App = () => {
   const normalizeBackupProfileIds = (data) => {
     const idMap = {};
     const remappedIds = [];
+    const backupIds = new Set((data.profiles || []).map((bp) => bp.id));
+    // Имената на профилите трябва да са различни (useProfiles) — несвързаният получава „Име (2)“
+    const takenNames = new Set([...profiles, ...(data.profiles || [])].map((p) => p.name.toLowerCase()));
+    const freeName = (name) => {
+      let i = 2;
+      while (takenNames.has(`${name} (${i})`.toLowerCase())) i++;
+      takenNames.add(`${name} (${i})`.toLowerCase());
+      return `${name} (${i})`;
+    };
+    let renamed = false;
     const newProfiles = (data.profiles || []).map((bp) => {
       const lp = profiles.find((p) => p.id !== bp.id && p.name.toLowerCase() === bp.name.toLowerCase());
-      if (lp) {
+      // Без свързване по име, ако профилът съвпада по id, ако id-то на локалния профил е на друг
+      // профил в копието или друг профил от копието вече е свързан с него — иначе два профила
+      // получават един id и данните им се смесват; несвързаният остава със своя id и се предлага
+      // като нов (одит 2026-10, 2А-14)
+      const idMatch = profiles.some((p) => p.id === bp.id);
+      if (lp && !idMatch && !backupIds.has(lp.id) && !remappedIds.includes(lp.id)) {
         idMap[bp.id] = lp.id;
         remappedIds.push(lp.id);
         return { ...bp, id: lp.id };
       }
+      if (lp && !idMatch) {
+        renamed = true;
+        return { ...bp, name: freeName(bp.name) };
+      }
       return bp;
     });
-    if (Object.keys(idMap).length === 0) return { data, remappedIds: [] };
+    if (Object.keys(idMap).length === 0 && !renamed) return { data, remappedIds: [] };
     const remapId = (id) => idMap[id] || id;
     const newData = {
       ...data,
