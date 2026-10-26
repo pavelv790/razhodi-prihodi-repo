@@ -31,6 +31,7 @@ import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
 import { openDB, onDBWriteError, runTx, reportDBError } from "./utils/db";
 import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
+import { requestPersistentStorage, getStorageUsage, formatBytes, STORAGE_WARN_RATIO } from "./utils/storageInfo";
 import { registerSW } from "virtual:pwa-register";
 
 // Записите на един профил от store. При грешка или прекъсната транзакция отхвърля, вместо да
@@ -326,6 +327,18 @@ const App = () => {
   useEffect(() => {
     onDBWriteError(() => setDbWriteError(true));
   }, []);
+  // Памет на устройството (Б2а): при стартиране искаме постоянно хранилище (браузърът да не
+  // изтрива данните сам при недостиг на място); заетото място се чете, когато панелът „Данни“ е отворен.
+  useEffect(() => {
+    requestPersistentStorage();
+  }, []);
+  const [storageUsage, setStorageUsage] = useState(null);
+  useEffect(() => {
+    if (!showDataPanel) return;
+    let cancelled = false;
+    getStorageUsage().then((u) => { if (!cancelled) setStorageUsage(u); });
+    return () => { cancelled = true; };
+  }, [showDataPanel]);
   // Проверка за нова версия на приложението (Service Worker)
   const [showUpdateAvailable, setShowUpdateAvailable] = useState(false);
   const updateSWRef = useRef(null);
@@ -1694,6 +1707,19 @@ const App = () => {
                   <Trash2 className="w-4 h-4" />
                   Изтрий всички данни
                 </button>
+
+                {storageUsage && (
+                  <div className="px-1">
+                    <p className="text-xs text-gray-400">
+                      Заето място на устройството: {formatBytes(storageUsage.usage)} от {formatBytes(storageUsage.quota)} ({storageUsage.ratio < 0.001 ? "под 0,1" : (storageUsage.ratio * 100).toLocaleString("bg-BG", { maximumFractionDigits: storageUsage.ratio < 0.1 ? 1 : 0 })}%)
+                    </p>
+                    {storageUsage.ratio >= STORAGE_WARN_RATIO && (
+                      <p className="text-xs text-orange-500 font-medium mt-1 bg-orange-50 rounded-lg px-2 py-1">
+                        ⚠️ Мястото на устройството почти е свършило. Свалете резервно копие и освободете място, иначе записът на нови данни може да се провали.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="border-t border-gray-200 pt-2 mt-1">
                   <p className="text-xs font-semibold text-gray-400 mb-2 px-1">Напомняне за резервно копие</p>
