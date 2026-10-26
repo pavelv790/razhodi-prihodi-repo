@@ -323,9 +323,11 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem("data_panel_open", String(showDataPanel));
   }, [showDataPanel]);
+  // false | "quota" (няма място на устройството) | "other"
   const [dbWriteError, setDbWriteError] = useState(false);
   useEffect(() => {
-    onDBWriteError(() => setDbWriteError(true));
+    // "quota" не се заменя с "other" от следваща грешка, докато лентата е отворена
+    onDBWriteError(({ quota } = {}) => setDbWriteError((prev) => (quota ? "quota" : prev || "other")));
   }, []);
   // Памет на устройството (Б2а): при стартиране искаме постоянно хранилище (браузърът да не
   // изтрива данните сам при недостиг на място); заетото място се чете, когато панелът „Данни“ е отворен.
@@ -1552,7 +1554,11 @@ const App = () => {
       )}
       {dbWriteError && (
         <div className="fixed top-0 left-0 right-0 z-[120] bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
-          <p className="text-sm font-medium">⚠️ Проблем при запазване на данните! Свалете резервно копие (Данни → Свали резервно копие) и презаредете страницата.</p>
+          <p className="text-sm font-medium">
+            {dbWriteError === "quota"
+              ? "⚠️ Няма място на устройството — данните не се запазват! Освободете място и свалете резервно копие (Данни → Свали резервно копие)."
+              : "⚠️ Проблем при запазване на данните! Свалете резервно копие (Данни → Свали резервно копие) и презаредете страницата."}
+          </p>
           <button onClick={() => setDbWriteError(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
         </div>
       )}

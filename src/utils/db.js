@@ -83,18 +83,31 @@ export const runTx = async (storeName, mode, fn) => {
   const tx = await openTransaction(storeName, mode);
   return new Promise((resolve, reject) => {
     let out;
-    const fail = () => reject(tx.error || new Error("Операцията с базата беше прекъсната."));
+    const fail = () => {
+      noteQuotaError(tx.error);
+      reject(tx.error || new Error("Операцията с базата беше прекъсната."));
+    };
     tx.oncomplete = () => resolve(out instanceof IDBRequest ? out.result : out);
     tx.onerror = fail;
     tx.onabort = fail;
     try {
       out = fn(tx.objectStore(storeName), tx);
     } catch (err) {
+      noteQuotaError(err);
       try { tx.abort(); } catch { /* транзакцията вече е приключила */ }
       reject(err);
     }
   });
 };
+
+// Липса на място на устройството (Б2а): runTx си отбелязва QuotaExceededError, а reportDBError —
+// викана от извикващия веднага след отхвърления промис — го предава на лентата, без да се променят
+// десетките места, които я викат. Отбелязаното важи само за кратко (стара грешка не се лепи на нова).
+const QUOTA_REPORT_WINDOW_MS = 3000;
+let lastQuotaErrorAt = 0;
+function noteQuotaError(err) {
+  if (err?.name === "QuotaExceededError") lastQuotaErrorAt = Date.now();
+}
 
 // Заменя записите на един профил в store с records (празен списък — само ги изтрива). Четенето и
 // записът са в ЕДНА транзакция: паралелен запис за друг профил не може да се вклини между тях и да
@@ -116,6 +129,8 @@ let dbErrorCallback = null;
 export function onDBWriteError(callback) {
   dbErrorCallback = callback;
 }
+// Обратната връзка получава { quota: true }, когато последната грешка е липса на място.
 export function reportDBError() {
-  try { if (dbErrorCallback) dbErrorCallback(); } catch { /* никога не хвърля */ }
+  const quota = Date.now() - lastQuotaErrorAt < QUOTA_REPORT_WINDOW_MS;
+  try { if (dbErrorCallback) dbErrorCallback({ quota }); } catch { /* никога не хвърля */ }
 }
