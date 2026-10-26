@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
+import { assignOrderedIds } from "../hooks/useTransactions";
 
 const COLOR = {
   titleBg:  "FFFF00",
@@ -258,13 +259,13 @@ export const importFromExcel = (file) => {
           const description = String(row[3] || "").trim();
           if (!category || isNaN(amount) || amount === 0 || !date) return;
           transactions.push({
-            id: Date.now() + "-" + Math.random().toString(36).slice(2, 9) + "-" + transactions.length,
             type: amount < 0 ? "expense" : "income",
             category, date, description,
             amount: Math.abs(amount),
           });
         });
-        resolve(transactions);
+        // Редът на листа (както е изнесен — най-новото отгоре) се пази и при равна дата (одит 2026-10, 2А-16)
+        resolve(assignOrderedIds(transactions));
       } catch (err) {
         reject(new Error("Грешка при четене на файла: " + err.message));
       }
