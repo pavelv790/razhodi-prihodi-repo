@@ -322,6 +322,8 @@ const App = () => {
   const restoreMergePlanRef = useRef({});
   // Синхронна защита от двойно натискане (state се обновява чак при следващия рендер) (одит 2026-10, 2А-10)
   const restoreBusyRef = useRef(false);
+  // Същото за „Добави избраните“ / „Затвори“ на чакащите (1Б-02)
+  const pendingConfirmBusyRef = useRef(false);
 
   const filteredTransactions = useMemo(
     () => getFilteredTransactions(activeFilters),
@@ -839,6 +841,8 @@ const App = () => {
     addCategoriesFromImport("income", newCategories.income);
   };
   const handleConfirmPending = async (toAdd) => {
+    // Второ натискане, докато тече записът, не добавя транзакциите още веднъж (одит 2026-10, 1Б-02)
+    if (pendingConfirmBusyRef.current) return;
     // Чакащите са на профил, който вече не е активен: нищо не се добавя и не се маркира —
     // ще се предложат пак, когато той е активен (одит 2026-10, 1А-02)
     if (pendingRecurring.some((p) => p.profileId !== activeProfileId)) {
@@ -846,25 +850,31 @@ const App = () => {
       setPendingRecurring([]);
       return;
     }
-    for (const item of toAdd) {
-      addTransaction({
-        type: item.type,
-        category: item.category,
-        amount: item.amount,
-        date: item.date,
-        description: item.description,
-      });
-    }
+    pendingConfirmBusyRef.current = true;
     // Маркираме последната дата за ВСЕКИ recurringId независимо дали е добавен или пропуснат
-    const allIds = [...new Set(pendingRecurring.map((p) => p.recurringId))];
-    for (const id of allIds) {
-      const lastDate = pendingRecurring
-        .filter((p) => p.recurringId === id)
-        .at(-1)?.date;
-      if (lastDate) await markAsAdded(id, lastDate);
+    const lastDates = {};
+    pendingRecurring.forEach((p) => { lastDates[p.recurringId] = p.date; });
+    // Първо датите, после транзакциите: ако записът на датите не мине, не се добавя нищо —
+    // иначе същите дати се предлагат пак и се добавят втори път (одит 2026-10, 7-04).
+    // markAsAdded не хвърля — при грешка връща false.
+    const marked = await markAsAdded(lastDates);
+    if (marked) {
+      for (const item of toAdd) {
+        addTransaction({
+          type: item.type,
+          category: item.category,
+          amount: item.amount,
+          date: item.date,
+          description: item.description,
+        });
+      }
     }
     setShowPendingModal(false);
     setPendingRecurring([]);
+    pendingConfirmBusyRef.current = false;
+    if (!marked && toAdd.length > 0) {
+      alert("Чакащите транзакции не бяха добавени — записът в базата не мина. Ще бъдат предложени отново.");
+    }
   };
   // Нулира цялото състояние на възстановяването (pendingBackup ≠ null спира auto-sync)
   const resetRestoreState = () => {
@@ -2775,7 +2785,7 @@ const App = () => {
           onConfirm={handleConfirmPending}
           onClose={() => {
             // При затваряне без потвърждение — маркираме всички като видяни
-            handleConfirmPending([]);
+            return handleConfirmPending([]);
           }}
         />
       )}

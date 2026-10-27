@@ -143,24 +143,29 @@ export const useRecurring = (profileId) => {
     setRecurringItems((prev) => prev.filter((r) => r.id !== id));
   };
 
-  // Чете записа от базата, а не от списъка на текущия рендер: така се маркира записът на профила,
-  // за който е бил чакащият, със собствения му profileId (одит 2026-10, 1А-02)
-  const markAsAdded = async (id, date) => {
+  // Чете записите от базата, а не от списъка на текущия рендер: така се маркира записът на профила,
+  // за който е бил чакащият, със собствения му profileId (одит 2026-10, 1А-02).
+  // datesById: { [id]: дата } — всички в ЕДНА транзакция, т.е. или всички, или нито един.
+  // Връща true/false (одит 2026-10, 7-04).
+  const markAsAdded = async (datesById) => {
     try {
       await runTx(STORE, "readwrite", (store) => {
-        const req = store.get(id);
-        req.onsuccess = () => {
-          if (req.result) store.put({ ...req.result, lastAdded: date });
-        };
+        Object.entries(datesById).forEach(([id, date]) => {
+          const req = store.get(id);
+          req.onsuccess = () => {
+            if (req.result) store.put({ ...req.result, lastAdded: date });
+          };
+        });
       });
     } catch (err) {
       reportDBError();
       console.error("Грешка при запис на повтаряща се транзакция", err);
-      return;
+      return false;
     }
     setRecurringItems((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, lastAdded: date } : r))
+      prev.map((r) => (r.id in datesById ? { ...r, lastAdded: datesById[r.id] } : r))
     );
+    return true;
   };
 
   const deleteAllByProfile = async (targetProfileId) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { X, RefreshCw } from "lucide-react";
 
 const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
@@ -26,6 +26,23 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
     return !amounts[i] || isNaN(val) || val <= 0;
   });
 
+  // Докато тече записът, бутоните са изключени — второ натискане не добавя пак (одит 2026-10, 1Б-02).
+  // Ref-ът спира и клик преди следващия рендер, state-ът изключва бутоните.
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const runBusy = async (fn) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      console.error("Грешка при добавяне на чакащите транзакции", err);
+    }
+    busyRef.current = false;
+    setBusy(false);
+  };
+
   const handleConfirm = () => {
     if (hasInvalidAmount) return;
     const toAdd = selected.map((originalIndex) => {
@@ -35,8 +52,9 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
         amount: item.variableAmount ? parseFloat(amounts[originalIndex]) : item.amount,
       };
     });
-    onConfirm(toAdd);
+    runBusy(() => onConfirm(toAdd));
   };
+  const handleClose = () => runBusy(onClose);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -48,7 +66,7 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
             <RefreshCw className="w-4 h-4 text-gray-500" />
             <h2 className="text-base font-semibold text-gray-700">Чакащи транзакции</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+          <button onClick={handleClose} disabled={busy} className="p-1.5 rounded-lg hover:bg-gray-100 transition disabled:opacity-40">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
@@ -118,12 +136,12 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
             </p>
           )}
           <div className="flex gap-2">
-          <button onClick={handleConfirm} disabled={selected.length === 0 || hasInvalidAmount}
+          <button onClick={handleConfirm} disabled={busy || selected.length === 0 || hasInvalidAmount}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-40">
-            Добави избраните ({selected.length})
+            {busy ? "Добавяне…" : `Добави избраните (${selected.length})`}
           </button>
-          <button onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+          <button onClick={handleClose} disabled={busy}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition disabled:opacity-40">
             Затвори
           </button>
           </div>

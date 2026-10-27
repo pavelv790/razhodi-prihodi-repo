@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { X, Plus, Trash2, Edit2, Check, RefreshCw } from "lucide-react";
 import { getTodayString, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
@@ -39,6 +39,10 @@ const RecurringModal = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [categorySearch, setCategorySearch] = useState("");
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  // Второ натискане на „Добави“/„Запази“, докато тече записът, не създава втори запис (одит 2026-10, 1Б-02).
+  // Ref-ът спира и клик преди следващия рендер, state-ът изключва бутона.
+  const submittingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
 
   const categories = form.type === "expense" ? expenseCategories : incomeCategories;
   const filteredCategories = categories.filter((c) =>
@@ -46,6 +50,7 @@ const RecurringModal = ({
   );
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return;
     if (!form.category.trim()) { setError("Изберете категория."); return; }
     if (!form.variableAmount && (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)) { setError("Въведете валидна сума."); return; }
     if (!form.startDate || !isValidDate(form.startDate)) { setError("Въведете валидна начална дата (ДД/ММ/ГГГГ)."); return; }
@@ -71,16 +76,24 @@ const RecurringModal = ({
       customDays: form.period === "custom" ? Number(form.customDays) : 1,
     };
 
-    if (editingId) {
-      await onEdit(editingId, item);
-    } else {
-      await onAdd(item);
+    submittingRef.current = true;
+    setSaving(true);
+    try {
+      if (editingId) {
+        await onEdit(editingId, item);
+      } else {
+        await onAdd(item);
+      }
+      setForm(emptyForm());
+      setCategorySearch("");
+      setShowForm(false);
+      setEditingId(null);
+      setError("");
+    } catch (err) {
+      console.error("Грешка при запис на повтаряща се транзакция", err);
     }
-    setForm(emptyForm());
-    setCategorySearch("");
-    setShowForm(false);
-    setEditingId(null);
-    setError("");
+    submittingRef.current = false;
+    setSaving(false);
   };
 
   const handleStartEdit = (item) => {
@@ -295,7 +308,7 @@ const RecurringModal = ({
               {error && <p className="text-xs text-red-500">{error}</p>}
 
               <div className="flex gap-2">
-                <button onClick={handleSubmit} className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition">
+                <button onClick={handleSubmit} disabled={saving} className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-40">
                   <Check className="w-3.5 h-3.5" /> {editingId ? "Запази" : "Добави"}
                 </button>
                 <button onClick={handleCancel} className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
