@@ -146,10 +146,13 @@ function filesSearchUrl(params) {
   return `https://www.googleapis.com/drive/v3/files?${new URLSearchParams(params)}`;
 }
 
+// Ако има две папки с това име (създадени от застъпили се качвания в по-стари версии),
+// винаги се взима най-старата — качването и възстановяването гледат една и съща (3-07)
 async function getOrCreateFolder() {
   const searchRes = await fetch(
     filesSearchUrl({
       q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      orderBy: "createdTime",
       fields: "files(id,name)",
     }),
     { headers: { Authorization: `Bearer ${accessToken}` } }

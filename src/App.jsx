@@ -336,6 +336,11 @@ const App = () => {
   // „Не качвай“ след възстановяване: авто-качването към услугата спира до следващо отваряне
   // или успешно ръчно качване (2А-09)
   const autoUploadStoppedRef = useRef({ drive: false, supabase: false });
+  // Качванията към една услуга вървят едно след друго, за да не завърши по-старо копие след
+  // по-новото и да не се създадат две папки в Drive при първо качване (одит 2026-10, 3-07)
+  const uploadQueueRef = useRef({ drive: Promise.resolve(), supabase: Promise.resolve() });
+  // Пореден номер на последното поискано качване към услугата (виж uploadToDrive)
+  const uploadSeqRef = useRef({ drive: 0, supabase: 0 });
   const confirmDialogRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
@@ -572,11 +577,22 @@ const App = () => {
     }
   };
 
-  // Копията на профила в облака ([] ако няма) или null при грешка (съобщението вече е показано)
+  // Пуска job след предишното качване към услугата (виж uploadQueueRef). Увиснала заявка не
+  // спира следващите завинаги — след UPLOAD_WAIT_MS се продължава без нея.
+  const UPLOAD_WAIT_MS = 60 * 1000;
+  const runInUploadQueue = (service, job) => {
+    const prev = uploadQueueRef.current[service];
+    const run = Promise.race([prev, new Promise((resolve) => setTimeout(resolve, UPLOAD_WAIT_MS))]).then(job);
+    uploadQueueRef.current[service] = run.catch(() => {});
+    return run;
+  };
+
+  // Копията на профила в облака ([] ако няма) или null при грешка (съобщението вече е показано).
+  // В опашката на качванията: в Drive търсенето създава папката, ако я няма.
   const listCopiesBeforeUpload = (service, profileName, profileId) =>
-    service === "drive"
+    runInUploadQueue(service, () => service === "drive"
       ? driveListBackups(profileName, { beforeUpload: true })
-      : supabaseListBackups(profileName, profileId, { beforeUpload: true });
+      : supabaseListBackups(profileName, profileId, { beforeUpload: true }));
 
   const existingCopyDialog = ({ service, copies, backup, profileName, profileId, doUpload, auto }) => {
     const isToday = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
@@ -612,27 +628,37 @@ const App = () => {
     };
   };
 
-  const uploadToDrive = async (backup, profileName) => {
-    const success = await driveUploadBackup(backup, profileName);
-    if (success) {
-      saveUploadCounts("drive", backup);
-      clearDeletedAll("drive");
-      autoUploadPausedRef.current.drive = false;
-      autoUploadStoppedRef.current.drive = false;
-    }
-    return success;
+  // Качването чака предишното към същата услуга. skipIfNewer — авто-качване „При всяка промяна“:
+  // ако докато чака, е поискано друго качване (с по-нови данни), това се пропуска и връща null.
+  const uploadToDrive = (backup, profileName, { skipIfNewer = false } = {}) => {
+    const seq = ++uploadSeqRef.current.drive;
+    return runInUploadQueue("drive", async () => {
+      if (skipIfNewer && seq !== uploadSeqRef.current.drive) return null;
+      const success = await driveUploadBackup(backup, profileName);
+      if (success) {
+        saveUploadCounts("drive", backup);
+        clearDeletedAll("drive");
+        autoUploadPausedRef.current.drive = false;
+        autoUploadStoppedRef.current.drive = false;
+      }
+      return success;
+    });
   };
 
-  const uploadToSupabase = async (backup, profileName, profileId) => {
-    const success = await supabaseUploadBackup(backup, profileName, profileId);
-    if (success) {
-      saveUploadCounts("supabase", backup);
-      clearDeletedAll("supabase");
-      autoUploadPausedRef.current.supabase = false;
-      autoUploadStoppedRef.current.supabase = false;
-      setLastSupabaseUploadDate(new Date().toISOString());
-    }
-    return success;
+  const uploadToSupabase = (backup, profileName, profileId, { skipIfNewer = false } = {}) => {
+    const seq = ++uploadSeqRef.current.supabase;
+    return runInUploadQueue("supabase", async () => {
+      if (skipIfNewer && seq !== uploadSeqRef.current.supabase) return null;
+      const success = await supabaseUploadBackup(backup, profileName, profileId);
+      if (success) {
+        saveUploadCounts("supabase", backup);
+        clearDeletedAll("supabase");
+        autoUploadPausedRef.current.supabase = false;
+        autoUploadStoppedRef.current.supabase = false;
+        setLastSupabaseUploadDate(new Date().toISOString());
+      }
+      return success;
+    });
   };
 
   // Авто-качване през пазача. При рязък спад (или при първо качване, когато в облака има копие)
@@ -694,7 +720,7 @@ const App = () => {
         if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
-        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
+        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger, { skipIfNewer: true }), profileNameAtTrigger, profileIdAtTrigger);
         // без ключ (изтекъл/отхвърлен) прозорецът „Свържи отново“ вече е показан
         if (success === false && driveHasToken()) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
@@ -748,7 +774,7 @@ const App = () => {
         if (!profileNameAtTrigger) return;
         let backup;
         try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
-        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
+        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { skipIfNewer: true }), profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
