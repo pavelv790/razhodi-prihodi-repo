@@ -45,7 +45,16 @@ export const getTodayString = () => {
   return `${day}/${month}/${year}`;
 };
 
-export const getFirstDayOfMonth = (date = new Date()) => {
+// Днешната дата като YYYY-MM-DD по местно време (не по UTC — в България UTC денят се сменя
+// в 02:00/03:00, одит 2026-10, 3-13). За „Веднъж дневно“ — същата дата като в имената на копията.
+export const getLocalDateKey = () => {
+  const today = new Date();
+  const day = String(today.getDate()).padStart(2, "0");
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  return `${today.getFullYear()}-${month}-${day}`;
+};
+
+export const getFirstDayOfMonth =(date = new Date()) => {
   const day = "01";
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();

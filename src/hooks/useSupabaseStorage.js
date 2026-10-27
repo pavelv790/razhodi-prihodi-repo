@@ -13,6 +13,7 @@ import {
 } from "../utils/supabaseAuth";
 import { supabase } from "../utils/supabase";
 import { isGoogleSession } from "../utils/authSession";
+import { getLocalDateKey } from "../utils/formatters";
 import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "supabase_storage_settings";
@@ -218,12 +219,12 @@ export function useSupabaseStorage() {
   };
 
   const shouldRunDaily = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     return localStorage.getItem("supabase_daily_backup_last") !== today;
   };
 
   const markDailyDone = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     localStorage.setItem("supabase_daily_backup_last", today);
   };
 

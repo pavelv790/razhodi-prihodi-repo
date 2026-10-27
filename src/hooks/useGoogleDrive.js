@@ -14,6 +14,7 @@ import {
 } from "../utils/googleDrive";
 import { supabase } from "../utils/supabase";
 import { isGoogleSession } from "../utils/authSession";
+import { getLocalDateKey } from "../utils/formatters";
 import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "google_drive_settings";
@@ -108,12 +109,12 @@ export function useGoogleDrive() {
   };
 
   const shouldRunDaily = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     return localStorage.getItem("drive_daily_backup_last") !== today;
   };
 
   const markDailyDone = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateKey();
     localStorage.setItem("drive_daily_backup_last", today);
   };
 

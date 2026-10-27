@@ -724,7 +724,9 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup]);
+    // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
+    // наново, без да чака промяна в данните (одит 2026-10, 3-13)
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup, pendingCheckDay]);
   
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
@@ -766,7 +768,9 @@ const App = () => {
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup]);
+    // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
+    // наново, без да чака промяна в данните (одит 2026-10, 3-13)
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup, pendingCheckDay]);
 
   // За авто-качването: да не покрива вече отворен прозорец за потвърждение
   useEffect(() => {
