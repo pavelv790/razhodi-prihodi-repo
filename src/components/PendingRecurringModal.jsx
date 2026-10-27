@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { X, RefreshCw } from "lucide-react";
 
-const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
+const PendingRecurringModal = ({ pendingItems, onConfirm, onClose, onSkipAll }) => {
   const [selected, setSelected] = useState(
     pendingItems.map((_, i) => i)
   );
@@ -54,7 +54,12 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
     });
     runBusy(() => onConfirm(toAdd));
   };
+  // „Затвори“/„×“ само отлагат (одит 2026-10, 4-07); „Пропусни всички“ пита и тогава маркира всички като видяни
   const handleClose = () => runBusy(onClose);
+  const handleSkipAll = () => {
+    if (busyRef.current) return;
+    onSkipAll(() => runBusy(() => onConfirm([])));
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -74,6 +79,9 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
         <div className="px-5 py-3 flex-shrink-0">
           <p className="text-xs text-gray-500 mb-3">
             Имате <strong>{pendingItems.length}</strong> чакащи повтарящи се транзакции. Изберете кои да добавите.
+          </p>
+          <p className="text-xs text-gray-400 mb-3">
+            „Затвори“ само отлага — ще бъдат предложени пак при следващо отваряне на приложението или в нов ден. „Пропусни всички“ ги пропуска завинаги.
           </p>
           <div className="flex gap-2">
             <button onClick={selectAll} className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
@@ -135,15 +143,19 @@ const PendingRecurringModal = ({ pendingItems, onConfirm, onClose }) => {
               ⚠️ Въведете валидна сума за всички избрани транзакции с променлива сума.
             </p>
           )}
-          <div className="flex gap-2">
           <button onClick={handleConfirm} disabled={busy || selected.length === 0 || hasInvalidAmount}
-            className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-40">
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-40">
             {busy ? "Добавяне…" : `Добави избраните (${selected.length})`}
           </button>
-          <button onClick={handleClose} disabled={busy}
-            className="px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition disabled:opacity-40">
-            Затвори
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleClose} disabled={busy}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition disabled:opacity-40">
+              Затвори
+            </button>
+            <button onClick={handleSkipAll} disabled={busy}
+              className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-white text-red-600 border border-red-200 hover:bg-red-50 transition disabled:opacity-40">
+              Пропусни всички
+            </button>
           </div>
         </div>
       </div>

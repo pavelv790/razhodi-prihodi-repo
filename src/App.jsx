@@ -288,6 +288,10 @@ const App = () => {
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
+  // „Затвори“/„×“ на чакащите само отлагат (одит 2026-10, 4-07): профил → { day, ids } — деня на проверката
+  // (pendingCheckDay) и повтарящите се, които са били чакащи. Ефектът не ги предлага отново до нов ден
+  // или до нова повтаряща се с чакаща дата; не се пази — презареждането го изчиства
+  const [pendingSnoozed, setPendingSnoozed] = useState({});
   // Отворен е блокиращ прозорец (без чакащите и напомнянето за копие): чакащите изчакват затварянето му,
   // напомнянето за копие — също. Автоматичните прозорци за състояние (autoUploadNotice, съобщенията
   // на Drive/Облака) са над всички с z-index и не се броят (одит 2026-10, 6-09)
@@ -309,11 +313,14 @@ const App = () => {
     if (!activeProfileId || !recurringLoaded || recurringItems.length === 0) return;
     if (showPendingModal || weeklyBackupVisible || otherModalOpen) return;
     const pending = getPendingTransactions();
+    // Отложени с „Затвори“ за този профил и ден — пак се предлагат само ако има чакаща от нова повтаряща се
+    const snoozed = pendingSnoozed[activeProfileId];
+    if (snoozed && snoozed.day === pendingCheckDay && pending.every((p) => snoozed.ids.includes(p.recurringId))) return;
     if (pending.length > 0) {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringLoaded, recurringItems, pendingCheckDay, otherModalOpen, weeklyBackupVisible]);
+  }, [activeProfileId, recurringLoaded, recurringItems, pendingCheckDay, otherModalOpen, weeklyBackupVisible, pendingSnoozed]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
@@ -890,6 +897,27 @@ const App = () => {
     if (!marked && toAdd.length > 0) {
       alert("Чакащите транзакции не бяха добавени — записът в базата не мина. Ще бъдат предложени отново.");
     }
+  };
+  // „Затвори“/„×“: само затваря и отлага — нищо не се маркира, чакащите се предлагат пак при следващо
+  // отваряне или в нов ден (одит 2026-10, 4-07)
+  const handleSnoozePending = () => {
+    const profileId = pendingRecurring[0]?.profileId ?? activeProfileId;
+    const ids = pendingRecurring.map((p) => p.recurringId);
+    setPendingSnoozed((prev) => ({ ...prev, [profileId]: { day: pendingCheckDay, ids } }));
+    setShowPendingModal(false);
+    setPendingRecurring([]);
+  };
+  // „Пропусни всички“: след потвърждение — досегашното „Затвори“ (всички се маркират като видяни).
+  // run е действието на самия прозорец (изключва бутоните му, докато тече записът)
+  const requestSkipPending = (run) => {
+    const n = pendingRecurring.length;
+    setConfirmDialog({
+      title: "Пропускане на чакащите",
+      message: `Пропусни ${n} ${n === 1 ? "чакаща транзакция" : "чакащи транзакции"}? Няма да бъдат предложени отново.`,
+      confirmLabel: "Да, пропусни",
+      tone: "danger",
+      onConfirm: run,
+    });
   };
   // Нулира цялото състояние на възстановяването (pendingBackup ≠ null спира auto-sync)
   const resetRestoreState = () => {
@@ -2798,10 +2826,8 @@ const App = () => {
         <PendingRecurringModal
           pendingItems={pendingRecurring}
           onConfirm={handleConfirmPending}
-          onClose={() => {
-            // При затваряне без потвърждение — маркираме всички като видяни
-            return handleConfirmPending([]);
-          }}
+          onClose={handleSnoozePending}
+          onSkipAll={requestSkipPending}
         />
       )}
       {showUserGuide && (
