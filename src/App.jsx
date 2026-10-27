@@ -291,6 +291,13 @@ const App = () => {
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
+  // Брояч на връщанията на интернета — авто-качването пробва наново некачените промени (3-08)
+  const [onlineCount, setOnlineCount] = useState(0);
+  useEffect(() => {
+    const onOnline = () => setOnlineCount((n) => n + 1);
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
   // „Затвори“/„×“ на чакащите само отлагат (одит 2026-10, 4-07): профил → { day, ids } — деня на проверката
   // (pendingCheckDay) и повтарящите се, които са били чакащи. Ефектът не ги предлага отново до нов ден
   // или до нова повтаряща се с чакаща дата; не се пази — презареждането го изчиства
@@ -341,6 +348,8 @@ const App = () => {
   const uploadQueueRef = useRef({ drive: Promise.resolve(), supabase: Promise.resolve() });
   // Пореден номер на последното поискано качване към услугата (виж uploadToDrive)
   const uploadSeqRef = useRef({ drive: 0, supabase: 0 });
+  // Копие от buildBackupData → кога е започнало четенето му (виж clearUnsynced)
+  const backupReadAtRef = useRef(new WeakMap());
   const confirmDialogRef = useRef(null);
   const backupFileRef = useRef(null);
   const pendingNewProfilesRef = useRef([]);
@@ -577,6 +586,46 @@ const App = () => {
     }
   };
 
+  // „При всяка промяна“: часът на последната промяна, която още не е качена в услугата. Пази се в
+  // localStorage, за да се качи при отваряне, при свързване и при връщане на интернета — иначе
+  // промяна без връзка (или с провалено/пропуснато качване) не се качва до следващата (одит 2026-10, 3-08)
+  const UNSYNCED_KEYS = { drive: "drive_unsynced_change_at", supabase: "supabase_unsynced_change_at" };
+
+  const markUnsynced = (service) => {
+    try {
+      localStorage.setItem(UNSYNCED_KEYS[service], String(Date.now()));
+    } catch {
+      // без запис промяната се качва при следващата (както преди)
+    }
+  };
+
+  const hasUnsynced = (service) => {
+    try {
+      return !!localStorage.getItem(UNSYNCED_KEYS[service]);
+    } catch {
+      return false;
+    }
+  };
+
+  // След успешно качване белегът се маха, само ако копието е прочетено след последната промяна
+  const clearUnsynced = (service, backup) => {
+    const readAt = backupReadAtRef.current.get(backup);
+    if (!readAt) return;
+    try {
+      if (Number(localStorage.getItem(UNSYNCED_KEYS[service])) <= readAt) localStorage.removeItem(UNSYNCED_KEYS[service]);
+    } catch {
+      // белегът остава — ще се качи още веднъж
+    }
+  };
+
+  const dropUnsynced = (service) => {
+    try {
+      localStorage.removeItem(UNSYNCED_KEYS[service]);
+    } catch {
+      // белегът остава — ще се качи при следващото отваряне
+    }
+  };
+
   // Пуска job след предишното качване към услугата (виж uploadQueueRef). Увиснала заявка не
   // спира следващите завинаги — след UPLOAD_WAIT_MS се продължава без нея.
   const UPLOAD_WAIT_MS = 60 * 1000;
@@ -638,6 +687,7 @@ const App = () => {
       if (success) {
         saveUploadCounts("drive", backup);
         clearDeletedAll("drive");
+        clearUnsynced("drive", backup);
         autoUploadPausedRef.current.drive = false;
         autoUploadStoppedRef.current.drive = false;
       }
@@ -653,6 +703,7 @@ const App = () => {
       if (success) {
         saveUploadCounts("supabase", backup);
         clearDeletedAll("supabase");
+        clearUnsynced("supabase", backup);
         autoUploadPausedRef.current.supabase = false;
         autoUploadStoppedRef.current.supabase = false;
         setLastSupabaseUploadDate(new Date().toISOString());
@@ -707,11 +758,17 @@ const App = () => {
     const restoreEnded = autoUploadRestoringRef.current.drive && !pendingBackup;
     autoUploadRestoringRef.current.drive = !!pendingBackup;
     if (pendingBackup) return;
+    // Промяната се помни преди проверките за връзка — качва се, когато стане възможно (3-08).
+    // След възстановяване, за което се пита „Да кача ли…“, некачените промени отпреди него влизат
+    // в този въпрос и не се качват сами, докато той чака.
+    if (restoreEnded) {
+      if (restoreUploadAskRef.current?.includes("drive")) dropUnsynced("drive");
+    } else if (driveAutoSync === "onChange" && dataChanged) markUnsynced("drive");
     if (!driveConnected) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
 
-    if (driveAutoSync === "onChange" && dataChanged && !restoreEnded) {
+    if (driveAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("drive"))) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
@@ -751,8 +808,8 @@ const App = () => {
       return () => clearTimeout(timer);
     }
     // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
-    // наново, без да чака промяна в данните (одит 2026-10, 3-13)
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup, pendingCheckDay]);
+    // наново, без да чака промяна в данните (одит 2026-10, 3-13); onlineCount — некачените промени (3-08)
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup, pendingCheckDay, onlineCount]);
   
   useEffect(() => {
     if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
@@ -763,11 +820,15 @@ const App = () => {
     const restoreEnded = autoUploadRestoringRef.current.supabase && !pendingBackup;
     autoUploadRestoringRef.current.supabase = !!pendingBackup;
     if (pendingBackup) return;
+    // некачените промени — както при Drive (3-08)
+    if (restoreEnded) {
+      if (restoreUploadAskRef.current?.includes("supabase")) dropUnsynced("supabase");
+    } else if (supabaseAutoSync === "onChange" && dataChanged) markUnsynced("supabase");
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
 
-    if (supabaseAutoSync === "onChange" && dataChanged && !restoreEnded) {
+    if (supabaseAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("supabase"))) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
@@ -795,8 +856,8 @@ const App = () => {
       return () => clearTimeout(timer);
     }
     // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
-    // наново, без да чака промяна в данните (одит 2026-10, 3-13)
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup, pendingCheckDay]);
+    // наново, без да чака промяна в данните (одит 2026-10, 3-13); onlineCount — некачените промени (3-08)
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup, pendingCheckDay, onlineCount]);
 
   // За авто-качването: да не покрива вече отворен прозорец за потвърждение
   useEffect(() => {
@@ -1157,6 +1218,7 @@ const App = () => {
   // беше без неговите транзакции (2А-12).
   const buildBackupData = async () => {
     if (!profilesLoaded) throw new Error(BACKUP_READ_ERROR);
+    const readAt = Date.now();
     const activeReady = transactionsLoaded && categoriesLoaded && currencyLoaded && budgetsLoaded;
     const read = {};
     try {
@@ -1197,7 +1259,7 @@ const App = () => {
     }
     const activeCurrency = allProfileCurrencies[activeProfileId];
 
-    return {
+    const backup = {
       version: "1.6",
       date: new Date().toISOString(),
       profiles,
@@ -1215,6 +1277,8 @@ const App = () => {
       profileBudgets: allProfileBudgets,
       recurringItems: read.recurring,
     };
+    backupReadAtRef.current.set(backup, readAt);
+    return backup;
   };
 
   const downloadBackupFile = (data, onlyProfile = false) => {
