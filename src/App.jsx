@@ -750,8 +750,9 @@ const App = () => {
   };
 
   useEffect(() => {
-    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
-    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
+    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded || !budgetsLoaded || !recurringLoaded) return;
+    // всичко, което влиза в копието — и повтарящите се, бюджетите и валутата (одит 2026-10, 3-09)
+    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles, recurringItems, budgets, currency, rate];
     const prev = driveSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     driveSnapshotRef.current = snap;
@@ -809,11 +810,12 @@ const App = () => {
     }
     // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
     // наново, без да чака промяна в данните (одит 2026-10, 3-13); onlineCount — некачените промени (3-08)
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, driveAutoSync, driveConnected, pendingBackup, pendingCheckDay, onlineCount]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, recurringItems, budgets, currency, rate, driveAutoSync, driveConnected, pendingBackup, pendingCheckDay, onlineCount]);
   
   useEffect(() => {
-    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded) return;
-    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles];
+    if (!profilesLoaded || !transactionsLoaded || !categoriesLoaded || !filtersLoaded || !currencyLoaded || !budgetsLoaded || !recurringLoaded) return;
+    // всичко, което влиза в копието — и повтарящите се, бюджетите и валутата (одит 2026-10, 3-09)
+    const snap = [transactions, expenseCategories, incomeCategories, savedFilters, profiles, recurringItems, budgets, currency, rate];
     const prev = supabaseSnapshotRef.current;
     const dataChanged = prev !== null && snap.some((v, i) => v !== prev[i]);
     supabaseSnapshotRef.current = snap;
@@ -857,7 +859,7 @@ const App = () => {
     }
     // pendingCheckDay: при връщане към отворено приложение в нов ден „Веднъж дневно“ се проверява
     // наново, без да чака промяна в данните (одит 2026-10, 3-13); onlineCount — некачените промени (3-08)
-  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup, pendingCheckDay, onlineCount]);
+  }, [transactions, expenseCategories, incomeCategories, savedFilters, profiles, recurringItems, budgets, currency, rate, supabaseAutoSync, supabaseConnected, supabaseEnabled, pendingBackup, pendingCheckDay, onlineCount]);
 
   // За авто-качването: да не покрива вече отворен прозорец за потвърждение
   useEffect(() => {
