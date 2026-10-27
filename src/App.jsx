@@ -278,7 +278,8 @@ const App = () => {
     }
   }, [profilesLoaded, profiles.length]);
   useEffect(() => {
-    if (!activeProfileId || recurringItems.length === 0) return;
+    // Само със списъка на текущия профил — иначе след смяна се предлагат чакащите на предишния (1А-02)
+    if (!activeProfileId || !recurringLoaded || recurringItems.length === 0) return;
     if (showRecurringModal) return;
     if (showPendingModal) return;
     if (showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm || restoreInProgress) return;
@@ -287,7 +288,7 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
+  }, [activeProfileId, recurringLoaded, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
@@ -827,6 +828,13 @@ const App = () => {
     addCategoriesFromImport("income", newCategories.income);
   };
   const handleConfirmPending = async (toAdd) => {
+    // Чакащите са на профил, който вече не е активен: нищо не се добавя и не се маркира —
+    // ще се предложат пак, когато той е активен (одит 2026-10, 1А-02)
+    if (pendingRecurring.some((p) => p.profileId !== activeProfileId)) {
+      setShowPendingModal(false);
+      setPendingRecurring([]);
+      return;
+    }
     for (const item of toAdd) {
       addTransaction({
         type: item.type,

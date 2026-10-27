@@ -94,20 +94,20 @@ const formatDate = (date) => {
 
 export const useRecurring = (profileId) => {
   const [recurringItems, setRecurringItems] = useState([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // За кой профил е зареден списъкът. В рендера веднага след смяна на профил списъкът е още на
+  // стария, затова isLoaded е false, докато не се зареди новият (одит 2026-10, 1А-02)
+  const [loadedForProfile, setLoadedForProfile] = useState(null);
+  const isLoaded = !!profileId && loadedForProfile === profileId;
 
   useEffect(() => {
-    if (!profileId) {
-      setRecurringItems([]);
-      setIsLoaded(false);
-      return;
-    }
+    setRecurringItems([]);
+    setLoadedForProfile(null);
+    if (!profileId) return;
     let cancelled = false;
-    setIsLoaded(false);
     loadByProfile(profileId).then((data) => {
       if (cancelled) return;
       setRecurringItems(data);
-      setIsLoaded(true);
+      setLoadedForProfile(profileId);
     }).catch((err) => {
       if (cancelled) return;
       // isLoaded остава false
@@ -143,13 +143,23 @@ export const useRecurring = (profileId) => {
     setRecurringItems((prev) => prev.filter((r) => r.id !== id));
   };
 
+  // Чете записа от базата, а не от списъка на текущия рендер: така се маркира записът на профила,
+  // за който е бил чакащият, със собствения му profileId (одит 2026-10, 1А-02)
   const markAsAdded = async (id, date) => {
-    const base = recurringItems.find((r) => r.id === id);
-    if (!base) return;
-    const item = { ...base, lastAdded: date };
-    await saveOne(item);
+    try {
+      await runTx(STORE, "readwrite", (store) => {
+        const req = store.get(id);
+        req.onsuccess = () => {
+          if (req.result) store.put({ ...req.result, lastAdded: date });
+        };
+      });
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при запис на повтаряща се транзакция", err);
+      return;
+    }
     setRecurringItems((prev) =>
-      prev.map((r) => (r.id === id ? item : r))
+      prev.map((r) => (r.id === id ? { ...r, lastAdded: date } : r))
     );
   };
 
@@ -181,6 +191,7 @@ export const useRecurring = (profileId) => {
       dates.forEach((date) => {
         pending.push({
           recurringId: item.id,
+          profileId: item.profileId,
           date,
           type: item.type,
           category: item.category,
