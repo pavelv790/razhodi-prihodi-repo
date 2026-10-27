@@ -33,6 +33,7 @@ import { openDB, onDBWriteError, runTx, reportDBError } from "./utils/db";
 import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
 import { requestPersistentStorage, getStorageUsage, formatBytes, STORAGE_WARN_RATIO } from "./utils/storageInfo";
 import { registerSW } from "virtual:pwa-register";
+import { getTodayString } from "./utils/formatters";
 
 // Записите на един профил от store. При грешка или прекъсната транзакция отхвърля, вместо да
 // виси завинаги (одит 2026-10, 1А-05)
@@ -277,6 +278,16 @@ const App = () => {
       setShowProfileModal(true);
     }
   }, [profilesLoaded, profiles.length]);
+  // Днешната дата към последното връщане на приложението на преден план. PWA може да стои отворено
+  // с дни — при нов ден проверката за чакащи се прави наново, без презареждане (одит 2026-10, 1Б-03)
+  const [pendingCheckDay, setPendingCheckDay] = useState(getTodayString);
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") setPendingCheckDay(getTodayString());
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
   useEffect(() => {
     // Само със списъка на текущия профил — иначе след смяна се предлагат чакащите на предишния (1А-02)
     if (!activeProfileId || !recurringLoaded || recurringItems.length === 0) return;
@@ -288,7 +299,7 @@ const App = () => {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringLoaded, recurringItems, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
+  }, [activeProfileId, recurringLoaded, recurringItems, pendingCheckDay, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
