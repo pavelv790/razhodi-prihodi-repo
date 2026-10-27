@@ -39,6 +39,49 @@ import { registerSW } from "virtual:pwa-register";
 const getProfileRecords = async (storeName, profileId) =>
   ((await runTx(storeName, "readonly", (store) => store.getAll())) || []).filter((r) => r.profileId === profileId);
 
+// Повтарящи се и филтри при възстановяване (одит 2026-10, 1А-07/2А-03, 2А-04, 2А-17).
+// Ключ по съдържание: повтарящите се — и по тип (иначе приход „Наем“ се смяташе за дубликат на разход „Наем“)
+const recurringKey = (r) => [r.type, r.description, r.category, r.period].join("|");
+const filterKey = (f) => [f.name, f.fromDate, f.toDate].join("|");
+// „Обедини“: локалните + тези от копието, които ги няма на устройството — първо по id (същият запис,
+// редактиран след свалянето на копието: печели локалната версия, вместо копието да я презапише и да
+// върне по-стар lastAdded), после по съдържание
+const mergeByIdAndKey = (local, fromBackup, key) => {
+  const ids = new Set(local.map((r) => r.id));
+  const keys = new Set(local.map(key));
+  return [...local, ...fromBackup.filter((r) => !ids.has(r.id) && !keys.has(key(r)))];
+};
+// dd/mm/yyyy → yyyymmdd за сравнение; липсваща дата е най-ранна
+const dateKey = (d) => (typeof d === "string" ? d.split("/").reverse().join("") : "");
+// „Обедини“ за повтарящи се: при същия id остават локалните описание, сума, период…, но датата на
+// последно добавяне е по-късната от двете — иначе дата, вече добавена на друго устройство, пак ще е
+// „чакаща“. Връща и кои записи са получили датата от копието (за обобщението)
+const mergeRecurring = (local, fromBackup) => {
+  const backupById = new Map(fromBackup.map((r) => [r.id, r]));
+  const newerDates = [];
+  const kept = local.map((r) => {
+    const b = backupById.get(r.id);
+    if (!b || dateKey(b.lastAdded) <= dateKey(r.lastAdded)) return r;
+    newerDates.push({ name: r.description || r.category, local: r.lastAdded, backup: b.lastAdded });
+    return { ...r, lastAdded: b.lastAdded };
+  });
+  return { items: mergeByIdAndKey(kept, fromBackup, recurringKey), newerDates };
+};
+// Запис от копието с id, който на устройството е на ДРУГ профил, би го презаписал (запис по id) →
+// получава нов id; иначе id-то се пази, за да познае следващото „Обедини“ същия запис
+const withFreeIds = async (storeName, profileId, records, prefix) => {
+  const all = (await runTx(storeName, "readonly", (store) => store.getAll())) || [];
+  const taken = new Set(all.filter((r) => r.profileId !== profileId).map((r) => r.id));
+  let n = 0;
+  return records.map((r) => {
+    if (!taken.has(r.id)) return r;
+    let id;
+    do { id = `${prefix}${Date.now()}_${++n}`; } while (taken.has(id));
+    taken.add(id);
+    return { ...r, id };
+  });
+};
+
 // Провален запис спира възстановяването, вместо то да завърши с „успешно“ (одит 2026-10, 2А-01)
 const ensureSaved = (ok) => {
   if (ok === false) throw new Error("Записът в базата не успя.");
@@ -964,12 +1007,12 @@ const App = () => {
       // Филтри
       if (backupData.savedFilters) {
         const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
-        ensureSaved(await restoreFilters(profileFilters, bp.id));
+        ensureSaved(await restoreFilters(await withFreeIds("saved_filters", bp.id, profileFilters, ""), bp.id));
       }
       // Повтарящи се
       if (backupData.recurringItems) {
         const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
-        ensureSaved(await restoreRecurring(profileRecurring, bp.id));
+        ensureSaved(await restoreRecurring(await withFreeIds("recurring", bp.id, profileRecurring, "recurring_"), bp.id));
       }
       completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice: "backup" });
       restoreCurrentProfileRef.current = null;
@@ -1369,32 +1412,25 @@ const App = () => {
     if (choice === "backup") await restoreProfileCurrencyAndBudgets(bp, backupData);
 
     if (backupData.savedFilters) {
-      const profileFilters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
-      if (choice === "merge") {
-        const existingFilters = await getProfileRecords("saved_filters", bp.id);
-        const newFilters = profileFilters.filter((bf) =>
-          !existingFilters.some((ef) => ef.name === bf.name && ef.fromDate === bf.fromDate && ef.toDate === bf.toDate)
-        );
-        const merged = [...existingFilters, ...newFilters];
-        ensureSaved(await restoreFilters(merged, bp.id));
-        if (bp.id === activeProfileId) setSavedFilters(merged.map((f) => ({ ...f, profileId: bp.id })));
-      } else {
-        ensureSaved(await restoreFilters(profileFilters, bp.id));
-        if (bp.id === activeProfileId) setSavedFilters(profileFilters.map((f) => ({ ...f, profileId: bp.id })));
-      }
+      let filters = backupData.savedFilters.filter((f) => f.profileId === bp.id);
+      if (choice === "merge") filters = mergeByIdAndKey(await getProfileRecords("saved_filters", bp.id), filters, filterKey);
+      filters = await withFreeIds("saved_filters", bp.id, filters, "");
+      ensureSaved(await restoreFilters(filters, bp.id));
+      if (bp.id === activeProfileId) setSavedFilters(filters.map((f) => ({ ...f, profileId: bp.id })));
     }
+    const notes = [];
     if (backupData.recurringItems) {
-      const profileRecurring = backupData.recurringItems.filter((r) => r.profileId === bp.id);
+      let items = backupData.recurringItems.filter((r) => r.profileId === bp.id);
       if (choice === "merge") {
-        const existingRecurring = await getProfileRecords("recurring", bp.id);
-        const newItems = profileRecurring.filter((br) =>
-          !existingRecurring.some((er) => er.description === br.description && er.category === br.category && er.period === br.period)
-        );
-        ensureSaved(await restoreRecurring([...existingRecurring, ...newItems], bp.id));
-      } else {
-        ensureSaved(await restoreRecurring(profileRecurring, bp.id));
+        const merged = mergeRecurring(await getProfileRecords("recurring", bp.id), items);
+        items = merged.items;
+        merged.newerDates.forEach((d) => notes.push(
+          `Повтаряща се „${d.name}“: последното добавяне е взето от резервното копие (${d.backup} вместо ${d.local || "няма"}), там е по-късно. Описанието и сумата са тези от устройството.`
+        ));
       }
+      ensureSaved(await restoreRecurring(await withFreeIds("recurring", bp.id, items, "recurring_"), bp.id));
     }
+    return notes;
   };
 
   // Първо всички въпроси, после един запис: „Обедини“ профилите с вероятни дубликати се питат един
@@ -1463,9 +1499,9 @@ const App = () => {
       } else {
         ensureSaved(await replaceAllTransactions(restoreBackupTxs(backupData, bp.id), bp.id));
       }
-      await finishRestoreForProfile(bp, choice, backupData);
+      const notes = await finishRestoreForProfile(bp, choice, backupData);
       ensureSaved(await addOrUpdateProfile(bp));
-      completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice });
+      completedRestoreProfilesRef.current.push({ id: bp.id, name: bp.name, choice, notes });
       restoreCurrentProfileRef.current = null;
     }
 
@@ -2750,6 +2786,9 @@ const App = () => {
                         : r.choice === "local"
                         ? `✅ Данните за ${r.name} са запазени локално.`
                         : `✅ Данните за ${r.name} са възстановени успешно.`}
+                      {r.notes?.map((note, j) => (
+                        <p key={j} className="text-xs font-normal text-green-700 mt-1">ℹ️ {note}</p>
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -2798,6 +2837,9 @@ const App = () => {
                         : r.choice === "local"
                         ? `✅ Данните за ${r.name} са запазени локално.`
                         : `✅ Данните за ${r.name} са възстановени успешно.`}
+                      {r.notes?.map((note, j) => (
+                        <p key={j} className="text-xs font-normal text-green-700 mt-1">ℹ️ {note}</p>
+                      ))}
                     </div>
                   ))}
                 </div>
