@@ -33,56 +33,78 @@ const deleteByProfile = async (profileId) => {
   }
 };
 
-// Изчислява всички чакащи дати за дадена повтаряща се транзакция
+// Брой дни при „Персонализиран“: цяло число ≥ 1. Старите записи с дробно число (формата преди
+// одит 2026-10, 4-11) се четат като цялата част — както и преди (setDate режеше до цяло)
+export const getCustomDays = (item) => {
+  const days = Math.floor(Number(item.customDays));
+  return Number.isFinite(days) && days >= 1 ? days : 1;
+};
+
+const MAX_PENDING = 366; // най-много предложени дати наведнъж
+const MAX_STEPS = 5000; // общ предпазител срещу безкраен цикъл
+
+const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+
+// Датата на стъпка № index от началото. Графикът винаги се смята от началната дата (не от
+// предишната), затова деня го пази: 31-во число → последния ден на късите месеци, 29.02 → 28.02
+// в невисокосна година и пак 29.02 във високосна (одит 2026-10, 4-10)
+const getScheduleDate = (item, start, index) => {
+  const y = start.getFullYear();
+  const m = start.getMonth();
+  const d = start.getDate();
+  if (item.period === "weekly") return new Date(y, m, d + 7 * index);
+  if (item.period === "monthly") {
+    const monthIndex = m + index;
+    const year = y + Math.floor(monthIndex / 12);
+    const month = monthIndex % 12;
+    return new Date(year, month, Math.min(d, daysInMonth(year, month)));
+  }
+  if (item.period === "yearly") return new Date(y + index, m, Math.min(d, daysInMonth(y + index, m)));
+  if (item.period === "daily") return new Date(y, m, d + index);
+  // custom — брой дни
+  return new Date(y, m, d + getCustomDays(item) * index);
+};
+
+// От коя стъпка да се почне, за да не се минава през цялата история до lastAdded: стъпката, чиято дата
+// е най-много до lastAdded (с една назад за сигурност). Предложените дати така и така са > lastAdded.
+const getFirstStep = (item, start, last) => {
+  if (!last || last <= start) return 0;
+  let step;
+  if (item.period === "monthly") {
+    step = (last.getFullYear() - start.getFullYear()) * 12 + last.getMonth() - start.getMonth();
+  } else if (item.period === "yearly") {
+    step = last.getFullYear() - start.getFullYear();
+  } else {
+    const days = Math.round(
+      (Date.UTC(last.getFullYear(), last.getMonth(), last.getDate()) -
+        Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000
+    );
+    const size = item.period === "weekly" ? 7 : item.period === "daily" ? 1 : getCustomDays(item);
+    step = Math.floor(days / size);
+  }
+  return Math.max(0, step - 1);
+};
+
+// Изчислява всички чакащи дати за дадена повтаряща се транзакция: датите от графика (от началната
+// дата със същата стъпка), които са след lastAdded, не са след днес и не са след крайната дата.
+// Смяната на началната дата мести графика; вече добавените периоди (≤ lastAdded) не се предлагат пак
+// (одит 2026-10, 4-11 (б), вариант Б). Най-много MAX_PENDING наведнъж — останалите при следващото.
 export const getPendingDates = (item, today) => {
   const todayDate = today || parseDate(getTodayString());
   const start = parseDate(item.startDate);
-  if (!start) return [];
+  if (!start || isNaN(start)) return [];
   const end = item.endDate ? parseDate(item.endDate) : null;
   const last = item.lastAdded ? parseDate(item.lastAdded) : null;
 
-  const originalDay = start.getDate();
-
-  let current = last ? new Date(last) : new Date(start);
-  if (last) {
-    current = getNextDate(item, current, originalDay);
-  }
-
   const pending = [];
-  let safety = 0;
-  while (current <= todayDate && safety < 366) {
-    safety++;
+  let step = getFirstStep(item, start, last);
+  for (let n = 0; n < MAX_STEPS && pending.length < MAX_PENDING; n++, step++) {
+    const current = getScheduleDate(item, start, step);
+    if (!(current <= todayDate)) break;
     if (end && current > end) break;
-    if (current >= start) {
-      pending.push(formatDate(current));
-    }
-    current = getNextDate(item, current, originalDay);
+    if (!last || current > last) pending.push(formatDate(current));
   }
   return pending;
-};
-
-const getNextDate = (item, from, originalDay) => {
-  const next = new Date(from);
-  if (item.period === "weekly") {
-    next.setDate(next.getDate() + 7);
-  } else if (item.period === "monthly") {
-    const newMonth = next.getMonth() + 1;
-    const newYear = newMonth > 11 ? next.getFullYear() + 1 : next.getFullYear();
-    const targetMonth = newMonth % 12; // 0=януари, ..., 11=декември
-    const maxDay = new Date(newYear, targetMonth + 1, 0).getDate();
-    next.setDate(1);
-    next.setMonth(newMonth);
-    next.setDate(Math.min(originalDay ?? next.getDate(), maxDay));
-  } else if (item.period === "yearly") {
-    next.setFullYear(next.getFullYear() + 1);
-  } else if (item.period === "daily") {
-    next.setDate(next.getDate() + 1);
-  } else {
-    // custom — брой дни, по подразбиране 1
-    const days = item.customDays || 1;
-    next.setDate(next.getDate() + days);
-  }
-  return next;
 };
 
 const formatDate = (date) => {

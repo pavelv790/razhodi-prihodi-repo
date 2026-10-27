@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { X, Plus, Trash2, Edit2, Check, RefreshCw } from "lucide-react";
 import { getTodayString, isValidDate } from "../utils/formatters";
 import DateInput from "./DateInput";
+import { getCustomDays } from "../hooks/useRecurring";
 
 const PERIOD_LABELS = {
   daily: "Всеки ден",
@@ -55,7 +56,7 @@ const RecurringModal = ({
     if (!form.variableAmount && (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0)) { setError("Въведете валидна сума."); return; }
     if (!form.startDate || !isValidDate(form.startDate)) { setError("Въведете валидна начална дата (ДД/ММ/ГГГГ)."); return; }
     if (form.endDate && !isValidDate(form.endDate)) { setError("Въведете валидна крайна дата (ДД/ММ/ГГГГ) или я оставете празна."); return; }
-    if (form.period === "custom" && (!form.customDays || Number(form.customDays) < 1)) { setError("Въведете брой дни."); return; }
+    if (form.period === "custom" && (!form.customDays || !Number.isInteger(Number(form.customDays)) || Number(form.customDays) < 1)) { setError("Брой дни трябва да е цяло число, не по-малко от 1."); return; }
     if (form.endDate && form.startDate && form.endDate.length === 10 && form.startDate.length === 10) {
       const [ed, em, ey] = form.endDate.split("/").map(Number);
       const [sd, sm, sy] = form.startDate.split("/").map(Number);
@@ -107,7 +108,7 @@ const RecurringModal = ({
       startDate: item.startDate,
       endDate: item.endDate || "",
       period: item.period,
-      customDays: item.customDays || 1,
+      customDays: getCustomDays(item),
     });
     setCategorySearch(item.category);
     setShowForm(true);
@@ -123,7 +124,10 @@ const RecurringModal = ({
   };
 
   const periodLabel = (item) => {
-    if (item.period === "custom") return `Всеки ${item.customDays} ${item.customDays === 1 ? "ден" : "дни"}`;
+    if (item.period === "custom") {
+      const days = getCustomDays(item);
+      return `Всеки ${days} ${days === 1 ? "ден" : "дни"}`;
+    }
     return PERIOD_LABELS[item.period] || item.period;
   };
 
@@ -285,7 +289,7 @@ const RecurringModal = ({
                 {form.period === "custom" && (
                   <div className="mt-2">
                     <label className="block text-xs text-gray-500 mb-1">Брой дни</label>
-                    <input type="number" min="1" value={form.customDays}
+                    <input type="number" min="1" step="1" value={form.customDays}
                       onChange={(e) => setForm((p) => ({ ...p, customDays: e.target.value }))}
                       className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-300"
                     />
