@@ -288,18 +288,32 @@ const App = () => {
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
+  // Отворен е блокиращ прозорец (без чакащите и напомнянето за копие): чакащите изчакват затварянето му,
+  // напомнянето за копие — също. Автоматичните прозорци за състояние (autoUploadNotice, съобщенията
+  // на Drive/Облака) са над всички с z-index и не се броят (одит 2026-10, 6-09)
+  const otherModalOpen = !!(
+    showRecurringModal || showConflictModal || showRestoreConfirm || showRestoreDuplicates ||
+    showAddNewProfilesConfirm || restoreInProgress || cloudBackupChoices || showDeleteAll ||
+    confirmDialog || showProfileModal || showBudget || showCategoryManager || showImportExport ||
+    showCharts || showMonthlyStats || showUserGuide || showMergeModal || showCopyModal ||
+    showRestoreDone || restoreError || showCrossServiceWarning
+  );
+  // Напомнянето за копие се вижда само когато няма друг отворен прозорец; иначе остава „на опашка“ и
+  // излиза след затварянето му, а датата на последното напомняне се записва чак при показването
+  const weeklyBackupVisible = showWeeklyBackup && !showPendingModal && !otherModalOpen;
+  useEffect(() => {
+    if (weeklyBackupVisible) localStorage.setItem("last_backup_reminder_date", new Date().toISOString());
+  }, [weeklyBackupVisible]);
   useEffect(() => {
     // Само със списъка на текущия профил — иначе след смяна се предлагат чакащите на предишния (1А-02)
     if (!activeProfileId || !recurringLoaded || recurringItems.length === 0) return;
-    if (showRecurringModal) return;
-    if (showPendingModal) return;
-    if (showConflictModal || showRestoreConfirm || showRestoreDuplicates || showAddNewProfilesConfirm || restoreInProgress) return;
+    if (showPendingModal || weeklyBackupVisible || otherModalOpen) return;
     const pending = getPendingTransactions();
     if (pending.length > 0) {
       setPendingRecurring(pending);
       setShowPendingModal(true);
     }
-  }, [activeProfileId, recurringLoaded, recurringItems, pendingCheckDay, showRecurringModal, showConflictModal, showRestoreConfirm, showRestoreDuplicates, showAddNewProfilesConfirm, restoreInProgress]);
+  }, [activeProfileId, recurringLoaded, recurringItems, pendingCheckDay, otherModalOpen, weeklyBackupVisible]);
   const driveSnapshotRef = useRef(null);
   const supabaseSnapshotRef = useRef(null);
   // Пауза на авто-качването след „Не качвай“ в пазача за рязък спад (до следващо отваряне)
@@ -788,8 +802,9 @@ const App = () => {
       shouldShow = monthsDiff >= 3;
     }
 
+    // Датата се записва при показването (ефектът за weeklyBackupVisible) — ако чакащите или друг прозорец
+    // са отворени, напомнянето изчаква, а при затваряне на приложението дотогава не се губи
     if (shouldShow) {
-      localStorage.setItem("last_backup_reminder_date", now.toISOString());
       setTimeout(() => setShowWeeklyBackup(true), 500);
     }
   }, [transactions, expenseCategories, incomeCategories]);
@@ -2710,7 +2725,7 @@ const App = () => {
         </div>
       )}
 
-      {showWeeklyBackup && (
+      {weeklyBackupVisible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100">
