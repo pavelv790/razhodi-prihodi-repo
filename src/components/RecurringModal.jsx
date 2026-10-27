@@ -38,6 +38,7 @@ const RecurringModal = ({
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   // Второ натискане на „Добави“/„Запази“, докато тече записът, не създава втори запис (одит 2026-10, 1Б-02).
@@ -79,22 +80,43 @@ const RecurringModal = ({
 
     submittingRef.current = true;
     setSaving(true);
+    // onAdd/onEdit връщат true/false; при провал формата остава отворена с въведеното (одит 2026-10, 7-10)
+    let saved = false;
     try {
-      if (editingId) {
-        await onEdit(editingId, item);
-      } else {
-        await onAdd(item);
-      }
-      setForm(emptyForm());
-      setCategorySearch("");
-      setShowForm(false);
-      setEditingId(null);
-      setError("");
+      saved = editingId ? await onEdit(editingId, item) : await onAdd(item);
     } catch (err) {
       console.error("Грешка при запис на повтаряща се транзакция", err);
     }
     submittingRef.current = false;
     setSaving(false);
+    if (!saved) { setError("Записът не мина — опитайте отново."); return; }
+    setForm(emptyForm());
+    setCategorySearch("");
+    setShowForm(false);
+    setEditingId(null);
+    setError("");
+  };
+
+  const handleDelete = async (id) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSaving(true);
+    let deleted = false;
+    try {
+      deleted = await onDelete(id);
+    } catch (err) {
+      console.error("Грешка при изтриване на повтаряща се транзакция", err);
+    }
+    submittingRef.current = false;
+    setSaving(false);
+    if (!deleted) { setDeleteError("Записът не беше изтрит — опитайте отново."); return; }
+    setConfirmDeleteId(null);
+    setDeleteError("");
+  };
+
+  const openDeleteConfirm = (id) => {
+    setDeleteError("");
+    setConfirmDeleteId(id);
   };
 
   const handleStartEdit = (item) => {
@@ -161,11 +183,12 @@ const RecurringModal = ({
               {confirmDeleteId === item.id ? (
                 <div className="px-3 py-3 space-y-2">
                   <p className="text-xs text-red-600 font-medium">⚠️ Изтриване на „{item.category}"?</p>
+                  {deleteError && <p className="text-xs text-red-500">{deleteError}</p>}
                   <div className="flex gap-2">
-                    <button onClick={() => { onDelete(item.id); setConfirmDeleteId(null); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition">
+                    <button onClick={() => handleDelete(item.id)} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-40">
                       <Trash2 className="w-3 h-3" /> Да, изтрий
                     </button>
-                    <button onClick={() => setConfirmDeleteId(null)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+                    <button onClick={() => { setConfirmDeleteId(null); setDeleteError(""); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
                       <X className="w-3 h-3" /> Откажи
                     </button>
                   </div>
@@ -191,7 +214,7 @@ const RecurringModal = ({
                     <button onClick={() => handleStartEdit(item)} className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button onClick={() => setConfirmDeleteId(item.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
+                    <button onClick={() => openDeleteConfirm(item.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>

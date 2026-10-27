@@ -10,16 +10,27 @@ const loadByProfile = async (profileId) => {
   return all.filter((r) => r.profileId === profileId);
 };
 
+// Връщат true/false: списъкът в state се сменя само при успех (одит 2026-10, 7-10)
 const saveOne = async (item) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.put(item));
-  } catch (err) { reportDBError(); console.error("Грешка при запис на повтаряща се транзакция", err); }
+    return true;
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при запис на повтаряща се транзакция", err);
+    return false;
+  }
 };
 
 const deleteOne = async (id) => {
   try {
     await runTx(STORE, "readwrite", (store) => store.delete(id));
-  } catch (err) { reportDBError(); console.error("Грешка при изтриване на повтаряща се транзакция", err); }
+    return true;
+  } catch (err) {
+    reportDBError();
+    console.error("Грешка при изтриване на повтаряща се транзакция", err);
+    return false;
+  }
 };
 
 // При грешка отхвърля, за да спре изтриването на профила
@@ -139,6 +150,8 @@ export const useRecurring = (profileId) => {
     return () => { cancelled = true; };
   }, [profileId]);
 
+  // addRecurring / editRecurring / deleteRecurring връщат true/false и сменят списъка само при
+  // успешен запис в базата (одит 2026-10, 7-10)
   const addRecurring = async (item) => {
     const newItem = {
       ...item,
@@ -146,9 +159,9 @@ export const useRecurring = (profileId) => {
       profileId,
       lastAdded: null,
     };
-    await saveOne(newItem);
+    if (!(await saveOne(newItem))) return false;
     setRecurringItems((prev) => [...prev, newItem]);
-    return newItem;
+    return true;
   };
 
   const editRecurring = async (id, updates) => {
@@ -156,13 +169,15 @@ export const useRecurring = (profileId) => {
       r.id === id ? { ...r, ...updates } : r
     );
     const item = updated.find((r) => r.id === id);
-    await saveOne(item);
+    if (!(await saveOne(item))) return false;
     setRecurringItems(updated);
+    return true;
   };
 
   const deleteRecurring = async (id) => {
-    await deleteOne(id);
+    if (!(await deleteOne(id))) return false;
     setRecurringItems((prev) => prev.filter((r) => r.id !== id));
+    return true;
   };
 
   // Чете записите от базата, а не от списъка на текущия рендер: така се маркира записът на профила,
