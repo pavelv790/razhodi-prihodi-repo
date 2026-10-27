@@ -8,16 +8,23 @@ import {
   downloadBackupFileFromDrive,
   restoreSessionFromSupabase,
   setAccessToken,
+  clearAccessToken,
 } from "../utils/googleDrive";
 import { supabase } from "../utils/supabase";
+import { isGoogleSession } from "../utils/authSession";
 import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "google_drive_settings";
 
 export function useGoogleDrive() {
+  // connected — Supabase сесията е от вход през Google (Drive е избран и остава избран);
+  // needsReconnect — ключът за достъп до Drive е изтекъл (≈1 ч след входа): качването и
+  // възстановяването чакат „Свържи отново“, изборът за автоматично качване се пази (3-02)
   const [connected, setConnected] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
   const connectedRef = useRef(false);
   const selfDisconnectUntilRef = useRef(0);
+  const reconnectPromptedRef = useRef(false);
   const setConnectedBoth = (val) => { connectedRef.current = val; setConnected(val); };
   const [autoSync, setAutoSync] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -47,7 +54,10 @@ export function useGoogleDrive() {
     const restore = async () => {
       try {
         const restored = await restoreSessionFromSupabase();
-        if (restored) setConnectedBoth(true);
+        if (restored) {
+          setConnectedBoth(true);
+          setNeedsReconnect(!isSignedIn());
+        }
       } catch (err) {
         // няма интернет или Supabase не е достъпен
       }
@@ -58,12 +68,16 @@ export function useGoogleDrive() {
     try {
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         if (_event === "PASSWORD_RECOVERY") return;
-        if (session?.provider_token) {
-          setAccessToken(session.provider_token);
+        if (isGoogleSession(session)) {
+          // при опресняване на сесията provider_token липсва — Drive остава свързан
+          if (session.provider_token) setAccessToken(session.provider_token);
           setConnectedBoth(true);
+          setNeedsReconnect(!isSignedIn());
         } else {
           const wasConnected = connectedRef.current;
+          clearAccessToken();
           setConnectedBoth(false);
+          setNeedsReconnect(false);
           const isSelfDisconnect = Date.now() < selfDisconnectUntilRef.current;
           if (wasConnected && !isSelfDisconnect && !isExpectedServiceSwitch()) {
             showMessage("🔌 Връзката с Google Drive беше прекъсната. Свържете се отново, ако желаете.");
@@ -106,6 +120,7 @@ export function useGoogleDrive() {
     markExpectedServiceSwitch();
     signOutFromGoogle();
     setConnectedBoth(false);
+    setNeedsReconnect(false);
     setAutoSync("off");
     saveSettings("off");
     showMessage("🔌 Не сте свързани с Google Drive.");
@@ -116,11 +131,31 @@ export function useGoogleDrive() {
     saveSettings(val);
   };
 
+  // Ключът за Drive е изтекъл: прозорец „Свържи отново“ (message === "reconnect").
+  // При автоматично качване (auto) — само веднъж на отваряне на приложението, после тихо.
+  const promptReconnect = useCallback((auto = false) => {
+    setNeedsReconnect(true);
+    if (auto && reconnectPromptedRef.current) return;
+    reconnectPromptedRef.current = true;
+    setMessage("reconnect");
+  }, []);
+
+  // Преди заявка към Drive: има ли валиден ключ (ако не — „Свържи отново“ или „Първо се свържете“)
+  const requireToken = useCallback(() => {
+    if (isSignedIn()) return true;
+    if (connectedRef.current) promptReconnect();
+    else showMessage("❌ Първо се свържете с Google Drive.");
+    return false;
+  }, [promptReconnect]);
+
+  // Грешка от Drive: при отхвърлен ключ (401 → ключът е изчистен) — „Свържи отново“
+  const showDriveError = useCallback((err) => {
+    if (!isSignedIn() && connectedRef.current) promptReconnect();
+    else showMessage("❌ " + err.message);
+  }, [promptReconnect]);
+
   const uploadBackup = useCallback(async (backupData, profileName) => {
-    if (!isSignedIn()) {
-      showMessage("❌ Сесията е изтекла. Свържете се отново с Google Drive.");
-      return false;
-    }
+    if (!requireToken()) return false;
     setUploadLoading(true);
     setMessage("");
     try {
@@ -129,21 +164,18 @@ export function useGoogleDrive() {
       showMessage("✅ Качено резервно копие в Google Drive.");
       return true;
     } catch (err) {
-      showMessage("❌ " + err.message);
+      showDriveError(err);
       return false;
     } finally {
       setUploadLoading(false);
     }
-  }, []);
+  }, [requireToken, showDriveError]);
 
   // Връща списъка с копия (виж listBackupsFromDrive) или null при грешка.
   // При 0 копия — съобщение и null; с beforeUpload (проверка преди първо качване) — [] без
   // съобщение и без „Изтегляне...“ на бутона за възстановяване.
   const listBackups = useCallback(async (profileName, { beforeUpload = false } = {}) => {
-    if (!isSignedIn()) {
-      showMessage("❌ Първо се свържете с Google Drive.");
-      return null;
-    }
+    if (!requireToken()) return null;
     if (!beforeUpload) setDownloadLoading(true);
     setMessage("");
     try {
@@ -154,18 +186,15 @@ export function useGoogleDrive() {
       }
       return copies;
     } catch (err) {
-      showMessage("❌ " + err.message);
+      showDriveError(err);
       return null;
     } finally {
       if (!beforeUpload) setDownloadLoading(false);
     }
-  }, []);
+  }, [requireToken, showDriveError]);
 
   const downloadBackup = useCallback(async (fileId) => {
-    if (!isSignedIn()) {
-      showMessage("❌ Първо се свържете с Google Drive.");
-      return null;
-    }
+    if (!requireToken()) return null;
     setDownloadLoading(true);
     setMessage("");
     try {
@@ -173,15 +202,18 @@ export function useGoogleDrive() {
       showMessage("✅ Резервно копие изтеглено успешно.");
       return data;
     } catch (err) {
-      showMessage("❌ " + err.message);
+      showDriveError(err);
       return null;
     } finally {
       setDownloadLoading(false);
     }
-  }, []);
+  }, [requireToken, showDriveError]);
 
   return {
     connected,
+    needsReconnect,
+    hasToken: isSignedIn,
+    promptReconnect,
     autoSync,
     uploadLoading,
     downloadLoading,

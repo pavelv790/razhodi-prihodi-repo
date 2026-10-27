@@ -1,9 +1,28 @@
 import { supabase } from "./supabase";
+import { isGoogleSession } from "./authSession";
 
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_NAME = "Finances_Backup";
 
+// Ключът за достъп до Drive (`provider_token`) идва само веднъж — веднага след вход през Google —
+// и важи 1 час. Пази се отделно от Supabase сесията (там изчезва при опресняването ѝ), с малък резерв
+// преди изтичане (одит 2026-10, 3-02). След изтичане е нужно ново свързване.
+const TOKEN_KEY = "google_drive_token";
+const TOKEN_LIFETIME_MS = 55 * 60 * 1000;
+
 let accessToken = null;
+let accessTokenExpiresAt = 0;
+
+try {
+  // зарежда се и изтекъл ключ: ако сесията го подаде пак, срокът му остава старият
+  const saved = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
+  if (saved?.token && Number.isFinite(saved.expiresAt)) {
+    accessToken = saved.token;
+    accessTokenExpiresAt = saved.expiresAt;
+  }
+} catch {
+  // повреден запис — ще е нужно ново свързване
+}
 
 export async function signInWithGoogle() {
   const { data, error } = await supabase.auth.signInWithOAuth({
@@ -17,26 +36,48 @@ export async function signInWithGoogle() {
   return data;
 }
 
+// true, ако текущата Supabase сесия е от вход през Google (Drive е свързан) — дори ключът
+// за достъп да е изтекъл (тогава isSignedIn() е false и е нужно ново свързване)
 export async function restoreSessionFromSupabase() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session?.provider_token) {
-    accessToken = session.provider_token;
-    return true;
+  if (!isGoogleSession(session)) {
+    clearAccessToken();
+    return false;
   }
-  return false;
+  if (session.provider_token) setAccessToken(session.provider_token);
+  return true;
 }
 
 export function signOutFromGoogle() {
-  accessToken = null;
+  clearAccessToken();
   supabase.auth.signOut();
 }
 
+// Има валиден (неизтекъл) ключ за достъп до Drive
 export function isSignedIn() {
-  return !!accessToken;
+  return !!accessToken && Date.now() < accessTokenExpiresAt;
 }
 
 export function setAccessToken(token) {
+  // същият ключ идва пак (напр. при презареждане до 1 час след входа) — срокът му не се удължава
+  if (token === accessToken && accessTokenExpiresAt) return;
   accessToken = token;
+  accessTokenExpiresAt = Date.now() + TOKEN_LIFETIME_MS;
+  try {
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, expiresAt: accessTokenExpiresAt }));
+  } catch {
+    // без запис — ключът важи до презареждане
+  }
+}
+
+export function clearAccessToken() {
+  accessToken = null;
+  accessTokenExpiresAt = 0;
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // няма достъп до localStorage
+  }
 }
 
 // URL за търсене на файлове; параметрите се кодират (иначе „&“, „#“, „+“ в името на профила
@@ -70,6 +111,8 @@ async function getOrCreateFolder() {
 async function checkDriveResponse(res) {
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
+      // 401 — Google вече не приема ключа (изтекъл/отнет): нужно е ново свързване (3-02)
+      if (res.status === 401) clearAccessToken();
       throw new Error("Сесията е изтекла. Свържете се отново с Google Drive.");
     }
     throw new Error(`Грешка от Google Drive (код ${res.status}).`);

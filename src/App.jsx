@@ -212,6 +212,9 @@ const App = () => {
   );
   const {
     connected: driveConnected,
+    needsReconnect: driveNeedsReconnect,
+    hasToken: driveHasToken,
+    promptReconnect: drivePromptReconnect,
     autoSync: driveAutoSync,
     uploadLoading: driveUploadLoading,
     downloadLoading: driveDownloadLoading,
@@ -687,10 +690,13 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
+        // ключът за Drive е изтекъл (3-02): „Свържи отново“ веднъж на отваряне, без опит за качване
+        if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
         const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
-        if (success === false) {
+        // без ключ (изтекъл/отхвърлен) прозорецът „Свържи отново“ вече е показан
+        if (success === false && driveHasToken()) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
       }, 1500);
@@ -702,6 +708,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
+        // ключът за Drive е изтекъл (3-02): „Свържи отново“ веднъж на отваряне, без опит за качване
+        if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
         const success = await autoUploadWithGuard("drive", backup, async () => {
@@ -709,7 +717,8 @@ const App = () => {
           if (ok) driveMarkDailyDone();
           return ok;
         }, profileNameAtTrigger, profileIdAtTrigger);
-        if (success === false) {
+        // без ключ (изтекъл/отхвърлен) прозорецът „Свържи отново“ вече е показан
+        if (success === false && driveHasToken()) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
         }
       }, 1500);
@@ -1610,7 +1619,30 @@ const App = () => {
           </div>
         </div>
       )}
-      {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && (
+      {driveMessage === "reconnect" && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-orange-200">
+              <h2 className="text-base font-semibold text-orange-700">🔌 Връзката с Google Drive изтече</h2>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
+                <p className="text-sm text-orange-700">
+                  Google пази връзката с Drive около 1 час. Докато не се свържете отново, копия в Google Drive не се качват и не могат да се възстановяват. Изборът ви за автоматично качване е запазен.
+                </p>
+              </div>
+              <button
+                onClick={() => { driveSetMessage(""); driveConnect(); }}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
+              >
+                🔗 Свържи отново
+              </button>
+              <button onClick={() => driveSetMessage("")} className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">Не сега</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && driveMessage !== "reconnect" && (
         <>
           {driveMessage.startsWith("✅") ? (
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
@@ -1941,10 +1973,24 @@ const App = () => {
                     </>
                   ) : (
                     <>
+                      {driveNeedsReconnect && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2 mb-2">
+                          <p className="text-xs text-orange-700 font-semibold mb-0.5">🔌 Връзката с Google Drive изтече</p>
+                          <p className="text-xs text-orange-600 mb-2">
+                            Копия в Google Drive не се качват, докато не се свържете отново. Изборът за автоматично качване е запазен.
+                          </p>
+                          <button
+                            onClick={driveConnect}
+                            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition w-full"
+                          >
+                            🔗 Свържи отново
+                          </button>
+                        </div>
+                      )}
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">
                         <p className="text-xs text-amber-700 font-semibold mb-0.5">⏱️ Забележка за връзката с Google</p>
                         <p className="text-xs text-amber-600">
-                          Връзката с Google може да се прекъсне в два случая: (1) ако не сте качвали нищо повече от <strong>1 час</strong> — следващото качване може да се провали; (2) ако не сте отваряли приложението повече от <strong>седмица</strong> — ще трябва да се свържете отново. При проблем натиснете "Изключи Google Drive" и се свържете отново. За постоянна връзка без прекъсвания използвайте качване на резервно копие в Облака.
+                          Google пази връзката с Drive около <strong>1 час</strong>. След това качването (и автоматичното) спира, докато не натиснете „Свържи отново“ — приложението ще ви подкани, а изборът за автоматично качване се запазва. За постоянна връзка без прекъсвания използвайте резервно копие в Облака.
                         </p>
                       </div>
                       <div className="flex flex-col gap-1 px-1 py-1 mb-1">
@@ -2663,6 +2709,9 @@ const App = () => {
                   setShowCrossServiceWarning(null);
                   markExpectedServiceSwitch();
                   if (action === "toDrive") {
+                    // Облакът се изключва изрично — иначе остава „активиран“ и при сесия от
+                    // Google може да качва финансови данни в Supabase (одит 2026-10, 3-02)
+                    supabaseDisable();
                     setShowDataPanel(true);
                     driveConnect();
                   } else {

@@ -12,6 +12,7 @@ import {
   resetPassword,
 } from "../utils/supabaseAuth";
 import { supabase } from "../utils/supabase";
+import { isGoogleSession } from "../utils/authSession";
 import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
 
 const STORAGE_KEY = "supabase_storage_settings";
@@ -50,7 +51,7 @@ export function useSupabaseStorage() {
     const check = async () => {
       try {
         const session = await getCurrentSession();
-        if (session?.user && !session?.provider_token) {
+        if (session?.user && !isGoogleSession(session)) {
           setConnectedBoth(true);
         }
       } catch (err) {
@@ -62,9 +63,10 @@ export function useSupabaseStorage() {
     let subscription;
     try {
       const { data } = supabase.auth.onAuthStateChange((event, session) => {
-        // Сесия с provider_token е вход през Google (Drive), не през имейл/парола (Облак) —
-        // не я броим като връзка с Облака, дори да е валидна сесия.
-        const isConnected = !!session?.user && !session?.provider_token;
+        // Сесия от вход през Google (Drive), не през имейл/парола (Облак) — не я броим като
+        // връзка с Облака, дори да е валидна. Разпознава се по начина на вход, не по
+        // provider_token: той изчезва при опресняване на сесията (одит 2026-10, 3-02).
+        const isConnected = !!session?.user && !isGoogleSession(session);
         if (!isConnected) {
           const wasConnected = connectedRef.current;
           setConnectedBoth(false);
