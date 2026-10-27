@@ -44,6 +44,12 @@ const ensureSaved = (ok) => {
   if (ok === false) throw new Error("Записът в базата не успя.");
 };
 
+// Резервното копие се прави цяло или изобщо не (одит 2026-10, 7-02)
+const BACKUP_READ_ERROR = "Данните на устройството не могат да бъдат прочетени — резервното копие не е направено.";
+const BACKUP_STORES = ["categories", "transactions", "saved_filters", "recurring", "currency", "budgets"];
+const autoUploadReadError = (where) =>
+  `⚠️ Автоматичното качване в ${where} не беше направено: данните на устройството не могат да бъдат прочетени.`;
+
 const App = () => {
   const {
     profiles,
@@ -84,7 +90,7 @@ const App = () => {
   } = useCategories(activeProfileId);
   const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
-  const { budgets, updateBudgets, restoreBudgets } = useBudgets(activeProfileId);
+  const { budgets, updateBudgets, restoreBudgets, isLoaded: budgetsLoaded } = useBudgets(activeProfileId);
   const {
     recurringItems,
     addRecurring,
@@ -94,6 +100,7 @@ const App = () => {
     deleteAllByProfile: deleteAllRecurringByProfile,
     restoreRecurring,
     getPendingTransactions,
+    isLoaded: recurringLoaded,
   } = useRecurring(activeProfileId);
 
   const [editingTransaction, setEditingTransaction] = useState(null);
@@ -602,7 +609,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const backup = await buildBackupData();
+        let backup;
+        try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
         const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
         if (success === false) {
           driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
@@ -616,7 +624,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const backup = await buildBackupData();
+        let backup;
+        try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
         const success = await autoUploadWithGuard("drive", backup, async () => {
           const ok = await uploadToDrive(backup, profileNameAtTrigger);
           if (ok) driveMarkDailyDone();
@@ -648,7 +657,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const backup = await buildBackupData();
+        let backup;
+        try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
         await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger), profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
@@ -659,7 +669,8 @@ const App = () => {
       const profileIdAtTrigger = activeProfileId;
       const timer = setTimeout(async () => {
         if (!profileNameAtTrigger) return;
-        const backup = await buildBackupData();
+        let backup;
+        try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
         await autoUploadWithGuard("supabase", backup, async () => {
           const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger);
           if (ok) supabaseMarkDailyDone();
@@ -985,74 +996,52 @@ const App = () => {
     addCategoriesFromImport("expense", expenseCategories);
     addCategoriesFromImport("income", incomeCategories);
   };
+  // Всяко четене минава през runTx; грешка хвърля BACKUP_READ_ERROR, вместо тихо да сложи празен
+  // списък — досега се сваляше копие с всички профили, но без транзакциите на неактивните (7-02).
+  // Данните на активния профил се вземат от паметта (там са и още незаписаните промени) само ако са
+  // заредени за него; докато профилът се зарежда (смяна на профил) — от базата, иначе копието
+  // беше без неговите транзакции (2А-12).
   const buildBackupData = async () => {
-    const db = await openDB();
-    const allCats = await new Promise((resolve) => {
-      const tx = db.transaction("categories", "readonly");
-      const req = tx.objectStore("categories").getAll();
-      req.onsuccess = () => {
-        const fromDB = (req.result || []).filter((t) => t.type !== activeProfileId);
-        resolve([...fromDB]);
-      };
-      req.onerror = () => resolve([]);
-    });
+    if (!profilesLoaded) throw new Error(BACKUP_READ_ERROR);
+    const activeReady = transactionsLoaded && categoriesLoaded && currencyLoaded && budgetsLoaded;
+    const read = {};
+    try {
+      for (const store of BACKUP_STORES) {
+        read[store] = (await runTx(store, "readonly", (s) => s.getAll())) || [];
+      }
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при четене на данните за резервно копие", err);
+      throw new Error(BACKUP_READ_ERROR);
+    }
+
     const allProfileCategories = {};
-    allCats.forEach((entry) => {
+    read.categories.forEach((entry) => {
       allProfileCategories[entry.type] = {
         expense: entry.categories?.expense || [],
         income: entry.categories?.income || [],
       };
     });
-    // Категориите на активния профил се вземат от state за да са най-актуални
-    allProfileCategories[activeProfileId] = { expense: expenseCategories, income: incomeCategories };
-    const allTransactions = await new Promise((resolve) => {
-      const tx = db.transaction("transactions", "readonly");
-      const req = tx.objectStore("transactions").getAll();
-      req.onsuccess = () => {
-        const fromDB = (req.result || []).filter((t) => t.profileId !== activeProfileId);
-        resolve([...fromDB, ...transactions]);
-      };
-      req.onerror = () => resolve(transactions);
-    });
-
-    const allSavedFilters = await new Promise((resolve) => {
-      const tx = db.transaction("saved_filters", "readonly");
-      const req = tx.objectStore("saved_filters").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
-      
-    const allRecurringItems = await new Promise((resolve) => {
-      const tx = db.transaction("recurring", "readonly");
-      const req = tx.objectStore("recurring").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
-
-    const allCurrencies = await new Promise((resolve) => {
-      const tx = db.transaction("currency", "readonly");
-      const req = tx.objectStore("currency").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
     const allProfileCurrencies = {};
-    allCurrencies.forEach((entry) => {
+    read.currency.forEach((entry) => {
       allProfileCurrencies[entry.id] = { currency: entry.currency, rate: entry.rate };
     });
-    allProfileCurrencies[activeProfileId] = { currency, rate };
-
-    const allBudgetsRecords = await new Promise((resolve) => {
-      const tx = db.transaction("budgets", "readonly");
-      const req = tx.objectStore("budgets").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => resolve([]);
-    });
     const allProfileBudgets = {};
-    allBudgetsRecords.forEach((entry) => {
+    read.budgets.forEach((entry) => {
       const { id, ...rest } = entry;
       allProfileBudgets[id] = rest;
     });
-    allProfileBudgets[activeProfileId] = budgets;
+    let allTransactions = read.transactions;
+    if (activeReady) {
+      allProfileCategories[activeProfileId] = { expense: expenseCategories, income: incomeCategories };
+      allProfileCurrencies[activeProfileId] = { currency, rate };
+      allProfileBudgets[activeProfileId] = budgets;
+      allTransactions = [...read.transactions.filter((t) => t.profileId !== activeProfileId), ...transactions];
+    } else if (!allProfileCategories[activeProfileId]) {
+      // Без запис в базата профилът ползва категориите по подразбиране (както useCategories)
+      allProfileCategories[activeProfileId] = { expense: DEFAULT_EXPENSE_CATEGORIES, income: DEFAULT_INCOME_CATEGORIES };
+    }
+    const activeCurrency = allProfileCurrencies[activeProfileId];
 
     return {
       version: "1.6",
@@ -1060,19 +1049,73 @@ const App = () => {
       profiles,
       activeProfileId,
       transactions: allTransactions,
-      expenseCategories,
-      incomeCategories,
+      expenseCategories: allProfileCategories[activeProfileId].expense,
+      incomeCategories: allProfileCategories[activeProfileId].income,
       profileCategories: allProfileCategories,
-      savedFilters: allSavedFilters,
-      currency,
-      rate,
-      budgets,
+      savedFilters: read.saved_filters,
+      // Без запис в базата (профилът не е зареден) — без валута и лимити: възстановяването не ги пипа
+      currency: activeCurrency?.currency,
+      rate: activeCurrency?.rate,
+      budgets: allProfileBudgets[activeProfileId],
       profileCurrencies: allProfileCurrencies,
       profileBudgets: allProfileBudgets,
-      recurringItems: allRecurringItems,
+      recurringItems: read.recurring,
     };
   };
-  
+
+  const downloadBackupFile = (data, onlyProfile = false) => {
+    exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories, data.profileCurrencies, data.profileBudgets, onlyProfile);
+    // Копие само на един профил не е пълно резервно копие — напомнянето за седмично копие остава
+    if (onlyProfile) return;
+    const now = new Date().toISOString();
+    localStorage.setItem("last_local_backup_date", now);
+    setLastLocalBackupDate(now);
+  };
+
+  // Резервен път при грешка в базата: само активният профил от паметта — точно това, което червената
+  // лента съветва да се спаси. Копието е цяло за този профил, а другите профили ги няма в него,
+  // затова възстановяването му не ги пипа (7-02).
+  const offerActiveProfileBackup = (message) => {
+    const inMemory = activeProfile && transactionsLoaded && categoriesLoaded && currencyLoaded && budgetsLoaded && filtersLoaded && recurringLoaded;
+    if (!inMemory) {
+      alert(message);
+      return;
+    }
+    const count = transactions.length;
+    setConfirmDialog({
+      title: "Резервното копие не е направено",
+      message: `${message} Мога да сваля само профил „${activeProfile.name}“ (${count} ${count === 1 ? "транзакция" : "транзакции"}) така, както се вижда на екрана. Другите профили няма да са в това копие.`,
+      confirmLabel: `Свали само „${activeProfile.name}“`,
+      tone: "warning",
+      onConfirm: () => downloadBackupFile({
+        profiles: profiles.filter((p) => p.id === activeProfileId),
+        activeProfileId,
+        transactions,
+        expenseCategories,
+        incomeCategories,
+        profileCategories: { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } },
+        savedFilters,
+        currency,
+        rate,
+        budgets,
+        profileCurrencies: { [activeProfileId]: { currency, rate } },
+        profileBudgets: { [activeProfileId]: budgets },
+        recurringItems,
+      }, true),
+    });
+  };
+
+  // Копие за ръчно качване; при грешка в базата — съобщение и null (нищо не се качва)
+  const backupForManualUpload = async (service) => {
+    try {
+      return await buildBackupData();
+    } catch (err) {
+      const setMessage = service === "drive" ? driveSetMessage : supabaseSetMessage;
+      setMessage(`❌ ${err.message} Нищо не е качено в ${UPLOAD_SERVICE_LABELS[service]}.`);
+      return null;
+    }
+  };
+
   // Ръчно „Запази в Google Drive / облака“: при първо качване от устройството и съществуващо
   // копие в облака — въпрос „Възстанови / Качи все пак“; при рязък спад — потвърждение.
   const manualUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
@@ -1101,12 +1144,14 @@ const App = () => {
     await doUpload();
   };
   const handleDriveUpload = async () => {
-    const backup = await buildBackupData();
+    const backup = await backupForManualUpload("drive");
+    if (!backup) return;
     const profileName = activeProfile?.name;
     await manualUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileName), profileName, activeProfileId);
   };
   const handleSupabaseUpload = async () => {
-    const backup = await buildBackupData();
+    const backup = await backupForManualUpload("supabase");
+    if (!backup) return;
     const profileName = activeProfile?.name;
     const profileId = activeProfileId;
     await manualUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileName, profileId), profileName, profileId);
@@ -1120,7 +1165,8 @@ const App = () => {
     const services = restoreUploadAskRef.current;
     restoreUploadAskRef.current = null;
     if (!services || !activeProfile?.name) return;
-    const backup = await buildBackupData();
+    const backup = await backupForManualUpload(services[0]);
+    if (!backup) return;
     const profileName = activeProfile.name;
     const profileId = activeProfileId;
     const where = services.map((s) => UPLOAD_SERVICE_LABELS[s]).join(" и в ");
@@ -1239,11 +1285,14 @@ const App = () => {
   };
 
   const handleBackupExport = async () => {
-    const data = await buildBackupData();
-    exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories, data.profileCurrencies, data.profileBudgets);
-    const now = new Date().toISOString();
-    localStorage.setItem("last_local_backup_date", now);
-    setLastLocalBackupDate(now);
+    let data;
+    try {
+      data = await buildBackupData();
+    } catch (err) {
+      offerActiveProfileBackup(err.message);
+      return;
+    }
+    downloadBackupFile(data);
   };
 
   const normalizeBackupProfileIds = (data) => {
@@ -2414,6 +2463,15 @@ const App = () => {
                     </h2>
                   </div>
                   <div className="px-5 pt-5 pb-3 space-y-3 overflow-y-auto min-h-0">
+                    {/* Копие само на един профил, свалено при грешка в базата (одит 2026-10, 7-02) */}
+                    {pendingBackup.onlyProfile && (
+                      <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                        <p className="text-sm text-blue-700 font-medium mb-1">ℹ️ Копие само на един профил</p>
+                        <p className="text-sm text-blue-600">
+                          Това копие е свалено при проблем с данните на устройството и съдържа само профил „{(pendingBackup.profiles || []).map((p) => p.name).join(", ")}“. Другите профили на устройството няма да бъдат променени.
+                        </p>
+                      </div>
+                    )}
                     {/* Без съвпадащи профили всички профили от копието са нови — локалните данни не се пипат (одит 2026-10, 2Б-02) */}
                     {conflictProfiles.length === 0 && (
                       <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
@@ -2601,12 +2659,8 @@ const App = () => {
               </p>
               <button
                 onClick={async () => {
-                  const data = await buildBackupData();
-                  exportBackup(data.transactions, data.expenseCategories, data.incomeCategories, data.savedFilters, data.currency, data.rate, data.budgets, data.profiles, data.activeProfileId, data.recurringItems, activeProfile?.name, data.profileCategories, data.profileCurrencies, data.profileBudgets);
-                  const now = new Date().toISOString();
-                  localStorage.setItem("last_local_backup_date", now);
-                  setLastLocalBackupDate(now);
                   setShowWeeklyBackup(false);
+                  await handleBackupExport();
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >

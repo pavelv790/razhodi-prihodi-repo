@@ -2,11 +2,13 @@ import { validCurrency } from "../hooks/useCurrency";
 
 const sanitizeFileName = (name) => (name || "").replace(/[\/\\:*?"<>|]/g, "-");
 
-export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName, allProfileCategories, profileCurrencies, profileBudgets) => {
+// onlyProfile: копие само на активния профил от паметта, свалено при грешка в базата (одит 2026-10, 7-02)
+export const exportBackup = (transactions, expenseCategories, incomeCategories, savedFilters, currency, rate, budgets, profiles, activeProfileId, recurringItems, profileName, allProfileCategories, profileCurrencies, profileBudgets, onlyProfile = false) => {
   const profileCategories = allProfileCategories || { [activeProfileId]: { expense: expenseCategories, income: incomeCategories } };
   const backup = {
     version: "1.6",
     date: new Date().toISOString(),
+    ...(onlyProfile ? { onlyProfile: true } : {}),
     profiles,
     activeProfileId,
     transactions,
