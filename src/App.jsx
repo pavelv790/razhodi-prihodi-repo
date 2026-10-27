@@ -2700,7 +2700,10 @@ const App = () => {
                 <p className="text-sm text-orange-700">
                   {showCrossServiceWarning === "toDrive"
                     ? "Google Drive и Облакът споделят една и съща връзка. Свързването с Google Drive ще изключи текущата връзка с Облака."
-                    : "Google Drive и Облакът споделят една и съща връзка. Влизането в Облака ще изключи текущата връзка с Google Drive."}
+                    : supabaseAuthMode === "register"
+                      // регистрация без сесия (потвърждение по имейл) не пипа Google сесията (3-12)
+                      ? "Google Drive и Облакът споделят една и съща връзка. Ако регистрацията ви впише веднага, връзката с Google Drive ще се изключи. Ако получите имейл за потвърждение, Google Drive остава свързан до първия ви вход в Облака."
+                      : "Google Drive и Облакът споделят една и съща връзка. Влизането в Облака ще изключи текущата връзка с Google Drive."}
                 </p>
               </div>
               <button
@@ -2720,7 +2723,7 @@ const App = () => {
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
               >
-                Продължи и изключи другата връзка
+                {showCrossServiceWarning === "toSupabase" && supabaseAuthMode === "register" ? "Продължи с регистрацията" : "Продължи и изключи другата връзка"}
               </button>
               <button
                 onClick={() => setShowCrossServiceWarning(null)}

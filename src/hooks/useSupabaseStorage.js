@@ -110,7 +110,7 @@ export function useSupabaseStorage() {
     if (msg.includes("signup requires an email")) return "Регистрацията изисква имейл адрес.";
     if (msg.includes("invalid email")) return "Невалиден имейл адрес.";
     if (msg.includes("should be different from the old password")) return "Новата парола трябва да се различава от старата.";
-    if (msg.includes("Email not confirmed")) return "Имейлът не е потвърден.";
+    if (msg.includes("Email not confirmed")) return "Имейлът не е потвърден. Отворете връзката в имейла, изпратен при регистрацията, и опитайте отново.";
     if (msg.includes("User already registered")) return "Вече съществува акаунт с този имейл.";
     if (msg.includes("Unable to validate email address")) return "Невалиден имейл адрес.";
     if (msg.includes("Email rate limit exceeded")) return "Твърде много опити. Опитайте по-късно.";
@@ -168,7 +168,16 @@ export function useSupabaseStorage() {
     setAuthError("");
     try {
       if (authMode === "register") {
-        await signUpWithEmail(authEmail, authPassword);
+        const data = await signUpWithEmail(authEmail, authPassword);
+        // При включено потвърждение по имейл Supabase връща потребител без сесия — не сме
+        // вписани, докато имейлът не се потвърди (одит 2026-10, 3-12). Същото връща и при вече
+        // регистриран имейл (нарочно, без грешка) — затова съобщението споменава и „Вход“.
+        if (!data?.session) {
+          setAuthMode("login");
+          setAuthPassword("");
+          setAuthError(`✅ Изпратихме имейл за потвърждение на ${authEmail}. Отворете връзката в него, после се върнете тук и натиснете „Влез в облака“. Ако вече имате акаунт с този имейл — направо влезте.`);
+          return;
+        }
         setConnectedBoth(true);
         setEnabled(true);
         localStorage.setItem("supabase_storage_enabled", "true");
