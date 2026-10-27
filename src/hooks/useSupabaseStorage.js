@@ -193,7 +193,13 @@ export function useSupabaseStorage() {
   const disconnectSupabase = async () => {
     selfDisconnectUntilRef.current = Date.now() + 5000;
     markExpectedServiceSwitch();
-    await signOutFromSupabase();
+    try {
+      await signOutFromSupabase();
+    } catch (err) {
+      // изходът не е направен (напр. няма връзка) — вписването и настройките остават (3-11)
+      showMessage(`❌ Изходът от Облака не е направен — ${err.message} Опитайте отново; дотогава сте вписани и настройките са непроменени.`);
+      return;
+    }
     setConnectedBoth(false);
     setEnabled(false);
     setAutoSync("off");

@@ -115,10 +115,16 @@ export function useGoogleDrive() {
     }
   };
 
-  const disconnect = () => {
+  const disconnect = async () => {
     selfDisconnectUntilRef.current = Date.now() + 5000;
     markExpectedServiceSwitch();
-    signOutFromGoogle();
+    try {
+      await signOutFromGoogle();
+    } catch (err) {
+      // изходът не е направен (напр. няма връзка) — връзката и настройките остават (3-11)
+      showMessage(`❌ Google Drive не е изключен — ${err.message} Опитайте отново; дотогава връзката и настройките са непроменени.`);
+      return;
+    }
     setConnectedBoth(false);
     setNeedsReconnect(false);
     setAutoSync("off");

@@ -12,8 +12,17 @@ export async function signInWithEmail(email, password) {
   return data;
 }
 
+// Изход само от това устройство: по подразбиране auth-js излиза от всички устройства на акаунта
+// (одит 2026-10, 3-11). При грешка (напр. няма връзка) auth-js не изтрива сесията — затова
+// хвърля: потребителят остава вписан и трябва да опита отново.
 export async function signOutFromSupabase() {
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) {
+    console.error(error);
+    throw new Error(/failed to fetch|networkerror|load failed/i.test(error.message || "")
+      ? "няма връзка с интернет."
+      : "сървърът не отговори както трябва.");
+  }
 }
 
 export async function getCurrentSession() {

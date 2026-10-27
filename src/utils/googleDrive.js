@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { isGoogleSession } from "./authSession";
+import { signOutFromSupabase } from "./supabaseAuth";
 
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
 const FOLDER_NAME = "Finances_Backup";
@@ -48,9 +49,10 @@ export async function restoreSessionFromSupabase() {
   return true;
 }
 
-export function signOutFromGoogle() {
+// Хвърля при неуспешен изход (виж signOutFromSupabase) — тогава ключът и връзката остават
+export async function signOutFromGoogle() {
+  await signOutFromSupabase();
   clearAccessToken();
-  supabase.auth.signOut();
 }
 
 // Има валиден (неизтекъл) ключ за достъп до Drive
