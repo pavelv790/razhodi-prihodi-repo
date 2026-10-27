@@ -9,6 +9,8 @@ import {
   restoreSessionFromSupabase,
   setAccessToken,
   clearAccessToken,
+  takeGoogleSignInError,
+  clearGoogleSignInPending,
 } from "../utils/googleDrive";
 import { supabase } from "../utils/supabase";
 import { isGoogleSession } from "../utils/authSession";
@@ -51,6 +53,14 @@ export function useGoogleDrive() {
   };
 
   useEffect(() => {
+    // Връщане от Google с отказ (`error=access_denied…` в адреса): signInWithOAuth само
+    // пренасочва и никога не хвърля, затова отказът се чете от адреса (3-14). Прозорецът
+    // „Още една стъпка“ не трябва да излиза при следващо свързване.
+    if (takeGoogleSignInError()) {
+      sessionStorage.removeItem("pending_auto_upload_notice_drive");
+      setMessage("blocked");
+    }
+
     const restore = async () => {
       try {
         const restored = await restoreSessionFromSupabase();
@@ -69,6 +79,7 @@ export function useGoogleDrive() {
       const { data } = supabase.auth.onAuthStateChange((_event, session) => {
         if (_event === "PASSWORD_RECOVERY") return;
         if (isGoogleSession(session)) {
+          clearGoogleSignInPending();
           // при опресняване на сесията provider_token липсва — Drive остава свързан
           if (session.provider_token) setAccessToken(session.provider_token);
           setConnectedBoth(true);

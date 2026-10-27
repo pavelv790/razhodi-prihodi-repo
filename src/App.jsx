@@ -2716,6 +2716,8 @@ const App = () => {
                     // Google може да качва финансови данни в Supabase (одит 2026-10, 3-02)
                     supabaseDisable();
                     setShowDataPanel(true);
+                    // както при прекия бутон — след връщането от Google да излезе „Още една стъпка“ (3-14)
+                    sessionStorage.setItem("pending_auto_upload_notice_drive", "1");
                     driveConnect();
                   } else {
                     supabaseConnectWithEmail();

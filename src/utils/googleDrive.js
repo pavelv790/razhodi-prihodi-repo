@@ -25,16 +25,74 @@ try {
   // повреден запис — ще е нужно ново свързване
 }
 
+// Белег „този раздел тръгна към Google“ — само тогава грешка в адреса се чете като отказ от
+// свързване (същият вид адрес идва и от развален линк за смяна на парола на Облака)
+const OAUTH_PENDING_KEY = "google_oauth_pending";
+const OAUTH_PENDING_MAX_MS = 15 * 60 * 1000;
+const OAUTH_ERROR_PARAMS = ["error", "error_code", "error_description"];
+
+function setOAuthPending(on) {
+  try {
+    if (on) sessionStorage.setItem(OAUTH_PENDING_KEY, String(Date.now()));
+    else sessionStorage.removeItem(OAUTH_PENDING_KEY);
+  } catch {
+    // без sessionStorage — отказът няма да се покаже
+  }
+}
+
 export async function signInWithGoogle() {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      scopes: SCOPES,
-      redirectTo: window.location.origin,
-    },
+  setOAuthPending(true);
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: SCOPES,
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (err) {
+    setOAuthPending(false);
+    throw err;
+  }
+}
+
+// Вход през Google е завършил — белегът вече не трябва
+export function clearGoogleSignInPending() {
+  setOAuthPending(false);
+}
+
+// При отказ в Google (или грешка на Supabase) потребителят се връща с `error=…` в адреса —
+// в query или в hash. auth-js не чисти адреса при грешка и нищо не съобщава (одит 2026-10, 3-14).
+// true, ако този раздел е започнал вход с Google и в адреса има грешка: белегът и грешката се
+// махат от адреса (да не се показва пак при презареждане). Иначе адресът не се пипа.
+export function takeGoogleSignInError() {
+  let startedAt = 0;
+  try {
+    startedAt = Number(sessionStorage.getItem(OAUTH_PENDING_KEY)) || 0;
+  } catch {
+    return false;
+  }
+  if (!startedAt) return false;
+
+  const url = new URL(window.location.href);
+  const hash = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
+  const hasError = OAUTH_ERROR_PARAMS.some((k) => url.searchParams.has(k) || hash.has(k));
+  if (!hasError) return false;
+
+  setOAuthPending(false);
+  OAUTH_ERROR_PARAMS.forEach((k) => {
+    url.searchParams.delete(k);
+    hash.delete(k);
   });
-  if (error) throw new Error(error.message);
-  return data;
+  const rest = hash.toString();
+  try {
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + (rest ? `#${rest}` : ""));
+  } catch {
+    // адресът остава — съобщението пак се показва веднъж
+  }
+  return Date.now() - startedAt < OAUTH_PENDING_MAX_MS;
 }
 
 // true, ако текущата Supabase сесия е от вход през Google (Drive е свързан) — дори ключът
