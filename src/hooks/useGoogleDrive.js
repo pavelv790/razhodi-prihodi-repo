@@ -172,7 +172,9 @@ export function useGoogleDrive() {
     else showMessage("❌ " + err.message);
   }, [promptReconnect]);
 
-  const uploadBackup = useCallback(async (backupData, profileName) => {
+  // auto — авто-качване: без мрежа нищо не се показва, промяната остава некачена и се пробва
+  // пак (одит 2026-10, 3-10)
+  const uploadBackup = useCallback(async (backupData, profileName, { auto = false } = {}) => {
     if (!requireToken()) return false;
     setUploadLoading(true);
     setMessage("");
@@ -182,7 +184,7 @@ export function useGoogleDrive() {
       showMessage("✅ Качено резервно копие в Google Drive.");
       return true;
     } catch (err) {
-      showDriveError(err);
+      if (!(auto && err.network)) showDriveError(err);
       return false;
     } finally {
       setUploadLoading(false);
@@ -192,7 +194,7 @@ export function useGoogleDrive() {
   // Връща списъка с копия (виж listBackupsFromDrive) или null при грешка.
   // При 0 копия — съобщение и null; с beforeUpload (проверка преди първо качване) — [] без
   // съобщение и без „Изтегляне...“ на бутона за възстановяване.
-  const listBackups = useCallback(async (profileName, { beforeUpload = false } = {}) => {
+  const listBackups = useCallback(async (profileName, { beforeUpload = false, auto = false } = {}) => {
     if (!requireToken()) return null;
     if (!beforeUpload) setDownloadLoading(true);
     setMessage("");
@@ -204,7 +206,7 @@ export function useGoogleDrive() {
       }
       return copies;
     } catch (err) {
-      showDriveError(err);
+      if (!(auto && err.network)) showDriveError(err);
       return null;
     } finally {
       if (!beforeUpload) setDownloadLoading(false);

@@ -233,7 +233,9 @@ export function useSupabaseStorage() {
     saveSettings(val);
   };
 
-  const uploadBackup = useCallback(async (backupData, profileName, profileId) => {
+  // auto — авто-качване: без мрежа нищо не се показва, промяната остава некачена и се пробва
+  // пак (одит 2026-10, 3-10)
+  const uploadBackup = useCallback(async (backupData, profileName, profileId, { auto = false } = {}) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return false;
@@ -246,7 +248,7 @@ export function useSupabaseStorage() {
       showMessage("✅ Качено резервно копие в облака.");
       return true;
     } catch (err) {
-      showMessage("❌ " + err.message);
+      if (!(auto && err.network)) showMessage("❌ " + err.message);
       return false;
     } finally {
       setUploadLoading(false);
@@ -256,7 +258,7 @@ export function useSupabaseStorage() {
   // Връща списъка с копия (виж listBackupsFromSupabase) или null при грешка.
   // При 0 копия — съобщение и null; с beforeUpload (проверка преди първо качване) — [] без
   // съобщение и без „Изтегляне...“ на бутона за възстановяване.
-  const listBackups = useCallback(async (profileName, profileId, { beforeUpload = false } = {}) => {
+  const listBackups = useCallback(async (profileName, profileId, { beforeUpload = false, auto = false } = {}) => {
     if (!connected) {
       showMessage("❌ Не сте вписани в облака.");
       return null;
@@ -271,7 +273,7 @@ export function useSupabaseStorage() {
       }
       return copies;
     } catch (err) {
-      showMessage("❌ " + err.message);
+      if (!(auto && err.network)) showMessage("❌ " + err.message);
       return null;
     } finally {
       if (!beforeUpload) setDownloadLoading(false);

@@ -140,6 +140,18 @@ export function clearAccessToken() {
   }
 }
 
+// Заявка към Drive. Без мрежа fetch хвърля TypeError („Failed to fetch“) — тя става ясна грешка
+// с белег network: авто-качването я пропуска тихо, а не я показва като изтекла сесия (одит 2026-10, 3-10)
+async function driveFetch(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch {
+    const err = new Error("Няма връзка с интернет или Google Drive не отговаря.");
+    err.network = true;
+    throw err;
+  }
+}
+
 // URL за търсене на файлове; параметрите се кодират (иначе „&“, „#“, „+“ в името на профила
 // чупят или изкривяват заявката)
 function filesSearchUrl(params) {
@@ -149,7 +161,7 @@ function filesSearchUrl(params) {
 // Ако има две папки с това име (създадени от застъпили се качвания в по-стари версии),
 // винаги се взима най-старата — качването и възстановяването гледат една и съща (3-07)
 async function getOrCreateFolder() {
-  const searchRes = await fetch(
+  const searchRes = await driveFetch(
     filesSearchUrl({
       q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       orderBy: "createdTime",
@@ -161,7 +173,7 @@ async function getOrCreateFolder() {
   const searchData = await searchRes.json();
   if (searchData.files?.length > 0) return searchData.files[0].id;
 
-  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+  const createRes = await driveFetch("https://www.googleapis.com/drive/v3/files", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ name: FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" }),
@@ -204,7 +216,7 @@ const BACKUPS_TO_KEEP = 14;
 // Копията на профила в папката, най-новото първо
 async function listProfileBackups(prefix, folderId) {
   const safePrefix = escapeDriveQuery(prefix);
-  const res = await fetch(
+  const res = await driveFetch(
     filesSearchUrl({
       q: `name contains '${safePrefix}' and '${folderId}' in parents and trashed=false`,
       orderBy: "modifiedTime desc",
@@ -219,11 +231,18 @@ async function listProfileBackups(prefix, folderId) {
 }
 
 async function moveToTrash(fileId) {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ trashed: true }),
-  });
+  let res;
+  try {
+    res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ trashed: true }),
+    });
+  } catch (err) {
+    // копието вече е качено — връзката е паднала след това; старото ще отиде в кошчето следващия път
+    console.warn("Предупреждение: не успя да премести старо резервно копие в кошчето:", err.message);
+    return;
+  }
   if (!res.ok) {
     console.warn("Предупреждение: не успя да премести старо резервно копие в кошчето:", res.status);
   }
@@ -259,7 +278,7 @@ export async function uploadBackupToDrive(backupData, profileName) {
 
   const method = existingFileId ? "PATCH" : "POST";
 
-  const res = await fetch(url, {
+  const res = await driveFetch(url, {
     method,
     headers: { Authorization: `Bearer ${accessToken}` },
     body: form,
@@ -300,7 +319,7 @@ export async function listBackupsFromDrive(profileName) {
 export async function downloadBackupFileFromDrive(fileId) {
   if (!accessToken) throw new Error("Не сте влезли в Google акаунт.");
 
-  const fileRes = await fetch(
+  const fileRes = await driveFetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );

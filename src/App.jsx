@@ -638,10 +638,11 @@ const App = () => {
 
   // Копията на профила в облака ([] ако няма) или null при грешка (съобщението вече е показано).
   // В опашката на качванията: в Drive търсенето създава папката, ако я няма.
-  const listCopiesBeforeUpload = (service, profileName, profileId) =>
+  // auto — при авто-качване липсата на мрежа не се показва (3-10).
+  const listCopiesBeforeUpload = (service, profileName, profileId, { auto = false } = {}) =>
     runInUploadQueue(service, () => service === "drive"
-      ? driveListBackups(profileName, { beforeUpload: true })
-      : supabaseListBackups(profileName, profileId, { beforeUpload: true }));
+      ? driveListBackups(profileName, { beforeUpload: true, auto })
+      : supabaseListBackups(profileName, profileId, { beforeUpload: true, auto }));
 
   const existingCopyDialog = ({ service, copies, backup, profileName, profileId, doUpload, auto }) => {
     const isToday = (iso) => iso && new Date(iso).toDateString() === new Date().toDateString();
@@ -679,11 +680,12 @@ const App = () => {
 
   // Качването чака предишното към същата услуга. skipIfNewer — авто-качване „При всяка промяна“:
   // ако докато чака, е поискано друго качване (с по-нови данни), това се пропуска и връща null.
-  const uploadToDrive = (backup, profileName, { skipIfNewer = false } = {}) => {
+  // auto — авто-качване: без мрежа без съобщение, белегът за некачени промени остава (3-10).
+  const uploadToDrive = (backup, profileName, { skipIfNewer = false, auto = false } = {}) => {
     const seq = ++uploadSeqRef.current.drive;
     return runInUploadQueue("drive", async () => {
       if (skipIfNewer && seq !== uploadSeqRef.current.drive) return null;
-      const success = await driveUploadBackup(backup, profileName);
+      const success = await driveUploadBackup(backup, profileName, { auto });
       if (success) {
         saveUploadCounts("drive", backup);
         clearDeletedAll("drive");
@@ -695,11 +697,11 @@ const App = () => {
     });
   };
 
-  const uploadToSupabase = (backup, profileName, profileId, { skipIfNewer = false } = {}) => {
+  const uploadToSupabase = (backup, profileName, profileId, { skipIfNewer = false, auto = false } = {}) => {
     const seq = ++uploadSeqRef.current.supabase;
     return runInUploadQueue("supabase", async () => {
       if (skipIfNewer && seq !== uploadSeqRef.current.supabase) return null;
-      const success = await supabaseUploadBackup(backup, profileName, profileId);
+      const success = await supabaseUploadBackup(backup, profileName, profileId, { auto });
       if (success) {
         saveUploadCounts("supabase", backup);
         clearDeletedAll("supabase");
@@ -715,16 +717,17 @@ const App = () => {
   // Авто-качване през пазача. При рязък спад (или при първо качване, когато в облака има копие)
   // не качва, а пита веднъж; при „Не качвай“ авто-качването към услугата спира до следващо
   // отваряне или успешно ръчно качване.
-  // Връща резултата от doUpload, или null, ако качването е пропуснато.
+  // Връща резултата от doUpload, или null, ако качването е пропуснато. doUpload({ auto: true }) —
+  // самото авто-качване (без мрежа — тихо, 3-10); „Качи“ от прозореца е ръчно и показва грешката.
   const autoUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
     if (autoUploadStoppedRef.current[service]) return null;
     if (isFirstUploadFromDevice(service)) {
       if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
       autoUploadPausedRef.current[service] = true; // без втора проверка, докато тази чака облака
-      const copies = await listCopiesBeforeUpload(service, profileName, profileId);
+      const copies = await listCopiesBeforeUpload(service, profileName, profileId, { auto: true });
       if (!copies?.length) {
         autoUploadPausedRef.current[service] = false;
-        return copies ? doUpload() : null;
+        return copies ? doUpload({ auto: true }) : null;
       }
       if (confirmDialogRef.current) { // друг прозорец се е отворил междувременно — пак при следваща промяна
         autoUploadPausedRef.current[service] = false;
@@ -735,7 +738,7 @@ const App = () => {
     }
     const deleted = findDeletedAll(service, backup);
     const drop = deleted ? null : findUploadDrop(service, backup);
-    if (!deleted && !drop) return doUpload();
+    if (!deleted && !drop) return doUpload({ auto: true });
     if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
     autoUploadPausedRef.current[service] = true;
     setConfirmDialog({
@@ -768,7 +771,11 @@ const App = () => {
     if (!driveConnected) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
+    // Без интернет — без опит и без прозорец за грешка; качва се при връщане на интернета
+    // (onlineCount), промяната вече е запомнена (одит 2026-10, 3-10)
+    if (!navigator.onLine) return;
 
+    // При провал hook-ът показва истинската причина (401 → „Свържи отново“, мрежа — тихо, 3-10)
     if (driveAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("drive"))) {
       const profileNameAtTrigger = activeProfile?.name;
       const profileIdAtTrigger = activeProfileId;
@@ -778,11 +785,7 @@ const App = () => {
         if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
-        const success = await autoUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileNameAtTrigger, { skipIfNewer: true }), profileNameAtTrigger, profileIdAtTrigger);
-        // без ключ (изтекъл/отхвърлен) прозорецът „Свържи отново“ вече е показан
-        if (success === false && driveHasToken()) {
-          driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
-        }
+        await autoUploadWithGuard("drive", backup, ({ auto = false } = {}) => uploadToDrive(backup, profileNameAtTrigger, { skipIfNewer: true, auto }), profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -796,15 +799,11 @@ const App = () => {
         if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
-        const success = await autoUploadWithGuard("drive", backup, async () => {
-          const ok = await uploadToDrive(backup, profileNameAtTrigger);
+        await autoUploadWithGuard("drive", backup, async ({ auto = false } = {}) => {
+          const ok = await uploadToDrive(backup, profileNameAtTrigger, { auto });
           if (ok) driveMarkDailyDone();
           return ok;
         }, profileNameAtTrigger, profileIdAtTrigger);
-        // без ключ (изтекъл/отхвърлен) прозорецът „Свържи отново“ вече е показан
-        if (success === false && driveHasToken()) {
-          driveSetMessage("⚠️ Автоматичното качване в Google Drive не успя. Сесията може да е изтекла — свържете се отново.");
-        }
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -829,6 +828,7 @@ const App = () => {
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
+    if (!navigator.onLine) return; // без интернет — както при Drive (3-10)
 
     if (supabaseAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("supabase"))) {
       const profileNameAtTrigger = activeProfile?.name;
@@ -837,7 +837,7 @@ const App = () => {
         if (!profileNameAtTrigger) return;
         let backup;
         try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
-        await autoUploadWithGuard("supabase", backup, () => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { skipIfNewer: true }), profileNameAtTrigger, profileIdAtTrigger);
+        await autoUploadWithGuard("supabase", backup, ({ auto = false } = {}) => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { skipIfNewer: true, auto }), profileNameAtTrigger, profileIdAtTrigger);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -849,8 +849,8 @@ const App = () => {
         if (!profileNameAtTrigger) return;
         let backup;
         try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
-        await autoUploadWithGuard("supabase", backup, async () => {
-          const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger);
+        await autoUploadWithGuard("supabase", backup, async ({ auto = false } = {}) => {
+          const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { auto });
           if (ok) supabaseMarkDailyDone();
           return ok;
         }, profileNameAtTrigger, profileIdAtTrigger);

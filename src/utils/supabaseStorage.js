@@ -2,9 +2,22 @@ import { supabase } from "./supabase";
 
 const BUCKET_NAME = "finances-backup";
 
-// Връща текущия потребител или null
+// Грешка „няма връзка“ с белег network: авто-качването я пропуска тихо (одит 2026-10, 3-10)
+function networkError() {
+  const err = new Error("Няма връзка с интернет или Облакът не отговаря.");
+  err.network = true;
+  return err;
+}
+
+function isNetworkMessage(error) {
+  return /failed to fetch|networkerror|load failed/i.test(String(error?.message || error || ""));
+}
+
+// Връща текущия потребител или null. getUser() пита сървъра — без мрежа връща грешка
+// (AuthRetryableFetchError) и user = null, което не значи „не сте влезли“ (3-10)
 async function getCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (!user && error?.name === "AuthRetryableFetchError") throw networkError();
   return user;
 }
 
@@ -99,7 +112,7 @@ const newestFirst = (a, b) =>
 // Превежда познатите грешки на Supabase Storage; непознатите — общо съобщение (оригиналът е в конзолата)
 function translateStorageError(error) {
   const msg = String(error?.message || error || "");
-  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+  if (isNetworkMessage(msg)) {
     return "няма връзка с интернет или Облакът не отговаря.";
   }
   if (/row-level security/i.test(msg)) {
@@ -135,7 +148,10 @@ export async function uploadBackupToSupabase(backupData, profileName, profileId)
       contentType: "application/json",
     });
 
-  if (error) throw new Error("Грешка при качване в Облака: " + translateStorageError(error));
+  if (error) {
+    if (isNetworkMessage(error)) throw networkError();
+    throw new Error("Грешка при качване в Облака: " + translateStorageError(error));
+  }
 
   // Едва след успешно качване — изтрий копията на профила, по-стари от последните
   // BACKUPS_TO_KEEP (по prefix без дата, вкл. тези със старото име на профила)
@@ -171,7 +187,7 @@ export async function listBackupsFromSupabase(profileName, profileId) {
   // Намери файловете по prefix без id (текущото и старото име на профила)
   const { files, error: listError } = await listByPrefixes(userId, namePrefixes);
 
-  if (listError) throw new Error("Грешка при търсене на резервното копие.");
+  if (listError) throw isNetworkMessage(listError) ? networkError() : new Error("Грешка при търсене на резервното копие.");
 
   const matching = files
     .filter((f) => isBackupFileForProfileName(f.name, profileName))
