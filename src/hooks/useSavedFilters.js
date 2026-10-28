@@ -3,6 +3,9 @@ import { runTx, replaceByProfile, reportDBError } from "../utils/db";
 
 const STORE = "saved_filters";
 
+// Филтър без категории, дати и текст — показва всички транзакции
+export const isEmptyFilter = (f) =>
+  !(f.categories || []).length && !f.fromDate && !f.toDate && !(f.description || "").trim();
 
 // При грешка отхвърля: провалено четене не е „няма филтри“ (одит 2026-10, 1А-04)
 const loadAll = async () =>
@@ -91,6 +94,27 @@ export const useSavedFilters = (profileId) => {
     return true;
   };
 
+  // Изтриване на категория с „Изтрий всички транзакции“: ключът се маха от запазените филтри, а филтър,
+  // останал без нищо (би показвал всичко), се изтрива — в ЕДНА транзакция (одит 2026-10, 4-06)
+  const removeCategoryKey = async (key) => {
+    const changed = savedFilters
+      .filter((f) => (f.categories || []).includes(key))
+      .map((f) => ({ ...f, categories: f.categories.filter((k) => k !== key) }));
+    if (changed.length === 0) return true;
+    const emptied = new Set(changed.filter(isEmptyFilter).map((f) => f.id));
+    try {
+      await runTx(STORE, "readwrite", (store) =>
+        changed.forEach((f) => (emptied.has(f.id) ? store.delete(f.id) : store.put(f))));
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при изтриване на категория от запазените филтри", err);
+      return false;
+    }
+    const byId = Object.fromEntries(changed.map((f) => [f.id, f]));
+    setSavedFilters((prev) => prev.filter((f) => !emptied.has(f.id)).map((f) => byId[f.id] || f));
+    return true;
+  };
+
   // Не отхвърля (одит 2026-10, 1А-04), а връща true/false — възстановяването спира при провал
   // и казва докъде е стигнало (2А-01)
   const restoreFilters = async (filters, targetProfileId) => {
@@ -106,5 +130,5 @@ export const useSavedFilters = (profileId) => {
     }
   };
 
-  return { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, setSavedFilters, isLoaded };
+  return { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, removeCategoryKey, setSavedFilters, isLoaded };
 };

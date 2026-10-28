@@ -201,20 +201,13 @@ export const useTransactions = (profileId) => {
     setTransactions((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const deleteTransactionsByCategory = (categoryName, type) => {
-    setTransactions((prev) =>
-      prev.filter((t) => !(t.category === categoryName && t.type === type))
-    );
-  };
-
-  const reassignTransactionsCategory = (categoryName, type) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.category === categoryName && t.type === type
-          ? { ...t, category: "Без категория" }
-          : t
-      )
-    );
+  // При изтриване на категория с „Изтрий всички транзакции“ (одит 2026-10, 4-06). Записва директно и
+  // връща true/false, както renameTransactionsCategory (при „Без категория“ се ползва тя)
+  const deleteTransactionsByCategory = async (categoryName, type) => {
+    if (!isLoaded || loadedForProfileRef.current !== profileId) return false;
+    const matches = (t) => t.category === categoryName && t.type === type;
+    if (!transactions.some(matches)) return true;
+    return replaceAllTransactions(transactions.filter((t) => !matches(t)));
   };
 
   const replaceAllTransactions = async (newTransactions, overrideProfileId) => {
@@ -309,7 +302,6 @@ export const useTransactions = (profileId) => {
     editTransaction,
     deleteTransaction,
     deleteTransactionsByCategory,
-    reassignTransactionsCategory,
     renameTransactionsCategory,
     replaceAllTransactions,
     addTransactions,

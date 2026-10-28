@@ -7,6 +7,7 @@ const CategoryManager = ({
   onAdd,
   onEdit,
   onDelete,
+  getUsage,
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState("expense");
@@ -19,6 +20,35 @@ const CategoryManager = ({
 
   const categories =
     activeTab === "expense" ? expenseCategories : incomeCategories;
+
+  // Какво друго засяга изтриването — изброява се преди потвърждение (одит 2026-10, 4-06)
+  const usage = confirmDelete ? getUsage(activeTab, confirmDelete) : null;
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const capitalize = (s) => s.replace(/^./, (c) => c.toUpperCase());
+  const related = usage
+    ? [
+      usage.transactions > 0 && plural(usage.transactions, "транзакция", "транзакции"),
+      usage.recurring.length > 0 &&
+        `${plural(usage.recurring.length, "повтаряща се", "повтарящи се")} (${usage.recurring.join(", ")})`,
+      usage.hasLimit && "лимит в „Бюджетни лимити“",
+      usage.filters > 0 && plural(usage.filters, "запазен филтър", "запазени филтъра"),
+    ].filter(Boolean)
+    : [];
+  const reassignNote = usage
+    ? [
+      usage.recurring.length > 0 && "повтарящите се",
+      usage.filters > 0 && "запазените филтри",
+    ].filter(Boolean)
+    : [];
+  const deleteNote = usage
+    ? [
+      usage.hasLimit && "лимитът се премахва",
+      usage.emptiedFilters.length > 0 &&
+        `${usage.emptiedFilters.length === 1 ? "филтърът" : "филтрите"} ${usage.emptiedFilters.map((n) => `„${n}“`).join(", ")} ${usage.emptiedFilters.length === 1 ? "се изтрива" : "се изтриват"} (няма да остане нищо в ${usage.emptiedFilters.length === 1 ? "него" : "тях"})`,
+      usage.filters > usage.emptiedFilters.length &&
+        `от ${usage.emptiedFilters.length > 0 ? "другите" : "запазените"} филтри категорията се маха`,
+    ].filter(Boolean)
+    : [];
 
   const handleEdit = (cat) => {
     setEditingCategory(cat);
@@ -159,21 +189,47 @@ const CategoryManager = ({
                   <p className="text-xs text-red-600">
                     Какво да стане с транзакциите в категория &quot;{cat}&quot;?
                   </p>
+                  {related.length > 0 && (
+                    <p className="text-xs text-gray-600">
+                      Свързани с категорията: {related.join(", ")}.
+                    </p>
+                  )}
                   <div className="flex flex-col gap-1.5">
                     {cat !== "Без категория" && (
-                      <button
-                        onClick={() => handleDeleteConfirm("reassign")}
-                        className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-600 hover:bg-orange-200 transition"
-                      >
-                        Запази транзакциите като &quot;Без категория&quot;
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleDeleteConfirm("reassign")}
+                          className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-100 text-orange-600 hover:bg-orange-200 transition"
+                        >
+                          Запази транзакциите като &quot;Без категория&quot;
+                        </button>
+                        {(reassignNote.length > 0 || usage.hasLimit) && (
+                          <p className="text-[11px] text-gray-500 px-1">
+                            {reassignNote.length > 0 && `${capitalize(reassignNote.join(" и "))} също минават в „Без категория“. `}
+                            {usage.hasLimit && "Лимитът се премахва."}
+                          </p>
+                        )}
+                      </>
                     )}
-                    <button
-                      onClick={() => handleDeleteConfirm("delete")}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"
-                    >
-                      Изтрий всички транзакции
-                    </button>
+                    {usage.recurring.length > 0 ? (
+                      <p className="text-xs text-gray-600 bg-gray-100 rounded-lg px-3 py-2">
+                        „Изтрий всички транзакции“ не е възможно, докато в категорията има повтарящи се транзакции ({usage.recurring.join(", ")}). Първо ги изтрийте или им сменете категорията от „Повтарящи се транзакции“.
+                      </p>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleDeleteConfirm("delete")}
+                          className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition"
+                        >
+                          Изтрий всички транзакции
+                        </button>
+                        {deleteNote.length > 0 && (
+                          <p className="text-[11px] text-gray-500 px-1">
+                            {capitalize(deleteNote.join("; "))}.
+                          </p>
+                        )}
+                      </>
+                    )}
                     <button
                       onClick={() => setConfirmDelete(null)}
                       className="w-full px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"

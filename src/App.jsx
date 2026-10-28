@@ -19,7 +19,7 @@ import CategoryManager from "./components/CategoryManager";
 import ImportExportModal from "./components/ImportExportModal";
 import MonthlyStats from "./components/MonthlyStats";
 import ChartsModal from "./components/ChartsModal";
-import { useSavedFilters } from "./hooks/useSavedFilters";
+import { useSavedFilters, isEmptyFilter } from "./hooks/useSavedFilters";
 import { useCurrency } from "./hooks/useCurrency";
 import { useBudgets } from "./hooks/useBudgets";
 import BudgetModal from "./components/BudgetModal";
@@ -115,7 +115,6 @@ const App = () => {
     editTransaction,
     deleteTransaction,
     deleteTransactionsByCategory,
-    reassignTransactionsCategory,
     renameTransactionsCategory,
     replaceAllTransactions,
     addTransactions,
@@ -135,7 +134,7 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories(activeProfileId);
-  const { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
+  const { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, removeCategoryKey, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
   const { budgets, updateBudgets, restoreBudgets, isLoaded: budgetsLoaded } = useBudgets(activeProfileId);
   const {
@@ -1054,14 +1053,102 @@ const App = () => {
     return true;
   };
 
-  const handleDeleteCategory = (type, name, choice) => {
-    if (choice === "delete") {
-      deleteTransactionsByCategory(name, type);
-    } else {
-      reassignTransactionsCategory(name, type);
-      if (name !== "Без категория") addCategory(type, "Без категория");
+  // Какво сочи към категорията — показва се в прозореца за изтриване преди потвърждение (одит 2026-10, 4-06)
+  const getCategoryUsage = (type, name) => {
+    const key = `${name}::${type}`;
+    const filters = savedFilters.filter((f) => (f.categories || []).includes(key));
+    return {
+      transactions: transactions.filter((t) => t.category === name && t.type === type).length,
+      recurring: recurringItems.filter((r) => r.category === name && r.type === type).map((r) => r.description || "без описание"),
+      hasLimit: type === "expense" && !!budgets.categoryLimits && name in budgets.categoryLimits,
+      filters: filters.length,
+      emptiedFilters: filters
+        .filter((f) => isEmptyFilter({ ...f, categories: f.categories.filter((k) => k !== key) }))
+        .map((f) => f.name),
+    };
+  };
+
+  // Изтриването минава и през всичко, което сочи към категорията (одит 2026-10, 4-06; решение 2026-10-28):
+  // „Без категория“ — транзакциите, повтарящите се и филтрите минават там; „Изтрий“ — транзакциите се
+  // изтриват, категорията се маха от филтрите (празните се изтриват), а при повтарящи се не е позволено
+  // (CategoryManager); лимитът в бюджета се маха и в двата случая. Както при преименуването (Б6-1в):
+  // всяка част се записва директно, при провал — прозорец с „Опитай пак“ само за неуспелите части.
+  const applyCategoryDelete = async (type, name, choice, onlyParts) => {
+    const reassign = choice === "reassign";
+    const key = `${name}::${type}`;
+    const noneKey = `Без категория::${type}`;
+    const usage = getCategoryUsage(type, name);
+    const listWithout = (list) => {
+      const rest = list.filter((c) => c !== name);
+      return reassign && !rest.some((c) => c.toLowerCase() === "без категория")
+        ? sortCategories([...rest, "Без категория"])
+        : rest;
+    };
+    const writes = {
+      categories: () => saveCategoriesDirectly(
+        activeProfileId,
+        type === "expense" ? listWithout(expenseCategories) : expenseCategories,
+        type === "income" ? listWithout(incomeCategories) : incomeCategories
+      ),
+      transactions: () =>
+        reassign ? renameTransactionsCategory(name, "Без категория", type) : deleteTransactionsByCategory(name, type),
+      budgets: () =>
+        usage.hasLimit && budgetsLoaded
+          ? restoreBudgets({
+            ...budgets,
+            categoryLimits: Object.fromEntries(Object.entries(budgets.categoryLimits).filter(([cat]) => cat !== name)),
+          })
+          : true,
+      // При „Изтрий“ повтарящи се няма (иначе изтриването не е позволено)
+      recurring: () => (reassign ? renameRecurringCategory(type, name, "Без категория") : true),
+      filters: () => (reassign ? renameCategoryKey(key, noneKey) : removeCategoryKey(key)),
+    };
+    const failed = [];
+    for (const part of onlyParts || Object.keys(writes)) {
+      if (!(await writes[part]())) failed.push(part);
     }
+    if (failed.length === 0) return;
+    const labels = {
+      categories: "списъка с категории",
+      transactions: reassign
+        ? `транзакциите (${usage.transactions}) — не са преместени в „Без категория“`
+        : `транзакциите (${usage.transactions}) — не са изтрити`,
+      budgets: "лимита в „Бюджетни лимити“ — не е премахнат",
+      recurring: `повтарящите се транзакции (${usage.recurring.length}) — не са преместени в „Без категория“`,
+      filters: `запазените филтри (${usage.filters})`,
+    };
+    setConfirmDialog({
+      title: "Изтриването не е записано докрай",
+      label: "⚠️ Грешка при запис",
+      message: `Категорията „${name}“ е изтрита, но промяната не можа да се запише в: ${failed.map((p) => labels[p]).join("; ")}. Там засега е останала „${name}“ — категория, която вече я няма в списъка, затова тези данни няма да се виждат правилно във филтрите, бюджета и Excel отчета. Най-честата причина е, че няма място на устройството — освободете място и натиснете „Опитай пак“. Ако затворите, след презареждане тези данни може да останат с „${name}“.`,
+      confirmLabel: "Опитай пак",
+      cancelLabel: "Затвори",
+      tone: "danger",
+      onConfirm: () => applyCategoryDelete(type, name, choice, failed),
+    });
+  };
+
+  const handleDeleteCategory = (type, name, choice) => {
+    // Защита — CategoryManager не показва „Изтрий всички транзакции“, докато има повтарящи се
+    if (choice === "delete" && getCategoryUsage(type, name).recurring.length > 0) return;
     deleteCategory(type, name);
+    if (choice === "reassign" && name !== "Без категория") addCategory(type, "Без категория");
+    applyCategoryDelete(type, name, choice);
+    // Текущият филтър (и чрез него запомненият последен филтър): „Без категория“ вместо изтритата или без нея
+    const key = `${name}::${type}`;
+    const noneKey = `Без категория::${type}`;
+    const fixFilter = (f) =>
+      f.categories && f.categories.includes(key)
+        ? {
+          ...f,
+          categories: choice === "reassign"
+            ? [...new Set(f.categories.map((k) => (k === key ? noneKey : k)))]
+            : f.categories.filter((k) => k !== key),
+        }
+        : f;
+    setFilters(fixFilter);
+    const nextActive = fixFilter(activeFilters);
+    if (nextActive !== activeFilters) handleFilter(nextActive);
   };
   const handleDeleteProfile = async (id) => {
     await deleteAllTransactionsByProfile(id);
@@ -2631,6 +2718,7 @@ const App = () => {
           onAdd={addCategory}
           onEdit={handleEditCategory}
           onDelete={handleDeleteCategory}
+          getUsage={getCategoryUsage}
           onClose={() => setShowCategoryManager(false)}
         />
       )}
