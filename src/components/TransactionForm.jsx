@@ -103,7 +103,17 @@ const TransactionForm = ({
 
   const validate = () => {
     const newErrors = {};
+    // Избраната категория е запомнена във формата — междувременно може да е преименувана или изтрита, или
+    // профилът да е сменен (одит 2026-10, Б6-1б). При редакция минава категорията, която транзакцията има
+    // и сега (стари транзакции с липсваща категория); спира се само връщането към старо име.
+    const stored = editingTransaction && (transactions || []).find((t) => t.id === editingTransaction.id);
+    const keepsOwnCategory = stored && stored.type === type && stored.category === category;
     if (!category) newErrors.category = "Изберете категория";
+    else if (!categories.includes(category) && !keepsOwnCategory) {
+      newErrors.category = `Категорията „${category}“ вече я няма — изберете отново`;
+      setCategory("");
+      setCategorySearch("");
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
       newErrors.amount = "Въведете валидна сума";
     if (!isValidDate(date))
