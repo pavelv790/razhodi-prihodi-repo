@@ -12,6 +12,7 @@ import {
   resetPassword,
 } from "../utils/supabaseAuth";
 import { supabase } from "../utils/supabase";
+import { takeCloudLinkError } from "../utils/googleDrive";
 import { isGoogleSession } from "../utils/authSession";
 import { getLocalDateKey } from "../utils/formatters";
 import { isExpectedServiceSwitch, markExpectedServiceSwitch } from "../utils/crossServiceSwitch";
@@ -49,6 +50,11 @@ export function useSupabaseStorage() {
 
   // Проверява дали потребителят е вписан (Supabase сесията вече я управлява useGoogleDrive)
   useEffect(() => {
+    // Развален или изтекъл линк за смяна на парола връща с `error=…` в адреса — auth-js нищо не
+    // съобщава (3-14б). Грешка на Google вход взима useGoogleDrive (виж takeCloudLinkError).
+    const linkError = takeCloudLinkError();
+    if (linkError) showMessage(linkError);
+
     const check = async () => {
       try {
         const session = await getCurrentSession();

@@ -63,25 +63,30 @@ export function clearGoogleSignInPending() {
   setOAuthPending(false);
 }
 
-// При отказ в Google (или грешка на Supabase) потребителят се връща с `error=…` в адреса —
-// в query или в hash. auth-js не чисти адреса при грешка и нищо не съобщава (одит 2026-10, 3-14).
-// true, ако този раздел е започнал вход с Google и в адреса има грешка: белегът и грешката се
-// махат от адреса (да не се показва пак при презареждане). Иначе адресът не се пипа.
-export function takeGoogleSignInError() {
+// Време на тръгване към Google, ако този раздел е започнал вход и белегът още е „жив“ (до 15 мин);
+// 0 — няма белег или е остарял. Остарелият белег се маха и адресът не се пипа (виж по-долу).
+function freshGoogleSignInStart() {
   let startedAt = 0;
   try {
     startedAt = Number(sessionStorage.getItem(OAUTH_PENDING_KEY)) || 0;
   } catch {
-    return false;
+    return 0;
   }
-  if (!startedAt) return false;
+  if (startedAt && Date.now() - startedAt >= OAUTH_PENDING_MAX_MS) {
+    setOAuthPending(false);
+    return 0;
+  }
+  return startedAt;
+}
 
+// Връща { code } и маха `error`/`error_code`/`error_description` от адреса (query и hash, другите
+// параметри остават), ако в адреса има грешка; иначе null. Чисти се, за да не излиза пак при презареждане.
+function takeUrlAuthError() {
   const url = new URL(window.location.href);
   const hash = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
-  const hasError = OAUTH_ERROR_PARAMS.some((k) => url.searchParams.has(k) || hash.has(k));
-  if (!hasError) return false;
+  if (!OAUTH_ERROR_PARAMS.some((k) => url.searchParams.has(k) || hash.has(k))) return null;
 
-  setOAuthPending(false);
+  const code = hash.get("error_code") || url.searchParams.get("error_code") || "";
   OAUTH_ERROR_PARAMS.forEach((k) => {
     url.searchParams.delete(k);
     hash.delete(k);
@@ -92,7 +97,34 @@ export function takeGoogleSignInError() {
   } catch {
     // адресът остава — съобщението пак се показва веднъж
   }
-  return Date.now() - startedAt < OAUTH_PENDING_MAX_MS;
+  return { code };
+}
+
+// При отказ в Google (или грешка на Supabase) потребителят се връща с `error=…` в адреса —
+// в query или в hash. auth-js не чисти адреса при грешка и нищо не съобщава (одит 2026-10, 3-14).
+// true, ако този раздел е започнал вход с Google (жив белег) и в адреса има грешка: белегът и грешката
+// се махат от адреса. Иначе адресът не се пипа — остава за takeCloudLinkError (линк от имейл на
+// Облака), независимо кой от двата ефекта се изпълни пръв.
+export function takeGoogleSignInError() {
+  if (!freshGoogleSignInStart()) return false;
+  if (!takeUrlAuthError()) return false;
+  setOAuthPending(false);
+  return true;
+}
+
+// Грешка от линк от имейл на Облака (3-14б): развален, изтекъл или използван линк за смяна на парола
+// връща потребителя с `error=access_denied&error_code=otp_expired&…` в адреса — същият вид като
+// отказа в Google, но без белег за вход с Google. Връща текста за потребителя или null (няма грешка в
+// адреса, или е на Google — тогава адресът не се пипа). Грешката се маха от адреса.
+export function takeCloudLinkError() {
+  if (freshGoogleSignInStart()) return null;
+  const found = takeUrlAuthError();
+  if (!found) return null;
+  // Един и същ адрес идва от линк за смяна на парола и от линк за потвърждение на регистрация —
+  // не може да се различат, затова текстът обяснява и двата случая
+  return found.code === "otp_expired" || !found.code
+    ? "❌ Линкът от имейла е изтекъл или вече е използван (всеки линк важи кратко и само веднъж). Ако е бил за смяна на парола — натиснете „Забравена парола?“ и поискайте нов. Ако е бил за потвърждение на регистрация — опитайте да влезете с имейла и паролата си; ако не стане, регистрирайте се отново."
+    : `❌ Линкът от имейла не може да се използва (грешка: ${found.code}). Ако сте искали да смените паролата — натиснете „Забравена парола?“ и поискайте нов линк.`;
 }
 
 // true, ако текущата Supabase сесия е от вход през Google (Drive е свързан) — дори ключът
