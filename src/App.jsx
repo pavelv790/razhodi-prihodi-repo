@@ -344,6 +344,8 @@ const App = () => {
   const autoUploadRestoringRef = useRef({ drive: false, supabase: false });
   // Услугите с „При всяка промяна“, за които да се пита след прозореца „…е завършено“, или null
   const restoreUploadAskRef = useRef(null);
+  // Профилите с некачени промени отпреди възстановяването, по услуга — влизат в този въпрос (3-08б)
+  const restoreUnsyncedRef = useRef({ drive: [], supabase: [] });
   // „Не качвай“ след възстановяване: авто-качването към услугата спира до следващо отваряне
   // или успешно ръчно качване (2А-09)
   const autoUploadStoppedRef = useRef({ drive: false, supabase: false });
@@ -590,44 +592,68 @@ const App = () => {
     }
   };
 
-  // „При всяка промяна“: часът на последната промяна, която още не е качена в услугата. Пази се в
-  // localStorage, за да се качи при отваряне, при свързване и при връщане на интернета — иначе
-  // промяна без връзка (или с провалено/пропуснато качване) не се качва до следващата (одит 2026-10, 3-08)
+  // „При всяка промяна“: профил → часът на последната му промяна, която още не е качена в услугата.
+  // Пази се в localStorage, за да се качи при отваряне, при свързване и при връщане на интернета —
+  // иначе промяна без връзка (или с провалено/пропуснато качване) не се качва до следващата (одит 2026-10, 3-08).
+  // Всеки профил има свой файл в облака: промени в един профил, а после смяна на друг, качват копието
+  // и във файла на първия, не само на отворения (3-08б)
   const UNSYNCED_KEYS = { drive: "drive_unsynced_change_at", supabase: "supabase_unsynced_change_at" };
 
-  const markUnsynced = (service) => {
+  const readUnsynced = (service) => {
     try {
-      localStorage.setItem(UNSYNCED_KEYS[service], String(Date.now()));
+      const marks = JSON.parse(localStorage.getItem(UNSYNCED_KEYS[service]) || "null");
+      // до 3-08б белегът беше само час, без профил — приема се за отворения
+      if (typeof marks === "number") return activeProfileId ? { [activeProfileId]: marks } : {};
+      return marks && typeof marks === "object" ? marks : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const writeUnsynced = (service, marks) => {
+    try {
+      if (Object.keys(marks).length > 0) localStorage.setItem(UNSYNCED_KEYS[service], JSON.stringify(marks));
+      else localStorage.removeItem(UNSYNCED_KEYS[service]);
     } catch {
       // без запис промяната се качва при следващата (както преди)
     }
   };
 
-  const hasUnsynced = (service) => {
-    try {
-      return !!localStorage.getItem(UNSYNCED_KEYS[service]);
-    } catch {
-      return false;
-    }
+  // Белезите на изтрити профили се забравят тук — извиква се от ефекта, с актуалния списък профили
+  const markUnsynced = (service, profileId) => {
+    if (!profileId) return;
+    const marks = { ...readUnsynced(service), [profileId]: Date.now() };
+    writeUnsynced(service, Object.fromEntries(Object.entries(marks).filter(([id]) => profiles.some((p) => p.id === id))));
   };
 
-  // След успешно качване белегът се маха, само ако копието е прочетено след последната промяна
-  const clearUnsynced = (service, backup) => {
+  // Профилите, в чиито файлове да се качи копието: всички с некачени промени, отвореният — първи.
+  // changedId — профил с промяна точно сега (и ако белегът не се е записал)
+  const unsyncedProfiles = (service, changedId = null) => {
+    const marks = readUnsynced(service);
+    return profiles
+      .filter((p) => p.id in marks || p.id === changedId)
+      .sort((a, b) => (b.id === activeProfileId) - (a.id === activeProfileId));
+  };
+
+  // След успешно качване белегът на профила се маха, само ако копието е прочетено след последната му промяна
+  const clearUnsynced = (service, backup, profileId) => {
     const readAt = backupReadAtRef.current.get(backup);
     if (!readAt) return;
-    try {
-      if (Number(localStorage.getItem(UNSYNCED_KEYS[service])) <= readAt) localStorage.removeItem(UNSYNCED_KEYS[service]);
-    } catch {
-      // белегът остава — ще се качи още веднъж
-    }
+    const marks = readUnsynced(service);
+    if (!(profileId in marks) || marks[profileId] > readAt) return;
+    delete marks[profileId];
+    writeUnsynced(service, marks);
   };
 
-  const dropUnsynced = (service) => {
+  // Маха всички белези на услугата и връща профилите, които са имали некачени промени
+  const takeUnsynced = (service) => {
+    const ids = unsyncedProfiles(service).map((p) => p.id);
     try {
       localStorage.removeItem(UNSYNCED_KEYS[service]);
     } catch {
       // белегът остава — ще се качи при следващото отваряне
     }
+    return ids;
   };
 
   // Пуска job след предишното качване към услугата (виж uploadQueueRef). Увиснала заявка не
@@ -682,18 +708,18 @@ const App = () => {
     };
   };
 
-  // Качването чака предишното към същата услуга. skipIfNewer — авто-качване „При всяка промяна“:
-  // ако докато чака, е поискано друго качване (с по-нови данни), това се пропуска и връща null.
-  // auto — авто-качване: без мрежа без съобщение, белегът за некачени промени остава (3-10).
-  const uploadToDrive = (backup, profileName, { skipIfNewer = false, auto = false } = {}) => {
-    const seq = ++uploadSeqRef.current.drive;
+  // Качването чака предишното към същата услуга. batchSeq — авто-качване „При всяка промяна“ (виж
+  // uploadEachProfile): ако докато чака, е поискано друго качване (с по-нови данни), това се пропуска
+  // и връща null. auto — авто-качване: без мрежа без съобщение, белегът за некачени промени остава (3-10).
+  const uploadToDrive = (backup, profileName, profileId, { batchSeq = null, auto = false } = {}) => {
+    const seq = batchSeq ?? ++uploadSeqRef.current.drive;
     return runInUploadQueue("drive", async () => {
-      if (skipIfNewer && seq !== uploadSeqRef.current.drive) return null;
+      if (batchSeq !== null && seq !== uploadSeqRef.current.drive) return null;
       const success = await driveUploadBackup(backup, profileName, { auto });
       if (success) {
         saveUploadCounts("drive", backup);
         clearDeletedAll("drive");
-        clearUnsynced("drive", backup);
+        clearUnsynced("drive", backup, profileId);
         autoUploadPausedRef.current.drive = false;
         autoUploadStoppedRef.current.drive = false;
       }
@@ -701,15 +727,15 @@ const App = () => {
     });
   };
 
-  const uploadToSupabase = (backup, profileName, profileId, { skipIfNewer = false, auto = false } = {}) => {
-    const seq = ++uploadSeqRef.current.supabase;
+  const uploadToSupabase = (backup, profileName, profileId, { batchSeq = null, auto = false } = {}) => {
+    const seq = batchSeq ?? ++uploadSeqRef.current.supabase;
     return runInUploadQueue("supabase", async () => {
-      if (skipIfNewer && seq !== uploadSeqRef.current.supabase) return null;
+      if (batchSeq !== null && seq !== uploadSeqRef.current.supabase) return null;
       const success = await supabaseUploadBackup(backup, profileName, profileId, { auto });
       if (success) {
         saveUploadCounts("supabase", backup);
         clearDeletedAll("supabase");
-        clearUnsynced("supabase", backup);
+        clearUnsynced("supabase", backup, profileId);
         autoUploadPausedRef.current.supabase = false;
         autoUploadStoppedRef.current.supabase = false;
         setLastSupabaseUploadDate(new Date().toISOString());
@@ -718,27 +744,46 @@ const App = () => {
     });
   };
 
+  // „При всяка промяна“: копието се качва във файла на всеки профил от targets, едно след друго (3-08б).
+  // Качванията имат общ пореден номер — поискано междувременно ново качване пропуска останалите (те
+  // са и в неговия списък, защото белезите им стоят). null — пропуснато, false — спира при първия провал.
+  const uploadEachProfile = async (service, backup, targets, { auto = false } = {}) => {
+    const batchSeq = ++uploadSeqRef.current[service];
+    const upload = service === "drive" ? uploadToDrive : uploadToSupabase;
+    for (const p of targets) {
+      const ok = await upload(backup, p.name, p.id, { batchSeq, auto });
+      if (!ok) return ok;
+    }
+    return true;
+  };
+
   // Авто-качване през пазача. При рязък спад (или при първо качване, когато в облака има копие)
   // не качва, а пита веднъж; при „Не качвай“ авто-качването към услугата спира до следващо
-  // отваряне или успешно ръчно качване.
+  // отваряне или успешно ръчно качване. targets — профилите ({ id, name }), в чиито файлове се качва.
   // Връща резултата от doUpload, или null, ако качването е пропуснато. doUpload({ auto: true }) —
   // самото авто-качване (без мрежа — тихо, 3-10); „Качи“ от прозореца е ръчно и показва грешката.
-  const autoUploadWithGuard = async (service, backup, doUpload, profileName, profileId) => {
+  const autoUploadWithGuard = async (service, backup, doUpload, targets) => {
     if (autoUploadStoppedRef.current[service]) return null;
     if (isFirstUploadFromDevice(service)) {
       if (autoUploadPausedRef.current[service] || confirmDialogRef.current) return null;
       autoUploadPausedRef.current[service] = true; // без втора проверка, докато тази чака облака
-      const copies = await listCopiesBeforeUpload(service, profileName, profileId, { auto: true });
-      if (!copies?.length) {
-        autoUploadPausedRef.current[service] = false;
-        return copies ? doUpload({ auto: true }) : null;
-      }
-      if (confirmDialogRef.current) { // друг прозорец се е отворил междувременно — пак при следваща промяна
-        autoUploadPausedRef.current[service] = false;
+      // Въпросът е за първия профил, който вече има копие в облака
+      for (const p of targets) {
+        const copies = await listCopiesBeforeUpload(service, p.name, p.id, { auto: true });
+        if (!copies?.length) {
+          if (copies) continue;
+          autoUploadPausedRef.current[service] = false;
+          return null;
+        }
+        if (confirmDialogRef.current) { // друг прозорец се е отворил междувременно — пак при следваща промяна
+          autoUploadPausedRef.current[service] = false;
+          return null;
+        }
+        setConfirmDialog(existingCopyDialog({ service, copies, backup, profileName: p.name, profileId: p.id, doUpload, auto: true }));
         return null;
       }
-      setConfirmDialog(existingCopyDialog({ service, copies, backup, profileName, profileId, doUpload, auto: true }));
-      return null;
+      autoUploadPausedRef.current[service] = false;
+      return doUpload({ auto: true });
     }
     const deleted = findDeletedAll(service, backup);
     const drop = deleted ? null : findUploadDrop(service, backup);
@@ -770,8 +815,8 @@ const App = () => {
     // След възстановяване, за което се пита „Да кача ли…“, некачените промени отпреди него влизат
     // в този въпрос и не се качват сами, докато той чака.
     if (restoreEnded) {
-      if (restoreUploadAskRef.current?.includes("drive")) dropUnsynced("drive");
-    } else if (driveAutoSync === "onChange" && dataChanged) markUnsynced("drive");
+      if (restoreUploadAskRef.current?.includes("drive")) restoreUnsyncedRef.current.drive = takeUnsynced("drive");
+    } else if (driveAutoSync === "onChange" && dataChanged) markUnsynced("drive", activeProfileId);
     if (!driveConnected) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
@@ -780,16 +825,15 @@ const App = () => {
     if (!navigator.onLine) return;
 
     // При провал hook-ът показва истинската причина (401 → „Свържи отново“, мрежа — тихо, 3-10)
-    if (driveAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("drive"))) {
-      const profileNameAtTrigger = activeProfile?.name;
-      const profileIdAtTrigger = activeProfileId;
+    // Във файла на всеки профил с некачени промени, не само на отворения (3-08б)
+    const driveTargets = driveAutoSync === "onChange" && !restoreEnded ? unsyncedProfiles("drive", dataChanged ? activeProfileId : null) : [];
+    if (driveTargets.length > 0) {
       const timer = setTimeout(async () => {
-        if (!profileNameAtTrigger) return;
         // ключът за Drive е изтекъл (3-02): „Свържи отново“ веднъж на отваряне, без опит за качване
         if (!driveHasToken()) { drivePromptReconnect(true); return; }
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
-        await autoUploadWithGuard("drive", backup, ({ auto = false } = {}) => uploadToDrive(backup, profileNameAtTrigger, { skipIfNewer: true, auto }), profileNameAtTrigger, profileIdAtTrigger);
+        await autoUploadWithGuard("drive", backup, ({ auto = false } = {}) => uploadEachProfile("drive", backup, driveTargets, { auto }), driveTargets);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -804,10 +848,10 @@ const App = () => {
         let backup;
         try { backup = await buildBackupData(); } catch { driveSetMessage(autoUploadReadError("Google Drive")); return; }
         await autoUploadWithGuard("drive", backup, async ({ auto = false } = {}) => {
-          const ok = await uploadToDrive(backup, profileNameAtTrigger, { auto });
+          const ok = await uploadToDrive(backup, profileNameAtTrigger, profileIdAtTrigger, { auto });
           if (ok) driveMarkDailyDone();
           return ok;
-        }, profileNameAtTrigger, profileIdAtTrigger);
+        }, [{ id: profileIdAtTrigger, name: profileNameAtTrigger }]);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -827,21 +871,19 @@ const App = () => {
     if (pendingBackup) return;
     // некачените промени — както при Drive (3-08)
     if (restoreEnded) {
-      if (restoreUploadAskRef.current?.includes("supabase")) dropUnsynced("supabase");
-    } else if (supabaseAutoSync === "onChange" && dataChanged) markUnsynced("supabase");
+      if (restoreUploadAskRef.current?.includes("supabase")) restoreUnsyncedRef.current.supabase = takeUnsynced("supabase");
+    } else if (supabaseAutoSync === "onChange" && dataChanged) markUnsynced("supabase", activeProfileId);
     if (!supabaseConnected || !supabaseEnabled) return;
     if (transactions.length === 0 && profiles.length <= 1) return;
     if (!activeProfile?.name) return;
     if (!navigator.onLine) return; // без интернет — както при Drive (3-10)
 
-    if (supabaseAutoSync === "onChange" && !restoreEnded && (dataChanged || hasUnsynced("supabase"))) {
-      const profileNameAtTrigger = activeProfile?.name;
-      const profileIdAtTrigger = activeProfileId;
+    const supabaseTargets = supabaseAutoSync === "onChange" && !restoreEnded ? unsyncedProfiles("supabase", dataChanged ? activeProfileId : null) : [];
+    if (supabaseTargets.length > 0) {
       const timer = setTimeout(async () => {
-        if (!profileNameAtTrigger) return;
         let backup;
         try { backup = await buildBackupData(); } catch { supabaseSetMessage(autoUploadReadError("Облака")); return; }
-        await autoUploadWithGuard("supabase", backup, ({ auto = false } = {}) => uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { skipIfNewer: true, auto }), profileNameAtTrigger, profileIdAtTrigger);
+        await autoUploadWithGuard("supabase", backup, ({ auto = false } = {}) => uploadEachProfile("supabase", backup, supabaseTargets, { auto }), supabaseTargets);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -857,7 +899,7 @@ const App = () => {
           const ok = await uploadToSupabase(backup, profileNameAtTrigger, profileIdAtTrigger, { auto });
           if (ok) supabaseMarkDailyDone();
           return ok;
-        }, profileNameAtTrigger, profileIdAtTrigger);
+        }, [{ id: profileIdAtTrigger, name: profileNameAtTrigger }]);
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -1378,7 +1420,7 @@ const App = () => {
     const backup = await backupForManualUpload("drive");
     if (!backup) return;
     const profileName = activeProfile?.name;
-    await manualUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileName), profileName, activeProfileId);
+    await manualUploadWithGuard("drive", backup, () => uploadToDrive(backup, profileName, activeProfileId), profileName, activeProfileId);
   };
   const handleSupabaseUpload = async () => {
     const backup = await backupForManualUpload("supabase");
@@ -1395,11 +1437,18 @@ const App = () => {
     setShowRestoreDone(false);
     const services = restoreUploadAskRef.current;
     restoreUploadAskRef.current = null;
+    const unsyncedBefore = restoreUnsyncedRef.current;
+    restoreUnsyncedRef.current = { drive: [], supabase: [] };
     if (!services || !activeProfile?.name) return;
     const backup = await backupForManualUpload(services[0]);
     if (!backup) return;
     const profileName = activeProfile.name;
-    const profileId = activeProfileId;
+    // Отвореният профил и профилите с некачени промени отпреди възстановяването (3-08б)
+    const targets = Object.fromEntries(services.map((s) => [s, [
+      activeProfile,
+      ...profiles.filter((p) => p.id !== activeProfileId && unsyncedBefore[s].includes(p.id)),
+    ]]));
+    const others = [...new Set(services.flatMap((s) => targets[s].slice(1).map((p) => `„${p.name}“`)))];
     const where = services.map((s) => UPLOAD_SERVICE_LABELS[s]).join(" и в ");
     const warnings = services.map((s) => {
       const deleted = findDeletedAll(s, backup);
@@ -1410,7 +1459,9 @@ const App = () => {
     setConfirmDialog({
       title: "Да кача ли възстановените данни?",
       message:
-        `Автоматичното качване е включено. „Качи“ качва данните от това устройство в ${where} като днешно копие на профил „${profileName}“ и заменя днешното копие там; по-старите копия се пазят.` +
+        `Автоматичното качване е включено. „Качи“ качва данните от това устройство в ${where} като днешно копие на профил „${profileName}“` +
+        (others.length > 0 ? `, както и на ${others.join(", ")} (там има некачени промени отпреди възстановяването),` : "") +
+        ` и заменя днешното копие там; по-старите копия се пазят.` +
         [...new Set(warnings)].join("") +
         " „Не качвай“ оставя облака непроменен и спира автоматичното качване до следващото отваряне на приложението.",
       confirmLabel: "Качи",
@@ -1418,8 +1469,10 @@ const App = () => {
       tone: "warning",
       onConfirm: async () => {
         for (const s of services) {
-          if (s === "drive") await uploadToDrive(backup, profileName);
-          else await uploadToSupabase(backup, profileName, profileId);
+          for (const p of targets[s]) {
+            if (s === "drive") await uploadToDrive(backup, p.name, p.id);
+            else await uploadToSupabase(backup, p.name, p.id);
+          }
         }
       },
       onCancel: () => {
