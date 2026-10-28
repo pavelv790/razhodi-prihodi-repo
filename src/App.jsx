@@ -5,7 +5,7 @@ import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirec
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./constants/categories";
 import { deleteProfileBudgets } from "./hooks/useBudgets";
 import { deleteProfileSavedFilters } from "./hooks/useSavedFilters";
-import { deleteProfileCurrency } from "./hooks/useCurrency";
+import { deleteProfileCurrency, validCurrency } from "./hooks/useCurrency";
 import { useProfiles } from "./hooks/useProfiles";
 import { exportBackup, importBackup, validateAndMigrateBackup } from "./utils/backup";
 import ProfileModal from "./components/ProfileModal";
@@ -27,6 +27,8 @@ import RecurringModal from "./components/RecurringModal";
 import PendingRecurringModal from "./components/PendingRecurringModal";
 import { useRecurring } from "./hooks/useRecurring";
 import UserGuideModal from "./components/UserGuideModal";
+import RestoreLossModal from "./components/RestoreLossModal";
+import { diffTransactions, diffRecords, diffCategories, diffBudgets, diffCurrency, hasRestoreLoss } from "./utils/restoreDiff";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import { useSupabaseStorage } from "./hooks/useSupabaseStorage";
 import { openDB, onDBWriteError, runTx, reportDBError } from "./utils/db";
@@ -188,6 +190,8 @@ const App = () => {
   const [restoreError, setRestoreError] = useState(null);
   // Възстановяването записва в момента: екранът е блокиран, чакащите повтарящи се изчакват (одит 2026-10, 2Б-01)
   const [restoreInProgress, setRestoreInProgress] = useState(false);
+  // Какво ще изчезне или ще се промени при „Замести“ — прозорецът преди записа (одит 2026-10, 3-16)
+  const [restoreLossReport, setRestoreLossReport] = useState(null);
   const [conflictProfiles, setConflictProfiles] = useState([]);
   const [conflictChoices, setConflictChoices] = useState({});
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -307,7 +311,7 @@ const App = () => {
   // на Drive/Облака) са над всички с z-index и не се броят (одит 2026-10, 6-09)
   const otherModalOpen = !!(
     showRecurringModal || showConflictModal || showRestoreConfirm || showRestoreDuplicates ||
-    showAddNewProfilesConfirm || restoreInProgress || cloudBackupChoices || showDeleteAll ||
+    showAddNewProfilesConfirm || restoreInProgress || restoreLossReport || cloudBackupChoices || showDeleteAll ||
     confirmDialog || showProfileModal || showBudget || showCategoryManager || showImportExport ||
     showCharts || showMonthlyStats || showUserGuide || showMergeModal || showCopyModal ||
     showRestoreDone || restoreError || showCrossServiceWarning
@@ -1031,6 +1035,7 @@ const App = () => {
     setShowConflictModal(false);
     setShowRestoreDuplicates(false);
     setShowAddNewProfilesConfirm(false);
+    setRestoreLossReport(null);
     setConflictProfiles([]);
     setConflictChoices({});
     setPendingBackup(null);
@@ -1117,6 +1122,16 @@ const App = () => {
       return true;
     });
   };
+  // Списъците + категориите на транзакциите и повтарящите се на профила в копието, без повторения
+  const withUsedCategories = (expense, income, backupData, profileId) => {
+    const used = [...(backupData.transactions || []), ...(backupData.recurringItems || [])]
+      .filter((item) => item.profileId === profileId);
+    const usedOfType = (type) => used.filter((item) => item.type === type).map((item) => item.category);
+    return {
+      expense: uniqueCategories([...expense, ...usedOfType("expense")]),
+      income: uniqueCategories([...income, ...usedOfType("income")]),
+    };
+  };
   // Категориите на профила: „Замести“ / нов профил — от копието, ако ги има там, иначе остават
   // локалните (нов профил — подразбиращите се); „Обедини“ — локалните + от копието. Добавят се и
   // категориите на транзакциите и повтарящите се на профила в копието, които липсват в списъка (2А-02)
@@ -1138,11 +1153,7 @@ const App = () => {
         income = [...income, ...fromBackup.income];
       }
     }
-    const used = [...(backupData.transactions || []), ...(backupData.recurringItems || [])]
-      .filter((item) => item.profileId === bp.id);
-    const usedOfType = (type) => used.filter((item) => item.type === type).map((item) => item.category);
-    expense = uniqueCategories([...expense, ...usedOfType("expense")]);
-    income = uniqueCategories([...income, ...usedOfType("income")]);
+    ({ expense, income } = withUsedCategories(expense, income, backupData, bp.id));
     ensureSaved(await saveCategoriesDirectly(bp.id, expense, income));
     if (bp.id === activeProfileId) {
       setExpenseCategoriesFromBackup(expense);
@@ -1477,8 +1488,10 @@ const App = () => {
     setPendingNewProfiles(newProfiles);
     setLocalTransactionCounts(counts);
     if (conflicts.length > 0) {
+      // „Замести“ по подразбиране само за отворения профил: копието носи всички профили, но
+      // другите в него може да са по-стари от тези на устройството (одит 2026-10, 3-16)
       const initialChoices = {};
-      conflicts.forEach((p) => { initialChoices[p.id] = "backup"; });
+      conflicts.forEach((p) => { initialChoices[p.id] = p.id === activeProfileId ? "backup" : "local"; });
       setConflictProfiles(conflicts);
       setConflictChoices(initialChoices);
       setShowConflictModal(true);
@@ -1689,6 +1702,97 @@ const App = () => {
     } else {
       finalizeRestore(newProfiles.length > 0 ? [{ name: newProfiles.map((p) => p.name).join(", "), choice: "skipped" }] : []);
     }
+  };
+
+  // За всеки профил със „Замести“: какво ще изчезне или ще се промени спрямо устройството (одит 2026-10,
+  // 3-16). Отвореният профил — от паметта (там са и още незаписаните промени), другите — от базата;
+  // след възстановяването ще имат същото, което записва applyRestore. Хвърля при грешка в базата
+  const buildRestoreLossReport = async (backupData) => {
+    const report = [];
+    for (const bp of backupData.profiles || []) {
+      if (pendingNewProfilesRef.current.some((np) => np.id === bp.id)) continue;
+      if ((conflictChoices[bp.id] || "backup") !== "backup") continue;
+      const isActive = bp.id === activeProfileId;
+      let local;
+      if (isActive) {
+        local = {
+          transactions,
+          categories: { expense: expenseCategories, income: incomeCategories },
+          currency: { currency, rate },
+          budgets,
+          recurring: recurringItems,
+          filters: savedFilters,
+        };
+      } else {
+        const storedCategories = (await runTx("categories", "readonly", (store) => store.get(bp.id)))?.categories;
+        const hasCategories = storedCategories && typeof storedCategories === "object";
+        const storedCurrency = await runTx("currency", "readonly", (store) => store.get(bp.id));
+        local = {
+          transactions: await getProfileRecords("transactions", bp.id),
+          // както хуковете при зареждане: без запис — подразбиращите се категории и EUR
+          categories: hasCategories
+            ? { expense: Array.isArray(storedCategories.expense) ? storedCategories.expense : [], income: Array.isArray(storedCategories.income) ? storedCategories.income : [] }
+            : { expense: DEFAULT_EXPENSE_CATEGORIES, income: DEFAULT_INCOME_CATEGORIES },
+          currency: validCurrency(storedCurrency?.currency, storedCurrency?.rate),
+          budgets: (await runTx("budgets", "readonly", (store) => store.get(bp.id))) || null,
+          recurring: await getProfileRecords("recurring", bp.id),
+          filters: await getProfileRecords("saved_filters", bp.id),
+        };
+      }
+      const settings = backupProfileSettings(backupData, bp.id);
+      // Без категории/валута/лимити в копието възстановяването не ги пипа (restoreProfile*)
+      const restoredCategories = withUsedCategories(
+        settings.categories ? settings.categories.expense : local.categories.expense,
+        settings.categories ? settings.categories.income : local.categories.income,
+        backupData, bp.id,
+      );
+      const entry = {
+        id: bp.id,
+        name: bp.name,
+        transactions: diffTransactions(local.transactions, (backupData.transactions || []).filter((t) => t.profileId === bp.id)),
+        categories: diffCategories(local.categories, restoredCategories),
+        budgets: settings.budgets ? diffBudgets(local.budgets, settings.budgets) : [],
+        currency: settings.currency ? diffCurrency(local.currency, validCurrency(settings.currency.currency, settings.currency.rate)) : null,
+        recurring: diffRecords(
+          local.recurring,
+          (backupData.recurringItems || []).filter((r) => r.profileId === bp.id),
+          recurringKey,
+          ["type", "category", "amount", "variableAmount", "description", "startDate", "endDate", "period", "customDays", "lastAdded"],
+        ),
+        filters: diffRecords(
+          local.filters,
+          (backupData.savedFilters || []).filter((f) => f.profileId === bp.id),
+          filterKey,
+          ["name", "fromDate", "toDate", "categories", "description"],
+        ),
+      };
+      report.push({ ...entry, hasLoss: hasRestoreLoss(entry) });
+    }
+    return report;
+  };
+
+  // „Потвърди“: ако „Замести“ ще изтрие или промени нещо — първо прозорецът с разликите (3-16)
+  const handleRestoreConfirmClick = async () => {
+    const report = await buildRestoreLossReport(pendingBackup);
+    if (report.some((r) => r.hasLoss)) {
+      setRestoreLossReport(report);
+      return;
+    }
+    await handleRestoreConfirm();
+  };
+  // „Обедини вместо това“: профилите със загуби минават на „Обедини“ и прозорецът за потвърждение се
+  // показва отново с новия избор (записът тръгва чак след повторното „Потвърди“)
+  const handleRestoreLossMerge = () => {
+    const ids = restoreLossReport.filter((r) => r.hasLoss).map((r) => r.id);
+    setConflictChoices((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, "merge"])) }));
+    setRestoreLossReport(null);
+    setShowRestoreConfirm(true);
+  };
+  // „Назад“: към избора за профилите (без съвпадащи профили няма какво да се сменя — към потвърждението)
+  const handleRestoreLossBack = () => {
+    setRestoreLossReport(null);
+    if (conflictProfiles.length > 0) setShowConflictModal(true);
+    else setShowRestoreConfirm(true);
   };
 
   const handleRestoreConfirm = async () => {
@@ -2581,6 +2685,15 @@ const App = () => {
               <p className="text-sm text-gray-600">
                 Следните профили съществуват и в приложението, и в резервното копие. Изберете какво да се направи за всеки:
               </p>
+              {/* Само отвореният профил е със „Замести“ по подразбиране (одит 2026-10, 3-16) */}
+              {conflictProfiles.some((p) => p.id !== activeProfileId) && (
+                <p className="text-xs text-gray-500">
+                  {conflictProfiles.some((p) => p.id === activeProfileId)
+                    ? `По подразбиране се заменя само отвореният профил „${activeProfile?.name ?? ""}“. `
+                    : "По подразбиране не се заменя нито един профил. "}
+                  За другите е избрано „Запази само локалните“ — в копието те може да са по-стари, отколкото на устройството. Сменете избора, ако искате и техните данни от копието.
+                </p>
+              )}
               {conflictProfiles.map((p) => (
                 <div key={p.id} className="bg-white rounded-xl p-3 border border-gray-200">
                   <p className="text-sm font-semibold text-gray-700 mb-2">👤 {p.name}</p>
@@ -2769,7 +2882,7 @@ const App = () => {
                   </div>
                   <div className="px-5 pt-2 pb-5 space-y-3 shrink-0">
                     <button
-                      onClick={() => { setShowRestoreConfirm(false); runRestoreStep(handleRestoreConfirm); }}
+                      onClick={() => { setShowRestoreConfirm(false); runRestoreStep(handleRestoreConfirmClick); }}
                       className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
                     >
                       Потвърди
@@ -2784,6 +2897,16 @@ const App = () => {
                 </div>
               </div>
             )}
+
+      {restoreLossReport && pendingBackup && (
+        <RestoreLossModal
+          report={restoreLossReport}
+          backupDate={pendingBackup.date}
+          onConfirm={() => { setRestoreLossReport(null); runRestoreStep(handleRestoreConfirm); }}
+          onMerge={handleRestoreLossMerge}
+          onBack={handleRestoreLossBack}
+        />
+      )}
 
       {showCrossServiceWarning && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
