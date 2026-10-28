@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Settings, Info, Upload, FileDown, Trash2, TrendingUp, ChevronDown, Search, BarChart2, AlertTriangle, User, RefreshCw } from "lucide-react";
 import { useTransactions, copyWithNewIds } from "./hooks/useTransactions";
 import { useCategories, deleteProfileCategories, saveToDB as saveCategoriesDirectly } from "./hooks/useCategories";
-import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "./constants/categories";
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, sortCategories } from "./constants/categories";
 import { deleteProfileBudgets } from "./hooks/useBudgets";
 import { deleteProfileSavedFilters } from "./hooks/useSavedFilters";
 import { deleteProfileCurrency, validCurrency } from "./hooks/useCurrency";
@@ -982,24 +982,68 @@ const App = () => {
 
   // Преименуването минава и през всичко, което сочи към категорията по име: транзакциите, лимита в
   // бюджета, повтарящите се, запазените филтри и текущия филтър (одит 2026-10, 4-01 + 7-03).
-  // Грешка при запис → червена лента (както при другите записи)
+  // Записите не са в една обща транзакция (решение 2026-10-28, вариант А): всяка част се записва
+  // директно и връща true/false; при провал — червената лента и прозорец какво точно е останало със
+  // старото име, с „Опитай пак“ само за неуспелите части (Б6-1в). Повторният опит смята от същото
+  // състояние отпреди преименуването — докато прозорците са отворени, данните не могат да се сменят.
+  const applyCategoryRename = async (type, oldName, newName, onlyParts) => {
+    const oldKey = `${oldName}::${type}`;
+    const newKey = `${newName}::${type}`;
+    const renameList = (list) => sortCategories(list.map((c) => (c === oldName ? newName : c)));
+    const counts = {
+      transactions: transactions.filter((t) => t.category === oldName && t.type === type).length,
+      recurring: recurringItems.filter((r) => r.category === oldName && r.type === type).length,
+      filters: savedFilters.filter((f) => (f.categories || []).includes(oldKey)).length,
+    };
+    const writes = {
+      categories: () => saveCategoriesDirectly(
+        activeProfileId,
+        type === "expense" ? renameList(expenseCategories) : expenseCategories,
+        type === "income" ? renameList(incomeCategories) : incomeCategories
+      ),
+      transactions: () => renameTransactionsCategory(oldName, newName, type),
+      budgets: () =>
+        type === "expense" && budgetsLoaded && budgets.categoryLimits && oldName in budgets.categoryLimits
+          ? restoreBudgets({
+            ...budgets,
+            categoryLimits: Object.fromEntries(
+              Object.entries(budgets.categoryLimits).map(([cat, val]) => [cat === oldName ? newName : cat, val])
+            ),
+          })
+          : true,
+      recurring: () => renameRecurringCategory(type, oldName, newName),
+      filters: () => renameCategoryKey(oldKey, newKey),
+    };
+    const failed = [];
+    for (const part of onlyParts || Object.keys(writes)) {
+      if (!(await writes[part]())) failed.push(part);
+    }
+    if (failed.length === 0) return;
+    const labels = {
+      categories: "списъка с категории",
+      transactions: `транзакциите (${counts.transactions})`,
+      budgets: "лимита в „Бюджетни лимити“",
+      recurring: `повтарящите се транзакции (${counts.recurring})`,
+      filters: `запазените филтри (${counts.filters})`,
+    };
+    setConfirmDialog({
+      title: "Преименуването не е записано докрай",
+      label: "⚠️ Грешка при запис",
+      message: `Категорията „${oldName}“ е преименувана на „${newName}“, но новото име не можа да се запише в: ${failed.map((p) => labels[p]).join(", ")}. Там засега е останало старото име „${oldName}“ и тези данни няма да се броят към „${newName}“ във филтрите, бюджета и Excel отчета. Най-честата причина е, че няма място на устройството — освободете място и натиснете „Опитай пак“. Ако затворите, след презареждане тези данни може да останат със старото име.`,
+      confirmLabel: "Опитай пак",
+      cancelLabel: "Затвори",
+      tone: "danger",
+      onConfirm: () => applyCategoryRename(type, oldName, newName, failed),
+    });
+  };
+
   const handleEditCategory = (type, oldName, newName) => {
     if (!editCategory(type, oldName, newName)) return false;
     const trimmed = newName.trim();
     if (trimmed === oldName) return true;
-    renameTransactionsCategory(oldName, trimmed, type);
-    if (type === "expense" && budgets.categoryLimits && oldName in budgets.categoryLimits) {
-      updateBudgets({
-        ...budgets,
-        categoryLimits: Object.fromEntries(
-          Object.entries(budgets.categoryLimits).map(([cat, val]) => [cat === oldName ? trimmed : cat, val])
-        ),
-      });
-    }
-    renameRecurringCategory(type, oldName, trimmed);
+    applyCategoryRename(type, oldName, trimmed);
     const oldKey = `${oldName}::${type}`;
     const newKey = `${trimmed}::${type}`;
-    renameCategoryKey(oldKey, newKey);
     // Текущият филтър (и чрез него запомненият последен филтър)
     const renameInFilter = (f) =>
       f.categories && f.categories.includes(oldKey)
@@ -3050,7 +3094,7 @@ const App = () => {
             </div>
             <div className="px-5 py-5 space-y-3">
               <div className={`rounded-xl p-4 border ${confirmDialog.tone === "danger" ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
-                <p className={`text-sm font-medium mb-1 ${confirmDialog.tone === "danger" ? "text-red-700" : "text-orange-700"}`}>⚠️ Потвърждение</p>
+                <p className={`text-sm font-medium mb-1 ${confirmDialog.tone === "danger" ? "text-red-700" : "text-orange-700"}`}>{confirmDialog.label || "⚠️ Потвърждение"}</p>
                 <p className={`text-sm ${confirmDialog.tone === "danger" ? "text-red-600" : "text-orange-600"}`}>
                   {confirmDialog.message}
                 </p>

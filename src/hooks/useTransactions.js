@@ -217,15 +217,6 @@ export const useTransactions = (profileId) => {
     );
   };
 
-  // При преименуване на категория транзакциите ѝ минават под новото име (одит 2026-10, 4-01)
-  const renameTransactionsCategory = (oldName, newName, type) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.category === oldName && t.type === type ? { ...t, category: newName } : t
-      )
-    );
-  };
-
   const replaceAllTransactions = async (newTransactions, overrideProfileId) => {
     const targetId = overrideProfileId || profileId;
     const withProfile = newTransactions.map((t) => ({ ...t, profileId: targetId }));
@@ -242,6 +233,16 @@ export const useTransactions = (profileId) => {
     clearPendingSnapshot(targetId);
     // true/false — възстановяването спира при провал (одит 2026-10, 2А-01)
     return saveAllToDB_forProfile(targetId, sorted);
+  };
+
+  // При преименуване на категория транзакциите ѝ минават под новото име (одит 2026-10, 4-01).
+  // Записва директно и връща true/false, за да се каже на потребителя, ако не е записано (Б6-1в);
+  // незаредените транзакции не се пипат (false — в базата са със старото име)
+  const renameTransactionsCategory = async (oldName, newName, type) => {
+    if (!isLoaded || loadedForProfileRef.current !== profileId) return false;
+    const matches = (t) => t.category === oldName && t.type === type;
+    if (!transactions.some(matches)) return true;
+    return replaceAllTransactions(transactions.map((t) => (matches(t) ? { ...t, category: newName } : t)));
   };
 
   const addTransactions = (newTransactions) => {
