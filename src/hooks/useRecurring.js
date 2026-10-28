@@ -174,6 +174,25 @@ export const useRecurring = (profileId) => {
     return true;
   };
 
+  // Преименуване на категория: всички засегнати в ЕДНА транзакция; списъкът се сменя само при
+  // успешен запис (одит 2026-10, 4-01)
+  const renameCategory = async (type, oldName, newName) => {
+    const changed = recurringItems
+      .filter((r) => r.type === type && r.category === oldName)
+      .map((r) => ({ ...r, category: newName }));
+    if (changed.length === 0) return true;
+    try {
+      await runTx(STORE, "readwrite", (store) => changed.forEach((r) => store.put(r)));
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при преименуване на категория в повтарящите се", err);
+      return false;
+    }
+    const byId = Object.fromEntries(changed.map((r) => [r.id, r]));
+    setRecurringItems((prev) => prev.map((r) => byId[r.id] || r));
+    return true;
+  };
+
   const deleteRecurring = async (id) => {
     if (!(await deleteOne(id))) return false;
     setRecurringItems((prev) => prev.filter((r) => r.id !== id));
@@ -252,6 +271,7 @@ export const useRecurring = (profileId) => {
     addRecurring,
     editRecurring,
     deleteRecurring,
+    renameCategory,
     markAsAdded,
     deleteAllByProfile,
     restoreRecurring,

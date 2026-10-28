@@ -116,6 +116,7 @@ const App = () => {
     deleteTransaction,
     deleteTransactionsByCategory,
     reassignTransactionsCategory,
+    renameTransactionsCategory,
     replaceAllTransactions,
     addTransactions,
     getFilteredTransactions,
@@ -134,7 +135,7 @@ const App = () => {
     setExpenseCategoriesFromBackup,
     setIncomeCategoriesFromBackup,
   } = useCategories(activeProfileId);
-  const { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
+  const { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, setSavedFilters, isLoaded: filtersLoaded } = useSavedFilters(activeProfileId);
   const { currency, rate, updateCurrency, resetToEur, convert, isLoaded: currencyLoaded, restoreCurrency } = useCurrency(activeProfileId);
   const { budgets, updateBudgets, restoreBudgets, isLoaded: budgetsLoaded } = useBudgets(activeProfileId);
   const {
@@ -142,6 +143,7 @@ const App = () => {
     addRecurring,
     editRecurring,
     deleteRecurring,
+    renameCategory: renameRecurringCategory,
     markAsAdded,
     deleteAllByProfile: deleteAllRecurringByProfile,
     restoreRecurring,
@@ -977,6 +979,36 @@ const App = () => {
     setActiveFilters(empty);
     setIsFiltered(false);
   }, []);
+
+  // Преименуването минава и през всичко, което сочи към категорията по име: транзакциите, лимита в
+  // бюджета, повтарящите се, запазените филтри и текущия филтър (одит 2026-10, 4-01 + 7-03).
+  // Грешка при запис → червена лента (както при другите записи)
+  const handleEditCategory = (type, oldName, newName) => {
+    if (!editCategory(type, oldName, newName)) return false;
+    const trimmed = newName.trim();
+    if (trimmed === oldName) return true;
+    renameTransactionsCategory(oldName, trimmed, type);
+    if (type === "expense" && budgets.categoryLimits && oldName in budgets.categoryLimits) {
+      updateBudgets({
+        ...budgets,
+        categoryLimits: Object.fromEntries(
+          Object.entries(budgets.categoryLimits).map(([cat, val]) => [cat === oldName ? trimmed : cat, val])
+        ),
+      });
+    }
+    renameRecurringCategory(type, oldName, trimmed);
+    const oldKey = `${oldName}::${type}`;
+    const newKey = `${trimmed}::${type}`;
+    renameCategoryKey(oldKey, newKey);
+    // Текущият филтър (и чрез него запомненият последен филтър)
+    const renameInFilter = (f) =>
+      f.categories && f.categories.includes(oldKey)
+        ? { ...f, categories: [...new Set(f.categories.map((k) => (k === oldKey ? newKey : k)))] }
+        : f;
+    setFilters(renameInFilter);
+    setActiveFilters(renameInFilter);
+    return true;
+  };
 
   const handleDeleteCategory = (type, name, choice) => {
     if (choice === "delete") {
@@ -2553,7 +2585,7 @@ const App = () => {
           expenseCategories={expenseCategories}
           incomeCategories={incomeCategories}
           onAdd={addCategory}
-          onEdit={editCategory}
+          onEdit={handleEditCategory}
           onDelete={handleDeleteCategory}
           onClose={() => setShowCategoryManager(false)}
         />

@@ -217,6 +217,15 @@ export const useTransactions = (profileId) => {
     );
   };
 
+  // При преименуване на категория транзакциите ѝ минават под новото име (одит 2026-10, 4-01)
+  const renameTransactionsCategory = (oldName, newName, type) => {
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.category === oldName && t.type === type ? { ...t, category: newName } : t
+      )
+    );
+  };
+
   const replaceAllTransactions = async (newTransactions, overrideProfileId) => {
     const targetId = overrideProfileId || profileId;
     const withProfile = newTransactions.map((t) => ({ ...t, profileId: targetId }));
@@ -300,6 +309,7 @@ export const useTransactions = (profileId) => {
     deleteTransaction,
     deleteTransactionsByCategory,
     reassignTransactionsCategory,
+    renameTransactionsCategory,
     replaceAllTransactions,
     addTransactions,
     getFilteredTransactions,

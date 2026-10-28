@@ -72,6 +72,25 @@ export const useSavedFilters = (profileId) => {
     setSavedFilters((prev) => prev.filter((f) => f.id !== id));
   };
 
+  // Преименуване на категория: ключът "<име>::<тип>" във всички запазени филтри на профила, в ЕДНА
+  // транзакция; списъкът се сменя само при успешен запис (одит 2026-10, 4-01)
+  const renameCategoryKey = async (oldKey, newKey) => {
+    const changed = savedFilters
+      .filter((f) => (f.categories || []).includes(oldKey))
+      .map((f) => ({ ...f, categories: [...new Set(f.categories.map((k) => (k === oldKey ? newKey : k)))] }));
+    if (changed.length === 0) return true;
+    try {
+      await runTx(STORE, "readwrite", (store) => changed.forEach((f) => store.put(f)));
+    } catch (err) {
+      reportDBError();
+      console.error("Грешка при преименуване на категория в запазените филтри", err);
+      return false;
+    }
+    const byId = Object.fromEntries(changed.map((f) => [f.id, f]));
+    setSavedFilters((prev) => prev.map((f) => byId[f.id] || f));
+    return true;
+  };
+
   // Не отхвърля (одит 2026-10, 1А-04), а връща true/false — възстановяването спира при провал
   // и казва докъде е стигнало (2А-01)
   const restoreFilters = async (filters, targetProfileId) => {
@@ -87,5 +106,5 @@ export const useSavedFilters = (profileId) => {
     }
   };
 
-  return { savedFilters, saveFilter, deleteFilter, restoreFilters, setSavedFilters, isLoaded };
+  return { savedFilters, saveFilter, deleteFilter, restoreFilters, renameCategoryKey, setSavedFilters, isLoaded };
 };
