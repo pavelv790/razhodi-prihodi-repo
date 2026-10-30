@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import * as XLSX from "xlsx";
 import { assignOrderedIds } from "../hooks/useTransactions";
+import { isValidDate } from "./formatters";
 
 const COLOR = {
   titleBg:  "FFFF00",
@@ -237,6 +238,42 @@ export const exportToExcel = (
   resolve();
 }, 50));
 
+// Дата от клетка → "ДД/ММ/ГГГГ" или null. Приема Excel дата (число), ДД/ММ/ГГГГ, ДД.ММ.ГГГГ, ДД-ММ-ГГГГ
+// (денят и месецът — с 1 или 2 цифри; денят винаги е първи) и ГГГГ-ММ-ДД; датата трябва да съществува
+// (одит 2026-10, 5-2). Excel датата се смята в UTC — без местните отмествания от 1899 г. (5-18)
+const parseImportDate = (value) => {
+  let day, month, year;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 1) return null;
+    const jsDate = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000);
+    [day, month, year] = [jsDate.getUTCDate(), jsDate.getUTCMonth() + 1, jsDate.getUTCFullYear()];
+  } else {
+    const text = String(value ?? "").trim();
+    const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const dayFirst = text.match(/^(\d{1,2})([./-])(\d{1,2})\2(\d{4})$/);
+    if (iso) [, year, month, day] = iso;
+    else if (dayFirst) [, day, , month, year] = dayFirst;
+    else return null;
+  }
+  const date = `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+  return isValidDate(date) ? date : null;
+};
+
+// Сума от клетка: число или текст с точка/запетая за десетичен знак и интервали между хилядите
+// („-1 234,56“). Всичко друго („12 лв“) → NaN (одит 2026-10, 5-3)
+const parseImportAmount = (value) => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  const text = String(value ?? "").replace(/[\s\u00A0\u202F]/g, "");
+  if (!/^[-+]?\d+([.,]\d+)?$/.test(text)) return NaN;
+  return Number(text.replace(",", "."));
+};
+
+const shortCellText = (value) => {
+  const text = String(value).trim();
+  return text.length > 30 ? text.slice(0, 30) + "…" : text;
+};
+
+// Връща { transactions, invalidRows: [{ row, reasons }] } — при невалидни редове нищо не се зарежда
 export const importFromExcel = (file) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -250,29 +287,37 @@ export const importFromExcel = (file) => {
           return;
         }
         const worksheet = workbook.Sheets[historySheetName];
-        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: true });
+        // Първият ред трябва да е заглавният — иначе първата транзакция би отпаднала мълчаливо (одит 2026-10, 5-3)
+        const header = (rows[0] || []).slice(0, 3).map((c) => String(c ?? "").trim().toLowerCase());
+        if (header.join("|") !== "категория|сума|дата") {
+          reject(new Error("Първият ред на листа „История на транзакциите“ трябва да е заглавният: Категория | Сума | Дата | Описание. Изберете файл, експортиран от приложението."));
+          return;
+        }
+        // Номерът на реда, както се вижда в Excel (листът може да не започва от ред 1)
+        const firstRow = worksheet["!ref"] ? XLSX.utils.decode_range(worksheet["!ref"]).s.r + 1 : 1;
         const transactions = [];
-        rows.slice(1).forEach((row) => {
-          if (!row || row.length === 0) return;
-          const category = String(row[0] || "").trim();
-          const amount = Number(row[1]);
-          let date = row[2];
-          if (typeof date === "number") {
-            const excelEpoch = new Date(1899, 11, 30);
-            const jsDate = new Date(excelEpoch.getTime() + date * 86400000);
-            const d = String(jsDate.getDate()).padStart(2, "0");
-            const m = String(jsDate.getMonth() + 1).padStart(2, "0");
-            const y = jsDate.getFullYear();
-            date = `${d}/${m}/${y}`;
-          } else {
-            date = String(date || "").trim();
-            if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-              const [y, m, d] = date.split("-");
-              date = `${d}/${m}/${y}`;
-            }
+        // Всеки ред се проверява; при невалиден ред импортът не се допуска (одит 2026-10, 5-2, 5-3)
+        const invalidRows = [];
+        rows.forEach((row, index) => {
+          if (index === 0) return;
+          const isEmpty = (v) => v === undefined || v === null || String(v).trim() === "";
+          if (!row || row.slice(0, 4).every(isEmpty)) return;
+          const category = String(row[0] ?? "").trim();
+          const amount = parseImportAmount(row[1]);
+          const date = parseImportDate(row[2]);
+          const description = String(row[3] ?? "").trim();
+          const reasons = [];
+          if (!category) reasons.push("липсва категория");
+          if (isEmpty(row[1])) reasons.push("липсва сума");
+          else if (isNaN(amount)) reasons.push(`сумата „${shortCellText(row[1])}“ не е число`);
+          else if (amount === 0) reasons.push("сумата е 0");
+          if (isEmpty(row[2])) reasons.push("липсва дата");
+          else if (!date) reasons.push(`невалидна дата „${shortCellText(row[2])}“`);
+          if (reasons.length > 0) {
+            invalidRows.push({ row: firstRow + index, reasons });
+            return;
           }
-          const description = String(row[3] || "").trim();
-          if (!category || isNaN(amount) || amount === 0 || !date) return;
           transactions.push({
             type: amount < 0 ? "expense" : "income",
             category, date, description,
@@ -280,7 +325,7 @@ export const importFromExcel = (file) => {
           });
         });
         // Редът на листа (както е изнесен — най-новото отгоре) се пази и при равна дата (одит 2026-10, 2А-16)
-        resolve(assignOrderedIds(transactions));
+        resolve({ transactions: assignOrderedIds(transactions), invalidRows });
       } catch (err) {
         reject(new Error("Грешка при четене на файла: " + err.message));
       }

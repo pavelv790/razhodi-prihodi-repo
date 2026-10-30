@@ -2,6 +2,24 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import { importFromExcel, exportToExcel } from "../utils/excel";
 import { linkCategories, applyCategorySpelling } from "../utils/categoryMatch";
+import { formatAmount, parseDate } from "../utils/formatters";
+
+const INVALID_ROWS_SHOWN = 50;
+
+// Брой и сума по тип и период от-до на транзакциите от файла (датите вече са проверени)
+const importSummary = (list) => {
+  const ofType = (type) => {
+    const items = list.filter((t) => t.type === type);
+    return { count: items.length, total: items.reduce((sum, t) => sum + Number(t.amount), 0) };
+  };
+  const byTime = [...list].sort((a, b) => parseDate(a.date) - parseDate(b.date));
+  return {
+    expense: ofType("expense"),
+    income: ofType("income"),
+    from: byTime[0]?.date ?? "",
+    to: byTime.at(-1)?.date ?? "",
+  };
+};
 
 const ImportExportModal = ({
   onClose,
@@ -19,6 +37,7 @@ const ImportExportModal = ({
 }) => {
   const [step, setStep] = useState("main");
   const [pendingTransactions, setPendingTransactions] = useState(null);
+  const [invalidRows, setInvalidRows] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [noDataMessage, setNoDataMessage] = useState(false);
@@ -62,7 +81,14 @@ const ImportExportModal = ({
     setLoading(true);
     setError("");
     try {
-      const imported = await importFromExcel(file);
+      const { transactions: imported, invalidRows: invalid } = await importFromExcel(file);
+      // Невалиден ред → нищо не се зарежда, показва се кои редове и защо (одит 2026-10, 5-2, 5-3)
+      if (invalid.length > 0) {
+        setInvalidRows(invalid);
+        setLoading(false);
+        setStep("invalid");
+        return;
+      }
       if (imported.length === 0) {
         setError("Файлът не съдържа валидни транзакции.");
         setLoading(false);
@@ -189,8 +215,19 @@ const ImportExportModal = ({
                   ⚠️ Внимание!
                 </p>
                 <p className="text-sm text-orange-600">
-                  Всички съществуващи данни ({transactions.length} транзакции) ще бъдат изтрити и заменени с {pendingTransactions.length} транзакции от файла.
+                  Всички транзакции на профил „{profileName}“ ({transactions.length}) ще бъдат изтрити и заменени с {pendingTransactions.length} транзакции от файла.
                 </p>
+                {/* Какво е разпознато във файла — типът идва от знака на сумата (одит 2026-10, 5-4) */}
+                {(() => {
+                  const summary = importSummary(pendingTransactions);
+                  return (
+                    <div className="text-sm text-orange-700 mt-2 space-y-0.5">
+                      <p>Разходи: {summary.expense.count} ({formatAmount(summary.expense.total)})</p>
+                      <p>Приходи: {summary.income.count} ({formatAmount(summary.income.total)})</p>
+                      <p>Период: {summary.from} – {summary.to}</p>
+                    </div>
+                  );
+                })()}
                 <p className="text-sm text-orange-600 mt-2">
                   Това действие не може да бъде отменено.
                 </p>
@@ -207,6 +244,33 @@ const ImportExportModal = ({
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
                 Откажи
+              </button>
+            </>
+          )}
+
+          {step === "invalid" && (
+            <>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-700 font-bold mb-2">
+                  ❌ Файлът не може да бъде зареден — {invalidRows.length === 1 ? "1 ред е невалиден" : `${invalidRows.length} реда са невалидни`}:
+                </p>
+                <ul className="text-sm text-red-600 space-y-1 max-h-60 overflow-y-auto">
+                  {invalidRows.slice(0, INVALID_ROWS_SHOWN).map((r) => (
+                    <li key={r.row}>– ред {r.row}: {r.reasons.join("; ")}</li>
+                  ))}
+                </ul>
+                {invalidRows.length > INVALID_ROWS_SHOWN && (
+                  <p className="text-sm text-red-600 mt-1">… и още {invalidRows.length - INVALID_ROWS_SHOWN}</p>
+                )}
+                <p className="text-sm text-red-600 mt-2">
+                  Поправете ги във файла и опитайте отново. Данните ви не са променени.
+                </p>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+              >
+                Затвори
               </button>
             </>
           )}
