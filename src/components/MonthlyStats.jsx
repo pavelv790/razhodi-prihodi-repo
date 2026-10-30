@@ -93,8 +93,22 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
   const [noDataMessage, setNoDataMessage] = useState(false);
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState("");
 
-  const handleExport = async () => {
+  // Грешка при създаване на файла → съобщение и бутонът се връща, не безкрайно „Генериране…“ (одит 2026-10, 6-11)
+  const runExport = async () => {
+    setExportError("");
+    setExportLoading(true);
+    try {
+      await exportMonthlyStatsToExcel(data, rollingMonths, profileName);
+      setShowExportWarning(false);
+    } catch (err) {
+      setExportError("❌ Грешка при създаване на Excel файла: " + (err?.message || err));
+    }
+    setExportLoading(false);
+  };
+
+  const handleExport = () => {
     if (!data || data.length === 0) {
       setNoDataMessage(true);
       setTimeout(() => setNoDataMessage(false), 3000);
@@ -103,9 +117,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
     if (isFiltered) {
       setShowExportWarning(true);
     } else {
-      setExportLoading(true);
-      await exportMonthlyStatsToExcel(data, rollingMonths, profileName);
-      setExportLoading(false);
+      runExport();
     }
   };
 
@@ -169,6 +181,12 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
             </button>
           </div>
         </div>
+
+        {exportError && (
+          <p className="mx-5 mt-4 text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2 flex-shrink-0">
+            {exportError}
+          </p>
+        )}
 
         {/* Период */}
         <div className="px-5 pt-4 flex items-center gap-3 flex-shrink-0">
@@ -275,7 +293,7 @@ const MonthlyStats = ({ transactions, filteredTransactions, isFiltered, activeFi
                 <p className="text-sm text-gray-400 animate-pulse flex-1 text-center py-2">⏳ Генериране...</p>
               ) : (
               <button
-                onClick={async () => { setExportLoading(true); await exportMonthlyStatsToExcel(data, rollingMonths, profileName); setExportLoading(false); setShowExportWarning(false); }}
+                onClick={runExport}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
               >
                 Разбирам, експортирай

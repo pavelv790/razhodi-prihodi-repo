@@ -42,6 +42,27 @@ const ImportExportModal = ({
   const [loading, setLoading] = useState(false);
   const [noDataMessage, setNoDataMessage] = useState(false);
   const fileInputRef = useRef(null);
+  const mountedRef = useRef(false);
+
+  // Експортът може да свърши, след като прозорецът е затворен — тогава не се пипа нищо
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  // Грешка при създаване на файла → съобщение със „Затвори“, не безкраен спинер (одит 2026-10, 5-5)
+  const runExport = async (...exportArgs) => {
+    setLoading(true);
+    try {
+      await exportToExcel(...exportArgs);
+      if (mountedRef.current) onClose();
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setError("❌ Грешка при създаване на Excel файла: " + (err?.message || err));
+      setLoading(false);
+      setStep("error");
+    }
+  };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleFocusBack = useCallback(() => {
@@ -62,8 +83,7 @@ const ImportExportModal = ({
       if (isFiltered) {
         setStep("exportWarning");
       } else {
-        setLoading(true);
-        exportToExcel(filteredTransactions, expenseCategories, incomeCategories, false, [], profileName).then(() => onClose());
+        runExport(filteredTransactions, expenseCategories, incomeCategories, false, [], profileName);
       }
     } else if (mode === "import") {
       setTimeout(() => {
@@ -134,6 +154,12 @@ const ImportExportModal = ({
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm px-5 py-8 flex flex-col items-center gap-3">
           <p className="text-sm text-gray-400 animate-pulse">⏳ Генериране на файл...</p>
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+          >
+            Затвори
+          </button>
         </div>
       </div>
     );
@@ -185,15 +211,13 @@ const ImportExportModal = ({
                 <p className="text-sm text-center text-gray-400 animate-pulse py-2">⏳ Генериране на файл...</p>
               ) : (
               <button
-                onClick={async () => {
+                onClick={() => {
                   if (!filteredTransactions || filteredTransactions.length === 0) {
                     setStep("main");
                     setNoDataMessage(true);
                     return;
                   }
-                  setLoading(true);
-                  await exportToExcel(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || [], profileName);
-                  onClose();
+                  runExport(filteredTransactions, expenseCategories, incomeCategories, isFiltered, activeFilters?.categories || [], profileName);
                 }}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white hover:bg-green-600 transition"
               >
@@ -204,7 +228,7 @@ const ImportExportModal = ({
                 onClick={onClose}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
               >
-                Откажи
+                {loading ? "Затвори" : "Откажи"}
               </button>
             </>
           )}

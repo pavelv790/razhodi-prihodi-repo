@@ -64,6 +64,10 @@ const saveWorkbook = async (workbook, filename) => {
   URL.revokeObjectURL(url);
 };
 
+// Изпълнява task след 50 мс (да се покаже „Генериране…“); грешката му отхвърля промиса — иначе
+// извикващият чака вечно (одит 2026-10, 5-5, 6-11)
+const runAsync = (task) => new Promise((resolve, reject) => setTimeout(() => task().then(resolve, reject), 50));
+
 export const exportToExcel = (
   transactions,
   expenseCategories,
@@ -71,7 +75,7 @@ export const exportToExcel = (
   isFiltered = false,
   filterCategories = [],
   profileName = ""
-) => new Promise((resolve) => setTimeout(async () => {
+) => runAsync(async () => {
   const MONTH_NAMES = [
     "януари","февруари","март","април","май","юни",
     "юли","август","септември","октомври","ноември","декември",
@@ -235,8 +239,7 @@ export const exportToExcel = (
   const y = today.getFullYear();
   const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   await saveWorkbook(workbook, "Разходи-Приходи" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
-  resolve();
-}, 50));
+});
 
 // Дата от клетка → "ДД/ММ/ГГГГ" или null. Приема Excel дата (число), ДД/ММ/ГГГГ, ДД.ММ.ГГГГ, ДД-ММ-ГГГГ
 // (денят и месецът — с 1 или 2 цифри; денят винаги е първи) и ГГГГ-ММ-ДД; датата трябва да съществува
@@ -353,7 +356,7 @@ export const findDuplicates = (existing, incoming) => {
   return { duplicates, unique };
 };
 
-export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, profileName = "") => new Promise((resolve) => setTimeout(async () => {
+export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, profileName = "") => runAsync(async () => {
   const monthNames = [
     "Януари","Февруари","Март","Април","Май","Юни",
     "Юли","Август","Септември","Октомври","Ноември","Декември",
@@ -487,5 +490,4 @@ export const exportMonthlyStatsToExcel = (transactions, rollingMonths = 12, prof
   const y = today.getFullYear();
   const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   await saveWorkbook(workbook, "Месечна_Статистика" + profileSuffix + "_" + d + "." + m + "." + y + ".xlsx");
-  resolve();
-}, 50));
+});
