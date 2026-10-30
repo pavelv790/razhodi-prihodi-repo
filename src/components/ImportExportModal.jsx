@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
 import { importFromExcel, exportToExcel } from "../utils/excel";
 import { linkCategories, applyCategorySpelling } from "../utils/categoryMatch";
@@ -35,12 +35,13 @@ const ImportExportModal = ({
   incomeCategories,
   profileName,
 }) => {
-  const [step, setStep] = useState("main");
+  const hasExportData = mode === "export" && filteredTransactions?.length > 0;
+  const [step, setStep] = useState(() => (hasExportData && isFiltered ? "exportWarning" : "main"));
   const [pendingTransactions, setPendingTransactions] = useState(null);
   const [invalidRows, setInvalidRows] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [noDataMessage, setNoDataMessage] = useState(false);
+  const [noDataMessage, setNoDataMessage] = useState(mode === "export" && !hasExportData);
   const fileInputRef = useRef(null);
   const mountedRef = useRef(false);
 
@@ -64,40 +65,33 @@ const ImportExportModal = ({
     }
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleFocusBack = useCallback(() => {
-    setTimeout(() => {
-      if (!fileInputRef.current?.files?.length) {
-        onClose();
-      }
-    }, 800);
-    window.removeEventListener("focus", handleFocusBack);
-  }, [onClose]);
+  // Отказ от избора на файл: React не вика `onCancel` на <input> (събитието не е сред тези, които слуша за него),
+  // затова е собствен слушател. Старата резерва по `focus` + таймер е махната — тя затваряше потвърждението
+  // след избран файл, когато `focus` дойде преди `change` (одит 2026-10, 5-8). Прозорецът е видим, има „Откажи“.
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (mode !== "import" || !input) return;
+    input.addEventListener("cancel", onClose);
+    return () => input.removeEventListener("cancel", onClose);
+  }, [mode, onClose]);
 
   useEffect(() => {
+    // Без данни и при филтър началното състояние е вече зададено горе — тук само експортът без филтър
     if (mode === "export") {
-      if (!filteredTransactions || filteredTransactions.length === 0) {
-        setNoDataMessage(true);
-        return;
-      }
-      if (isFiltered) {
-        setStep("exportWarning");
-      } else {
+      if (hasExportData && !isFiltered) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- експортът тръгва сам при отваряне на прозореца
         runExport(filteredTransactions, expenseCategories, incomeCategories, false, [], profileName);
       }
     } else if (mode === "import") {
-      setTimeout(() => {
-        fileInputRef.current?.click();
-        window.addEventListener("focus", handleFocusBack);
-      }, 50);
+      // Изборът се опитва да се отвори сам; ако телефонът не го позволи, „Избери файл“ го отваря от натискането
+      const timerId = setTimeout(() => fileInputRef.current?.click(), 50);
+      return () => clearTimeout(timerId);
     }
-    return () => window.removeEventListener("focus", handleFocusBack);
   }, []);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) { onClose(); return; }
-    window.removeEventListener("focus", handleFocusBack);
     setLoading(true);
     setError("");
     try {
@@ -134,20 +128,6 @@ const ImportExportModal = ({
     onCategoriesImported({ expense: expense.added, income: income.added });
     onClose();
   };
-
-  if (step === "main" && mode === "import" && !error && !loading) {
-    return (
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx"
-        onChange={handleFileSelect}
-        onClick={(e) => { e.target.value = ""; }}
-        onCancel={onClose}
-        className="hidden"
-      />
-    );
-  }
 
   if (step === "main" && mode === "export" && loading) {
     return (
@@ -199,6 +179,29 @@ const ImportExportModal = ({
         </div>
 
         <div className="px-5 py-5 space-y-3">
+          {step === "main" && mode === "import" && (
+            loading ? (
+              <p className="text-sm text-center text-gray-400 animate-pulse py-2">⏳ Четене на файла…</p>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600">
+                  Изберете Excel файл във формат .xlsx — например създаден чрез „Експорт към Excel“.
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-orange-500 text-white hover:bg-orange-600 transition"
+                >
+                  Избери файл
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                >
+                  Откажи
+                </button>
+              </>
+            )
+          )}
           {step === "exportWarning" && (
             <>
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
@@ -320,7 +323,6 @@ const ImportExportModal = ({
           accept=".xlsx"
           onChange={handleFileSelect}
           onClick={(e) => { e.target.value = ""; }}
-          onCancel={onClose}
           className="hidden"
         />
       </div>
