@@ -42,6 +42,10 @@ const ImportExportModal = ({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [noDataMessage, setNoDataMessage] = useState(mode === "export" && !hasExportData);
+  // Замяната от файла: подготвеният списък, старият (за връщане при провал) и новите категории.
+  // Запомнят се преди записа — след извикването `transactions` вече е новият списък (одит 2026-10, 7-09)
+  const [replacePlan, setReplacePlan] = useState(null);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
   const mountedRef = useRef(false);
 
@@ -118,15 +122,53 @@ const ImportExportModal = ({
     setLoading(false);
   };
 
+  // Замяната чака записа: категориите се добавят и прозорецът се затваря само при успех. При провал
+  // прозорецът остава с „Опитай пак“/„Затвори“ — иначе екранът показва новите транзакции като записани,
+  // а в паметта са старите (одит 2026-10, 7-09)
+  const saveReplace = async (plan) => {
+    setSaving(true);
+    let saved = false;
+    try {
+      saved = await onImportReplace(plan.prepared);
+    } catch { /* replaceAllTransactions не отхвърля; ако все пак — като провал */ }
+    if (!mountedRef.current) return;
+    setSaving(false);
+    if (!saved) {
+      setStep("saveFailed");
+      return;
+    }
+    onCategoriesImported(plan.added);
+    onClose();
+  };
+
   const handleConfirmReplace = () => {
     // Категория, която се различава от съществуваща само по главни/малки букви, приема съществуващото
     // изписване — и в списъка, и в транзакциите (одит 2026-10, 1А-16)
     const fromFile = (type) => pendingTransactions.filter((t) => t.type === type).map((t) => t.category);
     const expense = linkCategories(expenseCategories, fromFile("expense"));
     const income = linkCategories(incomeCategories, fromFile("income"));
-    onImportReplace(applyCategorySpelling(pendingTransactions, { expense: expense.resolve, income: income.resolve }));
-    onCategoriesImported({ expense: expense.added, income: income.added });
+    const plan = {
+      prepared: applyCategorySpelling(pendingTransactions, { expense: expense.resolve, income: income.resolve }),
+      previous: transactions,
+      added: { expense: expense.added, income: income.added },
+    };
+    setReplacePlan(plan);
+    saveReplace(plan);
+  };
+
+  // „Затвори“ след провален запис: екранът се връща към старите транзакции, категориите от файла не се
+  // добавят. Старите са в паметта — замяната в базата е една транзакция и при провал не променя нищо;
+  // екранът се сменя преди записа, така че се връща, дори този запис също да не мине
+  const handleCloseAfterFailedSave = () => {
+    onImportReplace(replacePlan.previous);
     onClose();
+  };
+
+  // Докато тече записът, прозорецът не се затваря
+  const handleClose = () => {
+    if (saving) return;
+    if (step === "saveFailed") handleCloseAfterFailedSave();
+    else onClose();
   };
 
   if (step === "main" && mode === "export" && loading) {
@@ -171,8 +213,9 @@ const ImportExportModal = ({
             {mode === "export" ? "Експорт към Excel" : "Импорт от Excel"}
           </h2>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition"
+            onClick={handleClose}
+            disabled={saving}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition disabled:opacity-40"
           >
             <X className="w-4 h-4 text-gray-500" />
           </button>
@@ -262,15 +305,42 @@ const ImportExportModal = ({
 
               <button
                 onClick={handleConfirmReplace}
-                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition"
+                disabled={saving}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-40"
               >
-                Да, зареди новите данни
+                {saving ? "Записване…" : "Да, зареди новите данни"}
               </button>
               <button
                 onClick={onClose}
-                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+                disabled={saving}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition disabled:opacity-40"
               >
                 Откажи
+              </button>
+            </>
+          )}
+
+          {step === "saveFailed" && replacePlan && (
+            <>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-700 font-bold mb-1">⚠️ Грешка при запис</p>
+                <p className="text-sm text-red-600">
+                  Новите {replacePlan.prepared.length} транзакции не са записани — в паметта са останали старите {replacePlan.previous.length}. Най-честата причина е, че няма място на устройството. Освободете място и натиснете „Опитай пак“.
+                </p>
+              </div>
+              <button
+                onClick={() => saveReplace(replacePlan)}
+                disabled={saving}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-40"
+              >
+                {saving ? "Записване…" : "Опитай пак"}
+              </button>
+              <button
+                onClick={handleCloseAfterFailedSave}
+                disabled={saving}
+                className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition disabled:opacity-40"
+              >
+                Затвори
               </button>
             </>
           )}
