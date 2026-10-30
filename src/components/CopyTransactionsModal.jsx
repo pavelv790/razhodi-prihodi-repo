@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, Copy, ChevronDown, Search, Calendar } from "lucide-react";
 import { openDB } from "../utils/db";
 import { copyWithNewIds } from "../hooks/useTransactions";
+import { sameCategory } from "../utils/categoryMatch";
 import { parseDate, getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 import DateInput from "./DateInput";
 
@@ -218,7 +219,7 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
       activeTransactions.some(
         (e) =>
           e.date === bt.date &&
-          e.category === bt.category &&
+          sameCategory(e.category, bt.category) &&
           e.type === bt.type &&
           Math.abs(Number(e.amount) - Number(bt.amount)) < 0.01
       )

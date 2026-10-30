@@ -36,6 +36,7 @@ import { markExpectedServiceSwitch } from "./utils/crossServiceSwitch";
 import { requestPersistentStorage, getStorageUsage, formatBytes, STORAGE_WARN_RATIO } from "./utils/storageInfo";
 import { registerSW } from "virtual:pwa-register";
 import { getTodayString } from "./utils/formatters";
+import { linkCategories, applyCategorySpelling } from "./utils/categoryMatch";
 
 // Записите на един профил от store. При грешка или прекъсната транзакция отхвърля, вместо да
 // виси завинаги (одит 2026-10, 1А-05)
@@ -1424,25 +1425,31 @@ const App = () => {
     // Продължи с въпросите за останалите профили
     await askRestoreQuestions(pendingRemainingProfiles, pendingBackup);
   };
-  const handleMergeImport = (transactions, expenseCategories, incomeCategories) => {
-    addTransactions(transactions);
-    addCategoriesFromImport("expense", expenseCategories);
-    addCategoriesFromImport("income", incomeCategories);
+  // Категория, която се различава от съществуваща само по главни/малки букви, приема съществуващото
+  // изписване — и в списъка, и в транзакциите (одит 2026-10, 1А-16)
+  const handleMergeImport = (transactions, backupExpenseCategories, backupIncomeCategories) => {
+    const expense = linkCategories(expenseCategories, backupExpenseCategories);
+    const income = linkCategories(incomeCategories, backupIncomeCategories);
+    addTransactions(applyCategorySpelling(transactions, { expense: expense.resolve, income: income.resolve }));
+    addCategoriesFromImport("expense", expense.added);
+    addCategoriesFromImport("income", income.added);
   };
   // „Копирай от друг профил“: освен транзакциите добавя и категориите, които активният профил няма
-  // (по тип, точно съвпадение, както „Обедини“) — иначе транзакциите са извън списъка, а Excel отчетът
-  // и формите ги пропускат (одит 2026-10, 5-6). Връща добавените категории за реда в „Готово“.
+  // (по тип, без значение на главни/малки букви, както „Обедини“) — иначе транзакциите са извън списъка,
+  // а Excel отчетът и формите ги пропускат (одит 2026-10, 5-6, 1А-16). Връща добавените категории за
+  // реда в „Готово“.
   const handleCopyTransactions = (copiedTransactions) => {
-    addTransactions(copiedTransactions);
     const addedCategories = [];
+    const resolvers = {};
     [["expense", expenseCategories], ["income", incomeCategories]].forEach(([type, listed]) => {
-      const missing = [...new Set(copiedTransactions.filter((t) => t.type === type).map((t) => t.category))]
-        .filter((c) => typeof c === "string" && c && !listed.includes(c))
-        .sort((a, b) => a.localeCompare(b, "bg"));
+      const { added, resolve } = linkCategories(listed, copiedTransactions.filter((t) => t.type === type).map((t) => t.category));
+      resolvers[type] = resolve;
+      const missing = [...added].sort((a, b) => a.localeCompare(b, "bg"));
       if (missing.length === 0) return;
       addCategoriesFromImport(type, missing);
       missing.forEach((name) => addedCategories.push({ name, type }));
     });
+    addTransactions(applyCategorySpelling(copiedTransactions, resolvers));
     return addedCategories;
   };
   // Всяко четене минава през runTx; грешка хвърля BACKUP_READ_ERROR, вместо тихо да сложи празен

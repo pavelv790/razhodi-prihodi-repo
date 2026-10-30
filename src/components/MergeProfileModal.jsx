@@ -3,6 +3,7 @@ import { X, Upload, ChevronDown, Search, Calendar } from "lucide-react";
 import { importBackup } from "../utils/backup";
 import { parseDate } from "../utils/formatters";
 import { copyWithNewIds } from "../hooks/useTransactions";
+import { sameCategory } from "../utils/categoryMatch";
 import DateInput from "./DateInput";
 import { getFirstDayOfMonth, getLastDayOfMonth } from "../utils/formatters";
 
@@ -214,7 +215,7 @@ const MergeProfileModal = ({ onClose, onMerge, activeProfile, existingTransactio
     return existingTransactions.some(
       (e) =>
         e.date === t.date &&
-        e.category === t.category &&
+        sameCategory(e.category, t.category) &&
         e.type === t.type &&
         Math.abs(Number(e.amount) - Number(t.amount)) < 0.01
     );

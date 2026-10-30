@@ -5,6 +5,7 @@ import {
   sortCategories,
 } from "../constants/categories";
 import { runTx, reportDBError } from "../utils/db";
+import { mergeCategoryLists } from "../utils/categoryMatch";
 
 const STORE = "categories";
 
@@ -116,17 +117,12 @@ export const useCategories = (profileId) => {
     }
   };
 
+  // Без повторения по главни/малки букви; съществуващото изписване се запазва (одит 2026-10, 1А-16)
   const addCategoriesFromImport = (type, newCategories) => {
     if (type === "expense") {
-      setExpenseCategories((prev) => {
-        const merged = [...new Set([...prev, ...newCategories])];
-        return sortCategories(merged);
-      });
+      setExpenseCategories((prev) => sortCategories(mergeCategoryLists(prev, newCategories)));
     } else {
-      setIncomeCategories((prev) => {
-        const merged = [...new Set([...prev, ...newCategories])];
-        return sortCategories(merged);
-      });
+      setIncomeCategories((prev) => sortCategories(mergeCategoryLists(prev, newCategories)));
     }
   };
 

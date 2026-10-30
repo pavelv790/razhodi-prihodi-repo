@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { X } from "lucide-react";
 import { importFromExcel, exportToExcel } from "../utils/excel";
+import { linkCategories, applyCategorySpelling } from "../utils/categoryMatch";
 
 const ImportExportModal = ({
   onClose,
@@ -78,12 +79,13 @@ const ImportExportModal = ({
   };
 
   const handleConfirmReplace = () => {
-    onImportReplace(pendingTransactions);
-    const newCategories = {
-      expense: [...new Set(pendingTransactions.filter((t) => t.type === "expense").map((t) => t.category))],
-      income: [...new Set(pendingTransactions.filter((t) => t.type === "income").map((t) => t.category))],
-    };
-    onCategoriesImported(newCategories);
+    // Категория, която се различава от съществуваща само по главни/малки букви, приема съществуващото
+    // изписване — и в списъка, и в транзакциите (одит 2026-10, 1А-16)
+    const fromFile = (type) => pendingTransactions.filter((t) => t.type === type).map((t) => t.category);
+    const expense = linkCategories(expenseCategories, fromFile("expense"));
+    const income = linkCategories(incomeCategories, fromFile("income"));
+    onImportReplace(applyCategorySpelling(pendingTransactions, { expense: expense.resolve, income: income.resolve }));
+    onCategoriesImported({ expense: expense.added, income: income.added });
     onClose();
   };
 
