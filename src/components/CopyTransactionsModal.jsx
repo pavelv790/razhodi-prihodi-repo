@@ -117,6 +117,8 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
   const [selectedDuplicates, setSelectedDuplicates] = useState([]);
   const [step, setStep] = useState("select"); // "select" | "duplicates" | "done"
   const [activeTransactions, setActiveTransactions] = useState([]);
+  // Категориите, които копирането е добавило на активния профил — { name, type }
+  const [addedCategories, setAddedCategories] = useState([]);
 
   const otherProfiles = profiles.filter((p) => p.id !== activeProfileId);
 
@@ -229,16 +231,16 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
       setSelectedDuplicates([]);
       setStep("duplicates");
     } else {
-      onAdd(copyWithNewIds(filtered, { profileId: activeProfileId }));
+      setAddedCategories(onAdd(copyWithNewIds(filtered, { profileId: activeProfileId })) || []);
       setStep("done");
     }
   };
 
   const handleConfirmDuplicates = () => {
-    onAdd(copyWithNewIds(
+    setAddedCategories(onAdd(copyWithNewIds(
       [...unique, ...duplicates.filter((t) => selectedDuplicates.includes(t.id))],
       { profileId: activeProfileId },
-    ));
+    )) || []);
     setStep("done");
   };
 
@@ -436,6 +438,11 @@ const CopyTransactionsModal = ({ profiles, activeProfileId, activeProfileName, o
             <div className="bg-green-50 rounded-xl px-4 py-3 text-sm text-green-700 font-medium">
               ✅ Транзакциите са копирани успешно в профил <strong>{activeProfileName}</strong>.
             </div>
+            {addedCategories.length > 0 && (
+              <div className="bg-blue-100 rounded-xl px-4 py-3 text-xs text-blue-700">
+                Добавени категории: {addedCategories.map((c) => `${c.name} (${c.type === "expense" ? "разход" : "приход"})`).join(", ")}
+              </div>
+            )}
             <button
               onClick={onClose}
               className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"

@@ -1429,6 +1429,22 @@ const App = () => {
     addCategoriesFromImport("expense", expenseCategories);
     addCategoriesFromImport("income", incomeCategories);
   };
+  // „Копирай от друг профил“: освен транзакциите добавя и категориите, които активният профил няма
+  // (по тип, точно съвпадение, както „Обедини“) — иначе транзакциите са извън списъка, а Excel отчетът
+  // и формите ги пропускат (одит 2026-10, 5-6). Връща добавените категории за реда в „Готово“.
+  const handleCopyTransactions = (copiedTransactions) => {
+    addTransactions(copiedTransactions);
+    const addedCategories = [];
+    [["expense", expenseCategories], ["income", incomeCategories]].forEach(([type, listed]) => {
+      const missing = [...new Set(copiedTransactions.filter((t) => t.type === type).map((t) => t.category))]
+        .filter((c) => typeof c === "string" && c && !listed.includes(c))
+        .sort((a, b) => a.localeCompare(b, "bg"));
+      if (missing.length === 0) return;
+      addCategoriesFromImport(type, missing);
+      missing.forEach((name) => addedCategories.push({ name, type }));
+    });
+    return addedCategories;
+  };
   // Всяко четене минава през runTx; грешка хвърля BACKUP_READ_ERROR, вместо тихо да сложи празен
   // списък — досега се сваляше копие с всички профили, но без транзакциите на неактивните (7-02).
   // Данните на активния профил се вземат от паметта (там са и още незаписаните промени) само ако са
@@ -3423,7 +3439,7 @@ const App = () => {
           activeProfileId={activeProfileId}
           activeProfileName={activeProfile?.name}
           onClose={() => setShowCopyModal(false)}
-          onAdd={addTransactions}
+          onAdd={handleCopyTransactions}
         />
       )}
 

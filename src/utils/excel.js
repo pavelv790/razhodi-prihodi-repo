@@ -85,12 +85,27 @@ export const exportToExcel = (
       })
       .reduce((sum, t) => sum + Number(t.amount), 0);
 
-  const activeExpCats = isFiltered && filterCategories.length > 0
-    ? expenseCategories.filter((c) => filterCategories.includes(c + "::expense"))
-    : expenseCategories;
-  const activeIncCats = isFiltered && filterCategories.length > 0
-    ? incomeCategories.filter((c) => filterCategories.includes(c + "::income"))
-    : incomeCategories;
+  // Категории, които има в подадените транзакции, но ги няма в списъка на профила (копирани от друг
+  // профил, остатък от старо преименуване) — иначе отпадат от годишните листове, ОБЩО и БАЛАНС (одит 2026-10, 5-6)
+  const withTransactionCategories = (listed, type) => [
+    ...listed,
+    ...[...new Set(transactions.filter((t) => t.type === type).map((t) => t.category))]
+      .filter((c) => !listed.includes(c))
+      .sort((a, b) => a.localeCompare(b, "bg")),
+  ];
+
+  const activeExpCats = withTransactionCategories(
+    isFiltered && filterCategories.length > 0
+      ? expenseCategories.filter((c) => filterCategories.includes(c + "::expense"))
+      : expenseCategories,
+    "expense",
+  );
+  const activeIncCats = withTransactionCategories(
+    isFiltered && filterCategories.length > 0
+      ? incomeCategories.filter((c) => filterCategories.includes(c + "::income"))
+      : incomeCategories,
+    "income",
+  );
 
   const workbook = new ExcelJS.Workbook();
 
