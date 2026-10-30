@@ -60,8 +60,12 @@ const saveWorkbook = async (workbook, filename) => {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  // Връзката е в страницата по време на клика (по-старите браузъри иначе не я свалят), а файлът се
+  // освобождава след минута — Safari на iPhone започва свалянето по-късно (одит 2026-10, 5-19)
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 // Изпълнява task след 50 мс (да се покаже „Генериране…“); грешката му отхвърля промиса — иначе

@@ -36,8 +36,12 @@ export const exportBackup = (transactions, expenseCategories, incomeCategories, 
   a.href = url;
   const profileSuffix = profileName ? `_${sanitizeFileName(profileName)}` : "";
   a.download = `Финанси_Backup${profileSuffix}_${day}.${month}.${year}.json`;
+  // Както при Excel: връзката е в страницата по време на клика, файлът се освобождава след минута —
+  // Safari на iPhone започва свалянето по-късно (одит 2026-10, 5-19б)
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 100);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
 // Само чете JSON-а; проверката е във validateAndMigrateBackup (обща с облачните копия)

@@ -103,8 +103,11 @@ export default class ErrorBoundary extends Component {
       const suffix = profileName ? `_${profileName.replace(/[/\\:*?"<>|]/g, "-")}` : "";
       a.href = url;
       a.download = `Финанси_Backup${suffix}_${day}.${month}.${now.getFullYear()}.json`;
+      // Връзката е в страницата по време на клика, файлът се освобождава след минута (одит 2026-10, 5-19б)
+      document.body.appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 100);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       this.setState({ downloading: false });
     } catch (err) {
       console.error("Грешка при сваляне на резервно копие от аварийния екран:", err);
