@@ -1,7 +1,23 @@
 @import "tailwindcss";
 
+/* --banner-h: височината на банерите горе (App.jsx, bannerStackRef) — 0, когато няма банер */
+:root {
+  --banner-h: 0px;
+}
+
 body {
   background-color: #dbeafe;
+  padding-top: var(--banner-h);
+}
+
+/* Прозорците (fixed inset-0) започват под банерите, за да не закриват заглавието и ✕ */
+.fixed.inset-0 {
+  top: var(--banner-h);
+}
+
+/* При банер картата на прозореца не е по-висока от оставащото място — иначе заглавието ѝ е под банера */
+:root[data-banners] .fixed.inset-0 > * {
+  max-height: calc(100dvh - var(--banner-h) - 2rem);
 }
 
 .card {

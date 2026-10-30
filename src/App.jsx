@@ -472,6 +472,25 @@ const App = () => {
   // едновременната работа на две места може тихо да губи данни, защото всяко копие
   // записва в IndexedDB своята пълна снимка на транзакциите
   const [multiTabWarning, setMultiTabWarning] = useState(false);
+  // Банерите горе са един общ стек (червен, оранжев, син); височината му е в --banner-h, а страницата,
+  // прозорците и тостовете започват под него (index.css) — одит 2026-10, 6-01
+  const bannersVisible = multiTabWarning || !!dbWriteError || showUpdateAvailable;
+  const bannerStackRef = useRef(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = bannerStackRef.current;
+    if (!bannersVisible || !el) return undefined;
+    const update = () => root.style.setProperty("--banner-h", `${el.offsetHeight}px`);
+    update();
+    root.setAttribute("data-banners", "");
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.removeAttribute("data-banners");
+      root.style.setProperty("--banner-h", "0px");
+    };
+  }, [bannersVisible]);
   useEffect(() => {
     if (!navigator.locks) return;
     let releaseLock;
@@ -2084,7 +2103,7 @@ const App = () => {
       {driveMessage && driveMessage !== "allow" && driveMessage !== "blocked" && driveMessage !== "reconnect" && (
         <>
           {driveMessage.startsWith("✅") ? (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
+            <div className="fixed top-[calc(var(--banner-h)+1rem)] left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
               <div className="flex justify-between items-start gap-2">
                 <p className="text-sm font-medium text-emerald-800">{driveMessage}</p>
                 <button onClick={() => driveSetMessage("")} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none flex-shrink-0">×</button>
@@ -2147,7 +2166,7 @@ const App = () => {
       {supabaseMessage && (
         <>
           {supabaseMessage.startsWith("✅") ? (
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
+            <div className="fixed top-[calc(var(--banner-h)+1rem)] left-1/2 -translate-x-1/2 z-[100] rounded-xl shadow-lg px-4 py-3 max-w-sm w-full mx-4 border-2 bg-emerald-50 border-emerald-300">
               <div className="flex justify-between items-start gap-2">
                 <p className="text-sm font-medium text-emerald-800">{supabaseMessage}</p>
                 <button onClick={() => supabaseSetMessage("")} className="text-emerald-400 hover:text-emerald-600 text-lg leading-none flex-shrink-0">×</button>
@@ -2174,14 +2193,10 @@ const App = () => {
           )}
         </>
       )}
-      {multiTabWarning && (
-        <div className="fixed top-0 left-0 right-0 z-[119] bg-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
-          <p className="text-sm font-medium">⚠️ Приложението е отворено и в друг раздел или прозорец. Работата на две места едновременно може да доведе до загуба на данни — затворете другото копие и презаредете тази страница.</p>
-          <button onClick={() => setMultiTabWarning(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
-        </div>
-      )}
+      {bannersVisible && (
+        <div ref={bannerStackRef} className="fixed top-0 left-0 right-0 z-[121] flex flex-col shadow-lg">
       {dbWriteError && (
-        <div className="fixed top-0 left-0 right-0 z-[120] bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+        <div className="bg-red-500 text-white px-4 py-2.5 flex items-center justify-between gap-3">
           <p className="text-sm font-medium">
             {dbWriteError === "quota"
               ? "⚠️ Няма място на устройството — данните не се запазват! Освободете място и свалете резервно копие (Данни → Свали резервно копие)."
@@ -2190,8 +2205,14 @@ const App = () => {
           <button onClick={() => setDbWriteError(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
         </div>
       )}
+      {multiTabWarning && (
+        <div className="bg-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">⚠️ Приложението е отворено и в друг раздел или прозорец. Работата на две места едновременно може да доведе до загуба на данни — затворете другото копие и презаредете тази страница.</p>
+          <button onClick={() => setMultiTabWarning(false)} className="text-white/80 hover:text-white text-lg leading-none flex-shrink-0">×</button>
+        </div>
+      )}
       {showUpdateAvailable && (
-        <div className="fixed top-0 left-0 right-0 z-[121] bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+        <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between gap-3">
           <p className="text-sm font-medium">🔄 Налична е нова версия на приложението.</p>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
@@ -2202,6 +2223,8 @@ const App = () => {
             </button>
             <button onClick={() => setShowUpdateAvailable(false)} className="text-white/80 hover:text-white text-lg leading-none">×</button>
           </div>
+        </div>
+      )}
         </div>
       )}
       <div className="max-w-3xl mx-auto px-4 py-6">
