@@ -2064,7 +2064,7 @@ const App = () => {
     <div className="min-h-screen bg-transparent">
       {driveMessage === "blocked" && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-orange-200">
               <h2 className="text-base font-semibold text-orange-700">⚠️ Внимание!</h2>
             </div>
@@ -2079,7 +2079,7 @@ const App = () => {
       )}
       {driveMessage === "reconnect" && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-orange-200">
               <h2 className="text-base font-semibold text-orange-700">🔌 Връзката с Google Drive изтече</h2>
             </div>
@@ -2111,7 +2111,7 @@ const App = () => {
             </div>
           ) : (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
                 <div className={`px-5 py-4 border-b ${driveMessage.startsWith("❌") ? "border-red-200" : "border-orange-200"}`}>
                   <h2 className={`text-base font-semibold ${driveMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
                     {driveMessage.startsWith("❌") ? "❌ Грешка" : "⚠️ Внимание!"}
@@ -2132,7 +2132,7 @@ const App = () => {
       )}
       {supabaseShowNewPassword && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">Нова парола</h2>
             </div>
@@ -2174,7 +2174,7 @@ const App = () => {
             </div>
           ) : (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+              <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
                 <div className={`px-5 py-4 border-b ${supabaseMessage.startsWith("❌") ? "border-red-200" : "border-orange-200"}`}>
                   <h2 className={`text-base font-semibold ${supabaseMessage.startsWith("❌") ? "text-red-700" : "text-orange-700"}`}>
                     {supabaseMessage.startsWith("❌") ? "❌ Грешка" : "⚠️ Внимание!"}
@@ -3175,7 +3175,7 @@ const App = () => {
 
       {showCrossServiceWarning && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-orange-200">
               <h2 className="text-base font-semibold text-orange-700">⚠️ Внимание!</h2>
             </div>
@@ -3224,7 +3224,7 @@ const App = () => {
 
       {confirmDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">{confirmDialog.title}</h2>
             </div>
@@ -3267,7 +3267,7 @@ const App = () => {
 
       {autoUploadNotice && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
                 {autoUploadNotice === "drive" ? "Свързано с Google Drive" : "Свързано с Облака"}
@@ -3293,7 +3293,7 @@ const App = () => {
 
       {weeklyBackupVisible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
                 Седмично резервно копие
@@ -3374,13 +3374,13 @@ const App = () => {
 
       {showRestoreDone && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
-            <div className="px-5 py-4 border-b border-gray-100">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 shrink-0">
               <h2 className="text-base font-semibold text-gray-700">
                 Възстановяването {restoreSource === "drive" ? "от Google Drive" : restoreSource === "supabase" ? "от облака" : "от файла"} е завършено
               </h2>
             </div>
-            <div className="px-5 py-5 space-y-3">
+            <div className="px-5 py-5 overflow-y-auto min-h-0">
               <div className="bg-green-50 rounded-xl p-4">
                 <div className="text-sm text-green-700 font-medium mb-1">
                   {restoreDoneType.map((r, i) => (
@@ -3401,6 +3401,8 @@ const App = () => {
                   ))}
                 </div>
               </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 shrink-0">
               <button
                 onClick={closeRestoreDone}
                 className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition"
@@ -3486,7 +3488,7 @@ const App = () => {
 
       {showDeleteAll && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm">
+          <div className="bg-blue-50 rounded-2xl shadow-xl w-full max-w-sm max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-700">
                 Изтриване на всички данни
